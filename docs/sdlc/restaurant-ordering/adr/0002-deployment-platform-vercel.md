@@ -2,7 +2,7 @@
 
 | Status | Date | Deciders | Requirements |
 |---|---|---|---|
-| Proposed (pending spike S-1 and TBD-10) | 2026-10-13 | Manh Nguyen (product owner, tech lead) | NFR-PERF-01..03, NFR-SCAL-01, NFR-AVAIL-01, NFR-OPS-01, NFR-PRIV-02 |
+| Proposed; S-1 cold starts failed on a free Hobby account. [CR-001](../cr/CR-001-backend-container-platform.md) (option 3) deferred: Vercel kept pending a paid-plan check | 2026-10-13 | Manh Nguyen (product owner, tech lead) | NFR-PERF-01..03, NFR-SCAL-01, NFR-AVAIL-01, NFR-OPS-01, NFR-PRIV-02 |
 
 ## Context
 The stakeholder requires Vercel and has deployed a Ktor service there before. The default stack in the skill assumes a long-running container platform with probes, replicas and a scrapeable `/metrics`. On a serverless function platform:

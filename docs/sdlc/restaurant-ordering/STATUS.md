@@ -12,7 +12,7 @@
 | API consumers | Customer mobile app (platforms TBD-2; oldest supported 1.0.0) · customer web app · staff app (web) · admin console |
 | Toolchain | Kotlin 2.4.x · Ktor 3.6.x · JDK 25 · Exposed latest stable · PostgreSQL 17+ (pinned at Phase 4 start) |
 | Module layout | One module, packages by feature (ADR-0001) |
-| Deployment platform | Vercel Functions, region `sin1` (ADR-0002, Proposed until S-1); managed PostgreSQL + pooler (ADR-0004), managed pub/sub (ADR-0003), Redis (ADR-0008). Regions subject to TBD-10 |
+| Deployment platform | Vercel Functions, region `sin1` (ADR-0002, Proposed; S-1 cold starts failed on the free Hobby account; CR-001 to move off Vercel deferred); managed PostgreSQL + pooler (ADR-0004), managed pub/sub (ADR-0003), Redis (ADR-0008). Regions subject to TBD-10 |
 | Environments | dev · preview (per PR) · staging · production |
 | OpenAPI contract | `docs/api/openapi.yaml` (from Phase 3) |
 | Security level | ASVS L2 |
@@ -65,11 +65,13 @@ Decision is one of: Approved / Approved with conditions / Rejected / Waived.
 | 2026-10-13 | Guests authenticate with signed QR tokens and table-session JWTs issued by the service | ADR-0006 |
 | 2026-10-13 | Hand-written OpenAPI contract validated by contract tests (no experimental generation) | ADR-0007 |
 | 2026-10-13 | Metrics and traces pushed over OTLP | ADR-0009 |
+| 2026-10-13 | S-1 failed the cold-start criterion; raise CR-001 to move the backend to a container platform (ADR-0002 option 3) rather than accept the risk | CR-001 |
+| 2026-10-13 | CR-001 deferred: keep Vercel. S-1 ran on a free Hobby account; Pro keeps one production instance warm ("scale to one"), which S-1 didn't test | CR-001 |
 
 ## Risks
 | ID | Risk ("If …, then …") | Likelihood (H/M/L) | Impact (H/M/L) | Owner | Mitigation | Status |
 |---|---|---|---|---|---|---|
-| R-01 | If Vercel's runtime limits (execution time, long-lived connections, cold starts, DB connection counts) don't fit a JVM Ktor service with live updates for ~17,500 clients, then NFR-PERF-03/SCAL-01 can't be met as designed | M | H | Manh Nguyen | Live updates moved off the functions to managed pub/sub + event-log catch-up (ADR-0003); spike S-1 measures cold start, concurrency and limits; AOT cache or native image if needed; a CR if the platform must change | Open |
+| R-01 | If Vercel's runtime limits (execution time, long-lived connections, cold starts, DB connection counts) don't fit a JVM Ktor service with live updates for ~17,500 clients, then NFR-PERF-03/SCAL-01 can't be met as designed | M | H | Manh Nguyen | Live updates moved off the functions to managed pub/sub + event-log catch-up (ADR-0003); spike S-1 measures cold start, concurrency and limits; AOT cache or native image if needed; a CR if the platform must change | Open: S-1 measured 5–7 s cold starts on a free Hobby account (production scales to zero); CR-001 deferred. Next: verify Pro's warm production instance and scale-out cold-start rate |
 | R-02 | If someone photographs a table's QR code and uses it away from the table, then they can add orders to strangers' bills or prank the kitchen | M | M | Manh Nguyen | QR rotation (FR-031), per-session rate limits (NFR-SEC-04), staff can cancel; optional waiter confirmation (FR-016, TBD-8); session closes at payment | Open |
 | R-03 | If any endpoint misses a tenant or session check, then one restaurant's data leaks to another, harming every customer | M | H | Manh Nguyen | Tenant ID on every row and query (or PostgreSQL RLS, Phase 2 ADR); authorisation-matrix tests per endpoint (NFR-SEC-02); review checklist | Open |
 | R-04 | If Vietnamese law requires local storage of this data, then Vercel's and the database's regions may not comply | M | H | Manh Nguyen | Legal review before G2 (TBD-10); choose regions accordingly; a CR if the platform must change | Open |
@@ -82,6 +84,7 @@ Decision is one of: Approved / Approved with conditions / Rejected / Waived.
 ## Change requests
 | CR ID | Title | Status | Affected items | Decision date |
 |---|---|---|---|---|
+| [CR-001](cr/CR-001-backend-container-platform.md) | Run the backend on a container platform instead of Vercel Functions (S-1: cold starts 5–7 s) | Deferred: keep Vercel; reopen if cold starts on a paid plan break p99 | requirements.md v1.0 (constraints, §6), ADR-0002 → ADR-0010, ADR-0003/0004/0008/0009, architecture.md, test-plan.md, rtm.md | |
 
 ## Open items
 A TBD that blocks a Must requirement blocks the gate.
@@ -98,7 +101,7 @@ A TBD that blocks a Must requirement blocks the gate.
 | ASSUMPTION-8 | ASSUMPTION | Quality goals ranked: isolation > order integrity > availability > live-update latency > operability/cost (architecture §1) | G2: confirm | Manh Nguyen | Open |
 | ASSUMPTION-9 | ASSUMPTION | Load mix per endpoint group and data volume (≈ 100k orders/day) in architecture §9 | No (calibrated by S-1 and the pilot) | Manh Nguyen | Open |
 | Q-1 | Question | How was the earlier Ktor service deployed on Vercel? | No | Manh Nguyen | Resolved 2026-10-13: Vercel container runtime (`ktor-sample`); findings in ADR-0002 |
-| S-1 | Spike | Ktor on Vercel's container runtime: cold start (plain/AOT), warm latency, concurrency, duration, SSE, CPU/memory, SIGTERM, platform features | Yes (G2) | Manh Nguyen | Run 2026-10-13, results in `spikes/s1-vercel/README.md`. Warm p95 ≈ 49 ms at the edge (meets). Cold start 5–7 s (plain p50 6.4–6.8 s, AOT p50 5.4 s; ~4.7 s is the platform, so AOT/native can't fix it) and the next request often cold-starts a second instance: **fails the cold-start criterion; decision needed on ADR-0002**. Max duration and SSE cut at 300 s on the free Hobby account used for the spike (Pro: 800 s, still < 15 min), so ADR-0003 pub/sub stands. SIGTERM grace 30 s. Production on a Pro account (commercial use; Rolling Releases, log drains). Open: WAF check (Q9) |
+| S-1 | Spike | Ktor on Vercel's container runtime: cold start (plain/AOT), warm latency, concurrency, duration, SSE, CPU/memory, SIGTERM, platform features | Yes (G2) | Manh Nguyen | Run 2026-10-13, results in `spikes/s1-vercel/README.md`. Warm p95 ≈ 49 ms at the edge (meets). Cold start 5–7 s (plain p50 6.4–6.8 s, AOT p50 5.4 s; ~4.7 s is the platform, so AOT/native can't fix it) and the next request often cold-starts a second instance: **fails the cold-start criterion on the free account**; CR-001 deferred, Vercel kept. Still to measure on a paid plan: whether the production instance stays warm, and how often scale-out cold-starts hit (load test). Max duration and SSE cut at 300 s on the free Hobby account used for the spike (Pro: 800 s, still < 15 min), so ADR-0003 pub/sub stands. SIGTERM grace 30 s. Production on a Pro account (commercial use; Rolling Releases, log drains). Open: WAF check (Q9) |
 | S-2 | Spike | PostgreSQL through the pooler from `sin1`: latency, `SET LOCAL` RLS, transaction advisory locks, Flyway from CI | Yes (G2) | Manh Nguyen | Not started |
 | S-3 | Spike | Pub/sub provider: delay with 1k–5k subscribers, channel isolation, cost at 17.5k/52.5k connections | Yes (G2) | Manh Nguyen | Not started |
 | S-4 | Spike | Identity provider claims, JWKS rotation, MFA claim (after TBD-1) | Yes (G2) | Manh Nguyen | Blocked by TBD-1 |
