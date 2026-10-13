@@ -2,7 +2,7 @@
 # denied DDL? Throwaway, deleted with spikes/s2-postgres.
 #
 # workflow_dispatch works only once this file is on the default branch, so it also runs on a push
-# to the spike's migrations or to this file.
+# that changes the spike's code, its build or this file.
 #
 # Secrets (Settings → Secrets and variables → Actions): DATABASE_URL_MIGRATOR_DIRECT and
 # DATABASE_URL_APP_DIRECT, the same values as spikes/s2-postgres/.env.spike.
@@ -12,7 +12,9 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - spikes/s2-postgres/src/main/resources/db/migration/**
+      - spikes/s2-postgres/src/main/**
+      - spikes/s2-postgres/build.gradle.kts
+      - spikes/s2-postgres/gradle/**
       - .github/workflows/s2-flyway.yml
 
 permissions:

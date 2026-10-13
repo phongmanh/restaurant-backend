@@ -60,18 +60,37 @@ fun migrate(migrator: JdbcTarget, app: JdbcTarget): MigrateReport {
 /**
  * Creates `app` with plain SQL, as `migrator`. A role made in Neon's console would be a member of
  * neon_superuser, whose BYPASSRLS would make every RLS result meaningless.
+ *
+ * On a re-run it only resets the password: since PostgreSQL 16 a non-superuser (Neon's owner role)
+ * may not even name SUPERUSER in ALTER ROLE, so the attributes are checked instead of re-set.
  */
 private fun ensureAppRole(migrator: JdbcTarget, app: JdbcTarget) {
     require(app.user.matches(Regex("[a-z_][a-z0-9_]*"))) { "unexpected app role name" }
     // CREATE/ALTER ROLE take no bind parameters, so the password is quoted as a literal.
     val password = "'" + app.password.replace("'", "''") + "'"
-    val attributes = "LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD $password"
     DriverManager.getConnection(migrator.jdbcUrl, migrator.user, migrator.password).use { conn ->
         val exists = conn.prepareStatement("SELECT 1 FROM pg_roles WHERE rolname = ?").use {
             it.setString(1, app.user)
             it.executeQuery().use { rs -> rs.next() }
         }
-        conn.createStatement().use { it.execute("${if (exists) "ALTER" else "CREATE"} ROLE ${app.user} $attributes") }
+        conn.createStatement().use {
+            if (exists) {
+                it.execute("ALTER ROLE ${app.user} LOGIN PASSWORD $password")
+            } else {
+                it.execute("CREATE ROLE ${app.user} LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD $password")
+            }
+        }
+        conn.prepareStatement(
+            "SELECT rolsuper, rolbypassrls, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = ?",
+        ).use {
+            it.setString(1, app.user)
+            it.executeQuery().use { rs ->
+                rs.next()
+                check((1..4).none { i -> rs.getBoolean(i) }) {
+                    "role ${app.user} has SUPERUSER, BYPASSRLS, CREATEDB or CREATEROLE; drop it and re-run"
+                }
+            }
+        }
     }
 }
 
