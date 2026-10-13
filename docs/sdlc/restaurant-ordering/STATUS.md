@@ -8,7 +8,7 @@
 |---|---|
 | Initiative | Restaurant ordering service (`docs/sdlc/restaurant-ordering/`) |
 | Type | New service |
-| Service | restaurant-backend, repository `/Users/liam/AndroidStudioProjects/restaurant-backend` (no remote yet) |
+| Service | restaurant-backend, repository https://github.com/phongmanh/restaurant-backend (private) |
 | API consumers | Customer mobile app (platforms TBD-2; oldest supported 1.0.0) · customer web app · staff app (web) · admin console |
 | Toolchain | Kotlin 2.4.x · Ktor 3.6.x · JDK 25 · Exposed latest stable · PostgreSQL 17+ (pinned at Phase 4 start) |
 | Module layout | One module, packages by feature (ADR-0001) |
