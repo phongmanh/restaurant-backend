@@ -27,8 +27,8 @@ import https from "node:https";
 const [mode, baseUrl, ...rest] = process.argv.slice(2);
 const opts = parseOptions(rest);
 const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-const httpAgent = new http.Agent({ keepAlive: true });
-const httpsAgent = new https.Agent({ keepAlive: true });
+const httpAgent = new http.Agent({ keepAlive: true, keepAliveMsecs: 10_000 });
+const httpsAgent = new https.Agent({ keepAlive: true, keepAliveMsecs: 10_000 });
 
 const modes = { info, warm, cold, concurrency, duration, sse, cpu };
 if (!modes[mode] || !baseUrl) {
@@ -72,16 +72,18 @@ async function warm() {
 async function cold() {
   const samples = int("samples", 10);
   const idle = int("idle", 45);
-  const rows = ["| # | Latency ms | Cold? | startupMs | Warm follow-up ms |", "|---|---|---|---|---|"];
+  const rows = ["| # | Latency ms | Cold? | startupMs | Follow-up ms | Follow-up cold? | Same instance? |", "|---|---|---|---|---|---|---|"];
   const coldTimes = [];
   for (let i = 1; i <= samples; i++) {
     process.stderr.write(`sample ${i}/${samples}: idle ${idle} s\n`);
     await sleep(idle * 1000);
     const r = await get("/spike/info");
     const body = JSON.parse(r.body);
+    // The follow-up shows whether the platform reuses the instance it just started.
     const follow = await get("/spike/info");
+    const followBody = JSON.parse(follow.body);
     if (body.firstRequestOnInstance) coldTimes.push(r.ms);
-    rows.push(`| ${i} | ${r.ms} | ${body.firstRequestOnInstance ? "yes" : "no"} | ${body.startupMs} | ${follow.ms} |`);
+    rows.push(`| ${i} | ${r.ms} | ${yesNo(body.firstRequestOnInstance)} | ${body.startupMs} | ${follow.ms} | ${yesNo(followBody.firstRequestOnInstance)} | ${yesNo(followBody.instanceId === body.instanceId)} |`);
   }
   print(`### cold, ${samples} samples, ${idle} s idle`, [
     `- cold samples: ${coldTimes.length}/${samples}; cold latency ${summary(coldTimes)}`,
@@ -197,6 +199,9 @@ function get(path, onChunk) {
       res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body, ms: Math.round(performance.now() - start) }));
       res.on("error", reject);
     });
+    // A middlebox on the client's path drops TCP connections idle for ~40 s (found in S-1); keepalive
+    // probes every 10 s keep a held /spike/sleep request open so the platform's limit is what's measured.
+    req.on("socket", (socket) => socket.setKeepAlive(true, 10_000));
     req.on("error", reject);
   });
 }
@@ -216,6 +221,10 @@ function parseOptions(args) {
 
 function int(name, fallback) {
   return opts[name] === undefined ? fallback : Number.parseInt(opts[name], 10);
+}
+
+function yesNo(value) {
+  return value ? "yes" : "no";
 }
 
 function sleep(ms) {

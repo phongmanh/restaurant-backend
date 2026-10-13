@@ -38,8 +38,15 @@ fun main() {
     }
 
     // Vercel sends SIGTERM when it scales an idle instance down; this line shows when and after
-    // how much work. Logback installs no shutdown hook of its own, so it still logs here.
-    Runtime.getRuntime().addShutdownHook(Thread { log.info("spike shutdown {}", stats.shutdownSummary()) })
+    // how much work. Logback installs no shutdown hook of its own, so it still logs here. The hook
+    // then keeps the JVM alive and logs a tick a second: the last tick is the grace before SIGKILL.
+    Runtime.getRuntime().addShutdownHook(Thread {
+        log.info("spike shutdown {}", stats.shutdownSummary())
+        repeat(SHUTDOWN_PROBE_SECONDS) { second ->
+            Thread.sleep(1_000)
+            log.info("spike shutdown alive +{}s", second + 1)
+        }
+    })
     server.start(wait = true)
 }
 
@@ -59,3 +66,4 @@ private fun train(port: Int) {
 }
 
 private const val DEFAULT_PORT = 8080
+private const val SHUTDOWN_PROBE_SECONDS = 120
