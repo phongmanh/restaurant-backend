@@ -1,0 +1,29 @@
+{
+  "bashOutputMaxChars": 10000,
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/resume_brief.py",
+            "timeout": 10,
+            "statusMessage": "Loading resume brief from STATUS.md"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/section_reads.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
