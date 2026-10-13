@@ -1,0 +1,117 @@
+# STATUS: Restaurant ordering service
+
+> The control file for the Ktor SDLC workflow (`ktor-sdlc` skill). Claude reads it first to resume work.
+>
+> Keep it current. It's the single place for gate decisions, risks and open items.
+
+| Field | Value |
+|---|---|
+| Initiative | Restaurant ordering service (`docs/sdlc/restaurant-ordering/`) |
+| Type | New service |
+| Service | restaurant-backend, repository `/Users/liam/AndroidStudioProjects/restaurant-backend` (no remote yet) |
+| API consumers | Customer mobile app (platforms TBD-2; oldest supported 1.0.0) · customer web app · staff app (web) · admin console |
+| Toolchain | Kotlin 2.4.x · Ktor 3.6.x · JDK 25 · Exposed latest stable · PostgreSQL 17+ (pinned at Phase 4 start) |
+| Module layout | One module, packages by feature (ADR-0001) |
+| Deployment platform | Vercel Functions, region `sin1` (ADR-0002, Proposed until S-1); managed PostgreSQL + pooler (ADR-0004), managed pub/sub (ADR-0003), Redis (ADR-0008). Regions subject to TBD-10 |
+| Environments | dev · preview (per PR) · staging · production |
+| OpenAPI contract | `docs/api/openapi.yaml` (from Phase 3) |
+| Security level | ASVS L2 |
+| Compliance | Vietnam PDP Law (in force 2026-01-01), Decree 13/2023/ND-CP; accounting record retention; data residency TBD-10. No PCI-DSS (no payments) |
+| SLOs | Agreed at G1: 99.9% success per 28 days; order flow 99.9%; guest reads p95 ≤ 200 ms; live updates ≤ 2 s p95; RPO ≤ 5 min, RTO ≤ 1 h |
+| Product owner / Tech lead / Ops owner | Manh Nguyen, product owner / Manh Nguyen, tech lead / TBD |
+| Current phase | 2 Architecture |
+| Tailoring | Full (service) |
+| Last updated | 2026-10-13 |
+
+## Deliverables
+| Phase | Deliverable | File | Status (Not started / Draft / In review / Approved) | Version |
+|---|---|---|---|---|
+| 1 | Requirements | requirements.md | Approved | 1.0 |
+| 1–6 | RTM | rtm.md | Draft (design column added in Phase 2; FR/NFR rows baselined at G1) | 1.1 |
+| 2 | Architecture + threat model + capacity model | architecture.md | Draft | 0.1 |
+| 2+ | ADRs | adr/0001–0009 | 5 Accepted (0001, 0005, 0006, 0007, 0009); 4 Proposed pending spikes (0002, 0003, 0004, 0008) | — |
+| 1–5 | Test plan + summary report | test-plan.md | Draft master plan (§1 and §5 approved at G1) | 0.3 |
+| 3 | Feature designs | design/<feature>.md | Not started | — |
+| 6 | Release checklist | release-checklist.md | Not started | — |
+
+The OpenAPI contract is baselined at G3 with the feature designs, but lives in the code repository (`docs/api/openapi.yaml`), where CI checks it.
+
+## Gate log
+Decision is one of: Approved / Approved with conditions / Rejected / Waived.
+
+| Gate | Date | Decision | Approver (name, role) | Conditions or accepted risk | Tag |
+|---|---|---|---|---|---|
+| G1 Requirements baseline | 2026-10-13 | Approved | Manh Nguyen, product owner and tech lead | None. Open before G2: TBD-1, TBD-2, TBD-3, TBD-4; TBD-10 blocks G2 | `sdlc/restaurant-ordering/G1` (pending first commit) |
+| G2 Architecture baseline | | | | | |
+| G3 Ready to build | | | | | |
+| G4 Code complete | | | | | |
+| G5 Release readiness | | | | | |
+| G6 Launch accepted | | | | | |
+
+## Decisions
+| Date | Decision | Recorded in (ADR / minutes) |
+|---|---|---|
+| 2026-10-13 | New standalone service in its own repository (`restaurant-backend`), full tailoring | Scope session |
+| 2026-10-13 | Multi-restaurant SaaS: every resource belongs to one restaurant (tenant) | Scope session |
+| 2026-10-13 | Guests are anonymous: the table QR code gives a table session; no guest accounts | Scope session |
+| 2026-10-13 | No online payment in release 1; bills are settled at the counter and recorded by staff | Scope session |
+| 2026-10-13 | Release 1 scope: guest ordering, menu, tables & QR, live kitchen/staff flow, bills & daily reports | Scope session |
+| 2026-10-13 | Deploy on Vercel (stakeholder has deployed Ktor there); Phase 2 ADR to confirm the runtime model | Scope session |
+| 2026-10-13 | Vietnam PDP rules apply; ASVS L2 | Scope session |
+| 2026-10-13 | Menu prices include VAT; no separate VAT line on the bill (TBD-6) | G1 review |
+| 2026-10-13 | NFR targets and peak sizing confirmed (ASSUMPTION-1/2) | G1 review |
+| 2026-10-13 | One module, packages by feature | ADR-0001 |
+| 2026-10-13 | Tenant isolation: restaurant ID in services + PostgreSQL RLS | ADR-0005 |
+| 2026-10-13 | Guests authenticate with signed QR tokens and table-session JWTs issued by the service | ADR-0006 |
+| 2026-10-13 | Hand-written OpenAPI contract validated by contract tests (no experimental generation) | ADR-0007 |
+| 2026-10-13 | Metrics and traces pushed over OTLP | ADR-0009 |
+
+## Risks
+| ID | Risk ("If …, then …") | Likelihood (H/M/L) | Impact (H/M/L) | Owner | Mitigation | Status |
+|---|---|---|---|---|---|---|
+| R-01 | If Vercel's runtime limits (execution time, long-lived connections, cold starts, DB connection counts) don't fit a JVM Ktor service with live updates for ~17,500 clients, then NFR-PERF-03/SCAL-01 can't be met as designed | M | H | Manh Nguyen | Live updates moved off the functions to managed pub/sub + event-log catch-up (ADR-0003); spike S-1 measures cold start, concurrency and limits; AOT cache or native image if needed; a CR if the platform must change | Open |
+| R-02 | If someone photographs a table's QR code and uses it away from the table, then they can add orders to strangers' bills or prank the kitchen | M | M | Manh Nguyen | QR rotation (FR-031), per-session rate limits (NFR-SEC-04), staff can cancel; optional waiter confirmation (FR-016, TBD-8); session closes at payment | Open |
+| R-03 | If any endpoint misses a tenant or session check, then one restaurant's data leaks to another, harming every customer | M | H | Manh Nguyen | Tenant ID on every row and query (or PostgreSQL RLS, Phase 2 ADR); authorisation-matrix tests per endpoint (NFR-SEC-02); review checklist | Open |
+| R-04 | If Vietnamese law requires local storage of this data, then Vercel's and the database's regions may not comply | M | H | Manh Nguyen | Legal review before G2 (TBD-10); choose regions accordingly; a CR if the platform must change | Open |
+| R-05 | If the NFR numbers (ASSUMPTION-1/2) are far off, then the capacity model and the costs are wrong | M | M | Manh Nguyen | Confirmed at G1; measure the pilot and revisit in the first SLO review | Open |
+| R-06 | If the functions reach the database, Redis, pub/sub and storage over the public internet, then leaked credentials are directly usable | M | H | Manh Nguyen | TLS; least-privilege users; rotation; secret scanning. Source-IP allow-lists are not possible: Vercel offers no static IPs for container images (Q-1) | Open |
+| R-07 | If no operations owner and on-call are named before launch, then incidents at dinner peak go unhandled | M | H | Manh Nguyen | Name an ops owner before G5; runbooks per architecture §13 | Open |
+| R-08 | If the pub/sub vendor fails or gets expensive, then live updates degrade or costs rise | M | M | Manh Nguyen | Thin events; polling fallback; `RealtimePublisher` port (ADR-0003) | Open |
+| R-09 | If many serverless instances open connections at once, then the database saturates during scale-out | M | H | Manh Nguyen | Transaction pooler; pool 3 per instance; cold-burst load profile (ADR-0004) | Open |
+
+## Change requests
+| CR ID | Title | Status | Affected items | Decision date |
+|---|---|---|---|---|
+
+## Open items
+A TBD that blocks a Must requirement blocks the gate.
+
+| ID | Type (TBD / ASSUMPTION / Question) | Description | Blocks gate? | Owner | Status |
+|---|---|---|---|---|---|
+| ASSUMPTION-1 | ASSUMPTION | Peak sizing: 500 restaurants × 25 tables × 60% × 2 devices ≈ 15,000 guest devices; ≈ 300 req/s; 3× in 12 months | No | Manh Nguyen | Confirmed at G1 |
+| ASSUMPTION-2 | ASSUMPTION | All NFR targets in requirements §4 | No | Manh Nguyen | Confirmed at G1 |
+| ASSUMPTION-3 | ASSUMPTION | One staff member works in one restaurant; one restaurant is one branch | No | Manh Nguyen | Open |
+| ASSUMPTION-4 | ASSUMPTION | Size limits (order lines, quantities, notes, rates, items, tables) | No | Manh Nguyen | Open |
+| ASSUMPTION-5 | ASSUMPTION | Staff access tokens live ≤ 15 min | No | Manh Nguyen | Open |
+| ASSUMPTION-6 | ASSUMPTION | Holding the current QR code is the only proof of presence at a table | No (R-02) | Manh Nguyen | Open |
+| ASSUMPTION-7 | ASSUMPTION | No service charge on the bill in release 1 | No | Manh Nguyen | Open |
+| ASSUMPTION-8 | ASSUMPTION | Quality goals ranked: isolation > order integrity > availability > live-update latency > operability/cost (architecture §1) | G2: confirm | Manh Nguyen | Open |
+| ASSUMPTION-9 | ASSUMPTION | Load mix per endpoint group and data volume (≈ 100k orders/day) in architecture §9 | No (calibrated by S-1 and the pilot) | Manh Nguyen | Open |
+| Q-1 | Question | How was the earlier Ktor service deployed on Vercel? | No | Manh Nguyen | Resolved 2026-10-13: Vercel container runtime (`ktor-sample`); findings in ADR-0002 |
+| S-1 | Spike | Ktor on Vercel's container runtime: cold start (plain/AOT), warm latency, concurrency, duration, SSE, CPU/memory, SIGTERM, platform features | Yes (G2) | Manh Nguyen | Ready to run: `spikes/s1-vercel/` built and tested locally; needs a deploy to Vercel |
+| S-2 | Spike | PostgreSQL through the pooler from `sin1`: latency, `SET LOCAL` RLS, transaction advisory locks, Flyway from CI | Yes (G2) | Manh Nguyen | Not started |
+| S-3 | Spike | Pub/sub provider: delay with 1k–5k subscribers, channel isolation, cost at 17.5k/52.5k connections | Yes (G2) | Manh Nguyen | Not started |
+| S-4 | Spike | Identity provider claims, JWKS rotation, MFA claim (after TBD-1) | Yes (G2) | Manh Nguyen | Blocked by TBD-1 |
+| S-5 | Spike | Report query on ≈ 1 year of synthetic data | No (can be accepted as a risk) | Manh Nguyen | Not started |
+| TBD-1 | TBD | Staff identity provider (OIDC) | No (G2: needed for the auth model) | Manh Nguyen | Open |
+| TBD-2 | TBD | Customer mobile platforms (Android, iOS, both); staff app as a store app? | No (G2) | Manh Nguyen | Open |
+| TBD-3 | TBD | Support window for old mobile app versions (proposed 12 months) | No (G2) | Manh Nguyen | Open |
+| TBD-4 | TBD | Retention periods (accounting records, audit, staff data) and erasure deadline | No (G2: needed for the data design) | Manh Nguyen + legal | Open |
+| TBD-5 | TBD | FR-022 menu images: Must or Should | No | Manh Nguyen | Open |
+| TBD-6 | TBD | VAT and service charge on the bill (FR-007) | No | Manh Nguyen | Resolved at G1: prices include VAT |
+| TBD-7 | TBD | Correcting a closed bill (FR-013) | No | Manh Nguyen | Open |
+| TBD-8 | TBD | FR-016 waiter confirmation in release 1? | No | Manh Nguyen | Open |
+| TBD-9 | TBD | Team, budget, target launch date | No | Manh Nguyen | Open |
+| TBD-10 | TBD | Data residency and legal basis per data type (legal review) | No for G1; **blocks G2** (platform regions) | Manh Nguyen + legal | Open |
+| TBD-11 | TBD | Monthly cost estimate (Vercel, database, pub/sub, Redis, observability) after S-1 to S-3 | Yes (G2 capacity model) | Manh Nguyen | Open |
+| TBD-12 | TBD | Observability backend vendor (OTLP) and its region | No | Manh Nguyen | Open |
