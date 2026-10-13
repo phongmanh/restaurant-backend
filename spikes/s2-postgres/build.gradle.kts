@@ -31,7 +31,7 @@ tasks.test {
 }
 
 // Q6: Flyway as `migrator` over the direct connection, then checks that `app` can't run DDL.
-// CI runs it; locally: `set -a; . ./.env.spike; set +a; ./gradlew -q migrate`.
+// CI runs it; locally, load .env.spike with Node (its URLs contain &): see the README, How to run.
 tasks.register<JavaExec>("migrate") {
     group = "spike"
     description = "Creates the app role, runs Flyway as migrator and checks that app is denied DDL."

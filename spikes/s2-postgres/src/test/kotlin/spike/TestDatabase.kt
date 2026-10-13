@@ -3,7 +3,7 @@ package spike
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 
 /**
- * One real PostgreSQL 17 for the whole test run, in-process (no Docker), migrated the way CI does
+ * One real PostgreSQL 18 for the whole test run, in-process (no Docker), migrated the way CI does
  * it: `postgres` stands in for `migrator`, and [migrate] creates `app`. There is no pooler locally,
  * so both of the app's pools connect directly; pooler behaviour is only measured on Neon.
  */

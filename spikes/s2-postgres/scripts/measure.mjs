@@ -86,11 +86,12 @@ async function order() {
 async function prepared() {
   const n = int("n", 60);
   const c = int("c", 3);
-  const rows = ["| prepareThreshold | OK | Errors | Error messages |", "|---|---|---|---|"];
+  const rows = ["| prepareThreshold | OK | Errors | Max prepared statements on a server backend | Error messages |", "|---|---|---|---|---|"];
   for (const threshold of [0, 1, 5]) {
     const r = await runOrders("pooled", threshold, n, c);
     const messages = [...r.errors.entries()].map(([m, k]) => `${k}× ${m.slice(0, 90)}`).join("; ") || "-";
-    rows.push(`| ${threshold} | ${r.n - r.errorCount} | ${r.errorCount} | ${messages} |`);
+    const prepared = threshold === 0 ? "not checked" : Math.max(0, ...r.serverPrepared);
+    rows.push(`| ${threshold} | ${r.n - r.errorCount} | ${r.errorCount} | ${prepared} | ${messages} |`);
   }
   print(`### prepared statements over the pooler, ${n} orders per threshold, ${c} at a time`, rows);
 }
@@ -111,10 +112,10 @@ async function burst() {
   const c = int("c", 50);
   const probes = await pool(n, c, (i) => request("GET", `/spike/db/tenant?via=${via}&restaurant=${i % 2 === 0 ? "a" : "b"}`));
   let wrongSetting = 0, sawOther = 0, leaked = 0, errors = 0;
-  const instances = new Set(), pids = new Set();
+  const instances = new Set(), pids = new Set(), errorMessages = new Map();
   let samePid = 0;
   for (const r of probes) {
-    if (r.error || r.status !== 200) { errors++; continue; }
+    if (r.error || r.status !== 200) { errors++; count(errorMessages, r.error ?? safeMessage(r.body)); continue; }
     const p = JSON.parse(r.body);
     instances.add(p.instanceId);
     pids.add(p.backendPid);
@@ -123,9 +124,9 @@ async function burst() {
     if (p.settingAfterCommit || p.visibleAfterCommit.length > 0) leaked++;
     if (p.backendPid === p.backendPidAfterCommit) samePid++;
   }
-  const ok = wrongSetting === 0 && sawOther === 0 && leaked === 0 && errors === 0;
-  print(`### mixed-tenant burst via ${via}, ${n} requests, ${c} at a time: **${ok ? "no leak" : "LEAK OR ERROR"}**`, [
-    `- setting ≠ requested tenant: ${wrongSetting}; saw another tenant's rows: ${sawOther}; setting or rows left after commit: ${leaked}; errors: ${errors}`,
+  const leak = wrongSetting + sawOther + leaked > 0;
+  print(`### mixed-tenant burst via ${via}, ${n} requests, ${c} at a time: **${leak ? "LEAK" : "no leak"}${errors ? `, ${errors} errors` : ""}**`, [
+    `- setting ≠ requested tenant: ${wrongSetting}; saw another tenant's rows: ${sawOther}; setting or rows left after commit: ${leaked}; errors: ${errors}${errorLines(errorMessages)}`,
     `- instances: ${instances.size}; server backends (pids) seen: ${pids.size}; follow-up transaction on the same backend: ${samePid}/${n - errors}`,
   ]);
 }
@@ -204,7 +205,7 @@ async function cold() {
 async function runOrders(via, threshold, n, c) {
   await json("GET", `/spike/db/ping?via=${via}`);
   const results = await pool(n, c, () => request("POST", `/spike/db/order?via=${via}&prepareThreshold=${threshold}&restaurant=a`));
-  const tx = [], acquire = [], total = [], errors = new Map(), instances = new Set();
+  const tx = [], acquire = [], total = [], serverPrepared = [], errors = new Map(), instances = new Set();
   let errorCount = 0;
   for (const r of results) {
     if (r.error || r.status !== 200) {
@@ -217,8 +218,9 @@ async function runOrders(via, threshold, n, c) {
     acquire.push(body.acquireMs);
     total.push(Math.round((body.acquireMs + body.txMs) * 100) / 100);
     instances.add(body.instanceId);
+    if (body.serverPreparedStatements != null) serverPrepared.push(body.serverPreparedStatements);
   }
-  return { n, c, tx, acquire, total, errors, errorCount, instances };
+  return { n, c, tx, acquire, total, serverPrepared, errors, errorCount, instances };
 }
 
 /** Runs task(i) for i in 0..n-1, at most c at a time. Failures become { error }. */
@@ -262,14 +264,16 @@ function request(method, path) {
   });
 }
 
-/** The error message from a SqlError body, or the body's start. */
+/** The error message from a SqlError body, or the body's start, with numbers blanked so alike errors group. */
 function safeMessage(body) {
+  let message;
   try {
     const e = JSON.parse(body);
-    return `${e.sqlState ?? "?"} ${e.message}`;
+    message = `${e.sqlState ?? "?"} ${e.message}`;
   } catch {
-    return body.slice(0, 120);
+    message = body.slice(0, 120);
   }
+  return message.replace(/\d+/g, "#");
 }
 
 function appCount(s) {

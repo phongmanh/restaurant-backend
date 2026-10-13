@@ -7,8 +7,8 @@ hikari = "7.1.0"
 postgresql = "42.7.14"
 flyway = "13.10.0"
 embeddedPostgres = "2.2.2"
-# Neon's default major version; the tests run the same major locally.
-embeddedPostgresBinaries = "17.11.0"
+# Neon runs PostgreSQL 18 (seen at the first migrate); the tests run the same major locally.
+embeddedPostgresBinaries = "18.6.0"
 
 [libraries]
 ktor-bom = { module = "io.ktor:ktor-bom", version.ref = "ktor" }

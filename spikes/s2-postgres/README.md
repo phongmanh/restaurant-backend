@@ -2,7 +2,7 @@
 
 **Throwaway.** This code answers the S-2 questions for [ADR-0004](../../docs/sdlc/restaurant-ordering/adr/0004-database-hosting-pooling.md) (database hosting and pooling) and [ADR-0005](../../docs/sdlc/restaurant-ordering/adr/0005-tenant-isolation.md) (RLS with `SET LOCAL`), and is then deleted.
 
-Status: **built and dry-run locally, 2026-10-13. Waiting for the database** (owner steps below). 15 tests pass against an in-process PostgreSQL 17, and every `measure.mjs` mode has run against `./gradlew runLocal`. That proves the code, not the numbers: there's no pooler and no network locally.
+Status: **database ready and migrated, 2026-10-13; correctness questions answered from the laptop. Waiting for the Vercel deploy** (owner step 3) to measure latency and connections from `sin1`. 15 tests pass against an in-process PostgreSQL 18, and every `measure.mjs` mode has run against `./gradlew runLocal`. That proves the code, not the numbers: there's no pooler and no network locally.
 
 ## What ADR-0004 and ADR-0005 assume, and S-2 must prove
 - The app reaches PostgreSQL through a **transaction-mode pooler**: Hikari `maximumPoolSize = 3`, short idle timeouts, pgjdbc `prepareThreshold=0`.
@@ -51,28 +51,48 @@ ADR-0004 option 1 names **Neon** (Vercel Marketplace, a branch per PR) or **Supa
    ```
    DATABASE_URL_MIGRATOR_DIRECT=postgresql://migrator:…@ep-….ap-southeast-1.aws.neon.tech/spike?sslmode=require&channel_binding=require
    ```
+   Pasting the whole block that Vercel's Neon integration shows (`DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `PG…`) works too: its owner role, `neondb_owner`, then acts as `migrator`. The region must be Singapore; `setup-env.mjs` refuses any other.
    Then tell Claude. Claude runs `setup-env.mjs`, which generates `app`'s password and appends `DATABASE_URL_APP_DIRECT` and `DATABASE_URL_APP_POOLED` to the same file without printing them.
-3. Later, when asked: add `DATABASE_URL_APP_POOLED` and `DATABASE_URL_APP_DIRECT` to the Vercel project's environment variables, and `DATABASE_URL_MIGRATOR_DIRECT` and `DATABASE_URL_APP_DIRECT` as GitHub Actions secrets (for `.github/workflows/s2-flyway.yml`).
+3. Deploy to Vercel (Claude can't: production deploys and sending secrets are yours). From `spikes/s2-postgres`; the `node … |` pipes pass each value from `.env.spike` to the CLI without showing it:
+   ```
+   vercel link                                   # new project "restaurant-s2-spike" in liam-36c7
+   for t in production preview; do
+     echo 8080 | vercel env add PORT $t
+     node --env-file=.env.spike -e 'process.stdout.write(process.env.DATABASE_URL_APP_POOLED)' | vercel env add DATABASE_URL_APP_POOLED $t
+     node --env-file=.env.spike -e 'process.stdout.write(process.env.DATABASE_URL_APP_DIRECT)' | vercel env add DATABASE_URL_APP_DIRECT $t
+   done
+   vercel deploy --prod                          # first deploy; ~3 min (image build)
+   vercel alias rm restaurant-s2-spike.vercel.app  # the production alias is public
+   ```
+   Then give Claude the deployment URL (`https://restaurant-s2-spike-….vercel.app`), and put `VERCEL_AUTOMATION_BYPASS_SECRET` in `.env.spike` (reuse S-1's, or Project Settings → Deployment Protection → Protection Bypass for Automation).
+4. Add `DATABASE_URL_MIGRATOR_DIRECT` and `DATABASE_URL_APP_DIRECT` as GitHub Actions secrets (Settings → Secrets and variables → Actions) for `.github/workflows/s2-flyway.yml`, then push the branch: the push runs the workflow (Q6 from CI).
 
 ## How to run
 From `spikes/s2-postgres`:
 ```
 ./gradlew test                                                     # local, no Docker needed
 node --env-file=.env.spike scripts/setup-env.mjs                   # once, after owner step 2
-set -a; . ./.env.spike; set +a; ./gradlew -q migrate               # role + Flyway + DDL probes (Q6, locally)
+node --env-file=.env.spike -e 'require("child_process").execFileSync("./gradlew", ["-q", "migrate"], {stdio: "inherit"})'
+                                                                   # role + Flyway + DDL probes (Q6, locally); `set -a; . .env.spike` breaks on the & in the URLs
 ./gradlew runLocal                                                 # dry run on localhost:8080
 node scripts/measure.mjs <mode> <baseUrl> [--option value]         # modes and options: see the script's header
 ```
 Order of the Neon run: `migrate` → deploy → `info`, `rls`, `ping --via pooled`, `ping --via direct`, `order` (c 1, then c 10), `prepared`, `burst`, `lock`, `connections`, `cold` (Neon's free compute suspends after 5 min idle, so `cold --idle 360` also measures its wake-up) → the CI run for Q6 → Q8 from the console and docs.
 
 ## Results
+Database: Neon, created through Vercel's Neon integration, AWS `ap-southeast-1`, **PostgreSQL 18.6**. The integration's owner role `neondb_owner` acts as `migrator`; database `neondb`. (A first attempt landed in `us-east-1` and was recreated: `setup-env.mjs` now refuses any region but Singapore.)
+
 | Question | Result | Meets criterion? |
 |---|---|---|
-| Q1 ping | | |
-| Q2 order transaction | | |
-| Q3 prepared statements | | |
-| Q4 RLS | | |
-| Q5 advisory locks | | |
-| Q6 Flyway from CI | | |
-| Q7 connections | | |
-| Q8 provider | | |
+| Q1 ping | Pending: needs the `sin1` deploy | |
+| Q2 order transaction | Pending: needs the `sin1` deploy | |
+| Q3 prepared statements | Through Neon's pooler, 60 orders each at `prepareThreshold` 0, 1 and 5: **0 errors**. At 1 and 5, the server backend held 7 prepared statements, so named statements reach the server and the pooler keeps them working (PgBouncer's protocol-level prepared-statement support). `prepareThreshold=0` isn't required on Neon; keeping it costs nothing and keeps the app portable to poolers without that support | Yes |
+| Q4 RLS | 10/10 checks pass both through the pooler and directly; `app` has `rolbypassrls=false`. Mixed-tenant burst, 500 requests at 50 concurrent: **0 leaks** (0 wrong settings, 0 other-tenant rows, 0 settings left after commit) | Yes |
+| Q5 advisory locks | 10 concurrent tries on one key, held 3 s: exactly 1 acquired, no overlapping holds, and the key was free right after the holder's commit | Yes |
+| Q6 Flyway from CI | From the laptop: `app` created with NOBYPASSRLS; Flyway applied V1 as `neondb_owner` over the direct connection; `app` denied CREATE TABLE, ALTER TABLE and DROP POLICY (42501). Pending: the same run from GitHub Actions | Partly |
+| Q7 connections | Pending: needs the `sin1` deploy | |
+| Q8 provider | Region `ap-southeast-1`, PostgreSQL 18.6. Rest pending (pooler limits, PITR, branches, price) | |
+
+### Run 1: from the laptop (2026-10-13)
+The app ran on the laptop (`./gradlew run`) against Neon, so only results that don't depend on where the app runs count (Q3–Q5). Laptop latency isn't a result.
+- The burst's 35 errors out of 500 were all Hikari's own: "Connection is not available, request timed out after 5000 ms (total=3, active=3, waiting=46)". Each transaction crossed from Vietnam to Singapore, so 50 concurrent requests waited for 3 connections for longer than `connectionTimeout`. No database or pooler error. Worth rechecking from `sin1`: pool size 3 with a 5 s timeout means a burst on one instance fails fast instead of queueing long.

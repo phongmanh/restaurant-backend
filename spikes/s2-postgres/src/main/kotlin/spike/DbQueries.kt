@@ -81,6 +81,12 @@ class DbQueries(private val db: Database) {
             }
             orderId
         }
+        // Q3 evidence, outside the timed transaction: how many prepared statements the server
+        // backend holds. Over a pooler this is the backend the next transaction got, so a count > 0
+        // shows named statements reach the server, and 0 errors shows the pooler keeps them working.
+        val serverPrepared = if (prepareThreshold == 0) null else db.transaction(via, prepareThreshold = 0) { conn ->
+            count(conn, "SELECT count(*) FROM pg_prepared_statements").toInt()
+        }.value
         return OrderResult(
             via = via.name.lowercase(),
             prepareThreshold = prepareThreshold,
@@ -88,6 +94,7 @@ class DbQueries(private val db: Database) {
             replayed = replayed,
             acquireMs = timed.acquireMs,
             txMs = timed.txMs,
+            serverPreparedStatements = serverPrepared,
         )
     }
 
@@ -271,6 +278,7 @@ data class OrderResult(
     val replayed: Boolean,
     val acquireMs: Double,
     val txMs: Double,
+    val serverPreparedStatements: Int? = null,
 )
 
 @Serializable
