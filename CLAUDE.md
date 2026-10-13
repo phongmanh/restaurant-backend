@@ -29,7 +29,7 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 - Vercel accepts only `Dockerfile.vercel` or `Containerfile.vercel` as a container entrypoint name.
 - The first deploy of a Vercel project goes to production, and its production alias is public. Remove it (`vercel alias rm`) for spikes.
 - The client network drops idle TCP connections after ~40 s. Long-held requests need TCP keepalive at 10 s or less (see `spikes/s1-vercel/scripts/measure.mjs`).
-- The auto-mode classifier blocks production deploys and reading secrets from APIs. Ask the owner to do those steps.
+- The auto-mode classifier blocks production deploys, reading secrets from APIs, and writing secrets to a secret store (`vercel env add`, even piped from `.env.spike`). Ask the owner to do those steps.
 
 ## Saving context (automated in `.claude/settings.json`)
 - `SessionStart` hook (`.claude/hooks/resume_brief.py`): every session, `/clear` and compaction starts with a brief built from STATUS.md. Keep STATUS.md current, because the brief is only as good as it is.
