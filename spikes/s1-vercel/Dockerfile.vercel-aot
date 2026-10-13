@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+
+# Variant B: Dockerfile.vercel plus a JDK AOT cache (JEP 483/514/515, JDK 25), to measure how much
+# of the cold start it removes (S-1, R-01). The cache is only valid for the same JDK build, the same
+# jar path and the same GC, so it is created in the runtime image itself and both runs pin G1.
+# If the JVM rejects the cache it silently starts without it: compare startupMs with variant A.
+
+FROM eclipse-temurin:25-jdk AS build
+WORKDIR /workspace
+
+COPY gradlew ./
+COPY gradle/ gradle/
+COPY settings.gradle.kts build.gradle.kts ./
+RUN ./gradlew --no-daemon --quiet --version
+
+COPY src/ src/
+RUN ./gradlew --no-daemon --quiet buildFatJar -x test \
+    && cp build/libs/*-all.jar /workspace/app.jar
+
+FROM eclipse-temurin:25-jre AS runtime
+RUN groupadd --system app && useradd --system --gid app --home /app app
+WORKDIR /app
+COPY --from=build /workspace/app.jar /app/app.jar
+
+# Training run: the app starts, calls each endpoint once, stops, and the JVM writes the cache.
+RUN java -XX:+UseG1GC -XX:AOTCacheOutput=/app/app.aot -Dspike.training=true -jar /app/app.jar \
+    && test -s /app/app.aot
+
+COPY docker-entrypoint.vercel.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh && chown -R app:app /app
+USER app
+
+EXPOSE 8080
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["java", "-XX:+UseG1GC", "-XX:AOTCache=/app/app.aot", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar"]
