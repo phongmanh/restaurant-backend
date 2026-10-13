@@ -41,7 +41,7 @@ Decision is one of: Approved / Approved with conditions / Rejected / Waived.
 
 | Gate | Date | Decision | Approver (name, role) | Conditions or accepted risk | Tag |
 |---|---|---|---|---|---|
-| G1 Requirements baseline | 2026-10-13 | Approved | Manh Nguyen, product owner and tech lead | None. Open before G2: TBD-1, TBD-2, TBD-3, TBD-4; TBD-10 blocks G2 | `sdlc/restaurant-ordering/G1` (pending first commit) |
+| G1 Requirements baseline | 2026-10-13 | Approved | Manh Nguyen, product owner and tech lead | None. Open before G2: TBD-1, TBD-2, TBD-3, TBD-4; TBD-10 blocks G2 | `sdlc/restaurant-ordering/G1` on `149f7a4`. Nothing was committed at G1 time, so this commit also holds the Phase 2 drafts. The G1 baseline is requirements.md v1.0 in it, unchanged since approval; rtm.md and test-plan.md there already include Phase 2 additions |
 | G2 Architecture baseline | | | | | |
 | G3 Ready to build | | | | | |
 | G4 Code complete | | | | | |
