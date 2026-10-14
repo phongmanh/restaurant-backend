@@ -2,9 +2,9 @@
 
 | Version | Status | Owner | Reviewers |
 |---|---|---|---|
-| 0.3 | Draft, ready for G2 review | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
+| 1.0 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR) | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
 
-Baseline: [requirements.md](requirements.md) v1.2 (G1 2026-10-13; CR-002 and CR-003 2026-10-14). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). Still open for G2: TBD-10 (data residency, legal review) and the owner's review of the cost estimate (TBD-11).
+Baseline: [requirements.md](requirements.md) v1.2 (G1 2026-10-13; CR-002 and CR-003 2026-10-14). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). G2 approved by the owner on 2026-10-15 with one condition: TBD-10 (data residency, legal review) is settled before G5, by a region change or, if storage in Vietnam is required, a CR to change provider (§8, R-04). Accepted free-plan residual risks: R-11 to R-14. The cost estimate (TBD-11) was deferred on 2026-10-15 because the project stays on free plans.
 
 ## 1. Drivers
 Quality goals, ranked (ASSUMPTION-8, confirmed by the owner 2026-10-14):
@@ -18,6 +18,7 @@ Quality goals, ranked (ASSUMPTION-8, confirmed by the owner 2026-10-14):
 |---|---|---|---|
 | 1. Isolation | A waiter of restaurant A sends restaurant B's order ID. B's order is neither revealed nor changed. | `restaurant_id` on every tenant row; every service method takes the `Caller` and scopes by its restaurant; PostgreSQL row-level security as a second line (ADR-0005); 404 for foreign IDs; authorisation-matrix tests | NFR-SEC-02, FR-042 |
 | 1. Isolation | A guest copies a session token and tries another table's orders | The session token is bound to one session, table and restaurant; every guest query filters by the token's session (ADR-0006) | NFR-SEC-02, FR-005 |
+| 1. Isolation | An attacker tries leaked passwords against a manager's account to get into that restaurant | Argon2id password hashes; account locked for 15 min after 10 failures in 15 min (held in PostgreSQL, same 401 as a wrong password); per-IP limits in the WAF and Redis; TOTP for platform admins; every attempt audited (§7, ADR-0011) | NFR-SEC-01, NFR-SEC-03, NFR-SEC-04, FR-040 |
 | 2. Integrity | The guest's network drops after `POST` order and the app retries 3 times. Exactly one order exists. | `Idempotency-Key` row written in the same transaction as the order | NFR-REL-02, FR-003 |
 | 2. Integrity | A manager raises a price while guests are ordering. Orders already placed keep their price; new ones use the new price. | Server-side pricing; price snapshot on each order line | FR-003, FR-007 |
 | 2. Integrity | A function instance is killed right after the order commits but before the live notification is published. The kitchen still sees the order. | Transactional outbox; per-minute sweep; clients catch up from the event log (ADR-0003) | NFR-REL-02, NFR-REL-03 |
@@ -137,7 +138,7 @@ Shared `api-contract` KMP module with the clients: **not now**. TBD-2 is decided
 ## 6. Data stores
 | Store | Holds | Why this store | Size and growth | Consistency | Backup and retention |
 |---|---|---|---|---|---|
-| PostgreSQL (Neon, Singapore; ADR-0004) | All business data, staff credentials (password hashes, encrypted TOTP secrets, refresh-token and link-token hashes), the event log, outbox, idempotency keys, audit log | Transactions across order, idempotency key, event and outbox; relational reporting | ≈ 100k orders and 300k lines per day at 500 restaurants (ASSUMPTION-9) → ≈ 50 GB/year including indexes, so ≈ 100 GB once the 2-year window is full (older orders and bills are archived, see retention jobs); event log ≈ 500k rows/day, kept 7 days | Strong, single primary; reads from the primary (no replicas until measured) | PITR ≥ 7 days (RPO ≤ 5 min; needs Neon's Launch plan or above, the free plan keeps 6 h); daily snapshot copied to a second region/account; quarterly restore drill (NFR-REL-01) |
+| PostgreSQL (Neon, Singapore; ADR-0004) | All business data, staff credentials (password hashes, encrypted TOTP secrets, refresh-token and link-token hashes), the event log, outbox, idempotency keys, audit log | Transactions across order, idempotency key, event and outbox; relational reporting | ≈ 100k orders and 300k lines per day at 500 restaurants (ASSUMPTION-9) → ≈ 50 GB/year including indexes, so ≈ 100 GB once the 2-year window is full (older orders and bills are archived, see retention jobs); event log ≈ 500k rows/day, kept 7 days | Strong, single primary; reads from the primary (no replicas until measured) | PITR ≥ 7 days (RPO ≤ 5 min; needs Neon's Launch plan or above, the free plan keeps 6 h); daily snapshot copied to a second region/account, chosen within what TBD-10 allows; quarterly restore drill (NFR-REL-01). On the free plan PITR covers 6 h only (R-14) |
 | Redis (managed, serverless, same region; ADR-0008) | Rate-limit counters only | Atomic counters with TTL shared by all instances; keeps that churn off PostgreSQL | < 100 MB | Best effort. If Redis is down, app-level limits fail open and WAF limits still apply | None needed (ephemeral) |
 | Object storage (e.g. Vercel Blob; FR-022) | Menu images | Large binaries off the database; served by CDN | ≈ 1,000 items × 500 restaurants × ≤ 500 KB (after resize) ≈ 250 GB worst case | Write-once objects under generated names | Versioning on; deleted with the item after 30 days |
 | Managed pub/sub (ADR-0003) | Nothing durable: thin "something changed" notifications | Fan-out to ≈ 17,500 live clients, which Vercel functions can't hold open | — | At most once; the event log is the source of truth | None |
@@ -148,7 +149,7 @@ Shared `api-contract` KMP module with the clients: **not now**. TBD-2 is decided
   - item notes are cleared 30 days after the session closes;
   - device data on sessions is removed after 90 days;
   - staff are anonymised 30 days after deactivation;
-  - orders and bills older than 2 years are archived nightly to object storage (compressed, write-once, one file per restaurant and month) and then deleted from PostgreSQL; the archive is deleted after 10 years. Reports read `daily_sales`, which is kept;
+  - orders and bills older than 2 years are archived nightly to object storage (compressed, write-once, one file per restaurant and month) in a region TBD-10 allows and then deleted from PostgreSQL; the archive is deleted after 10 years. Reports read `daily_sales`, which is kept;
   - staff data is erased within 72 h of a request (NFR-PRIV-01).
 
   These periods are TBD-4 working values (decided 2026-10-14) pending the legal review. They are job settings, so the review changes numbers, not the design.
@@ -164,13 +165,13 @@ Shared `api-contract` KMP module with the clients: **not now**. TBD-2 is decided
 - **TOTP for admins** (RFC 6238: HMAC-SHA1, 6 digits, 30 s step, ±1 step accepted). The 160-bit secret is encrypted with AES-256-GCM under a key from Vercel sensitive environment variables. A code's time step can't be used twice (the last used step is stored). Enrolment happens on the admin's first sign-in through an invitation. A lost authenticator is reset by another platform admin, or for the last admin by a one-off command run by the operator; both are audited.
 - **Access token.** ES256 JWT, lifetime 15 min (ASSUMPTION-5). Claims: `iss` (the service URL), `aud` (`staff` or `admin`), `sub` (staff member ID), `sid` (the refresh-token family), `amr` (`["pwd"]`, or `["pwd","otp"]` after TOTP), `iat`, `exp`, and `kid` in the header. The API checks the signature with the staff key set, the algorithm (ES256 only), `iss`, `aud` and `exp` with a 30 s leeway. Admin routes also require `otp` in `amr`. Staff tokens use their own signing keys, separate from the guest keys in ADR-0006; both sets live in Vercel sensitive environment variables and rotate with overlap (the current and previous public keys verify).
 - **Who the caller is.** Restaurant, role, active flag and platform-admin flag are **read from `staff_members` on every call**, not from token claims, so a deactivation or role change takes effect on the next call.
-- **Refresh token.** 256-bit random, stored as a SHA-256 hash with its family ID, lifetime 12 h (one shift). Every refresh (`POST /v1/auth/refresh`) returns a new refresh token and invalidates the old one. If a used refresh token comes back, the whole family is revoked (it was probably stolen) and the event is audited. Sign-out, a password change, a role change and deactivation revoke the member's families.
+- **Refresh token.** 256-bit random, stored as a SHA-256 hash with its family ID. It expires after 12 h without use or 24 h after the sign-in that started its family, whichever comes first, so staff sign in once a day and a long shift isn't cut off mid-service (owner, 2026-10-15). Every refresh (`POST /v1/auth/refresh`) returns a new refresh token and invalidates the old one. If a used refresh token comes back, the whole family is revoked (it was probably stolen) and the event is audited. Sign-out, a password change, a role change and deactivation revoke the member's families.
 - **Where clients keep tokens.**
   - Staff web app: the access token in memory only; the refresh token in an `HttpOnly; Secure; SameSite=Strict` cookie with `Path=/v1/auth`. The staff app and the API must be on the same site (e.g. `staff.<domain>` and `api.<domain>`) for the cookie to be sent; a strict CSP applies.
   - The staff app is web only in release 1 (TBD-2), so no staff tokens are kept on a mobile app. If it later ships to the stores, the refresh token comes in the response body and is kept in Android Keystore or iOS Keychain.
 - **Invitations and password resets** (FR-040, FR-041). The inviter (admin or manager) gets a one-time link and passes it on themselves; release 1 sends no email. The token is 256-bit random, stored as a SHA-256 hash, single-use: 72 h for an invitation, 24 h for a reset. The link puts the token in the URL fragment (`https://staff.<domain>/invite#<token>`) so it never reaches server logs or `Referer` headers. Opening it lets the person set a password (and, for an admin, enrol TOTP). Issuing a new link for the same person invalidates the old one. Who may issue a reset: a manager for their own staff, a platform admin for a manager, another platform admin for an admin.
 - **Brute force and credential stuffing** (ASVS 5.0 V6.3).
-  - Per account, in PostgreSQL (so it holds even when Redis is down): after 10 failed sign-ins or TOTP codes in 15 min, the account is locked for 15 min; the next success resets the count. The lock gives the same 401, so it doesn't reveal that the account exists.
+  - Per account, in PostgreSQL (so it holds even when Redis is down): after 10 failed sign-ins or TOTP codes in 15 min, the account is locked for 15 min; the next success resets the count. The lock gives the same 401, so it doesn't reveal that the account exists. A lock blocks only new password and TOTP sign-ins: refresh tokens already issued keep working, so someone who knows a manager's email can't sign the restaurant's staff out during service (owner, 2026-10-15).
   - Per IP, in Redis and the WAF (ADR-0008): sign-in, TOTP, refresh and link acceptance.
   - Every sign-in, failure, lock, MFA step, refresh-token reuse, invitation and reset is written to the audit log (NFR-SEC-03).
 
@@ -202,12 +203,12 @@ Shared `api-contract` KMP module with the clients: **not now**. TBD-2 is decided
 | Live-update subscription token | Own session channel | Own restaurant channel | Own restaurant channel | Own restaurant channel | No | Channel derived on the server, never from client input |
 | Staff management | No | No | No | Own (not last manager) | Any (first manager) | |
 | Restaurant profile and settings | No | Read own | Read own | Own | Any | |
-| Reports | No | No | No | Own | No (TBD) | |
+| Reports | No | No | No | Own | No | Sales are the restaurant's business data (owner, 2026-10-15) |
 | Onboard / suspend restaurant | No | No | No | No | Yes | |
-| Audit log read | No | No | No | Own (TBD) | Any | |
+| Audit log read | No | No | No | Own, read only | Any | Owner, 2026-10-15 |
 
 ## 8. Deployment topology (ADR-0002, Accepted with conditions)
-- **Platform:** Vercel, one project for the API. Function region `sin1` (Singapore), the nearest to Vietnam. **TBD-10** decides whether that region is legally acceptable; Vercel has no region in Vietnam.
+- **Platform:** Vercel, one project for the API. Function region `sin1` (Singapore), the nearest to Vietnam. **TBD-10** decides whether that region is legally acceptable. Neither Vercel nor Neon has a region in Vietnam, so the proposed G2 condition (owner, 2026-10-15) is: keep `sin1` / Singapore; change region before G5 if the legal review requires another region; raise a CR to change provider before G5 if it requires storage in Vietnam (R-04).
 - **Runtime:** the Ktor app as a JDK 25 OCI image on Vercel's container runtime (`vercel.json` service, `"runtime": "container"`), the same model as the stakeholder's `ktor-sample`.
   - Instances scale to zero after 5 min idle (30 s in preview) and get `SIGTERM` with 30 s of grace.
   - `PORT=8080`, and the entrypoint rebuilds `PATH`.
@@ -223,6 +224,8 @@ Shared `api-contract` KMP module with the clients: **not now**. TBD-2 is decided
   | production | Production | Production database (HA) | Production tenant | Live |
 
   Environments differ only in environment variables and sizes.
+
+  On this learning project's free plans: staging is a preview deployment of a `staging` branch with its own Neon branch; the database is one compute that scales to zero (R-11) with a 6 h restore window (R-14), not HA; full-size load tests wait for paid plans (R-12, R-13).
 - **Edge:**
   - TLS terminated by Vercel, HSTS on;
   - Vercel WAF with managed rules and rate-limit rules per IP and path (ADR-0008);
@@ -232,7 +235,7 @@ Shared `api-contract` KMP module with the clients: **not now**. TBD-2 is decided
 - **Rollout:**
   - Every merge to `main` builds a preview deployment.
   - Promotion to production happens after the CI gates and migrations.
-  - Gradual traffic shift with Vercel Rolling Releases if the plan provides it (S-1); otherwise all at once, behind feature flags.
+  - On Pro, gradual traffic shift with Vercel Rolling Releases. S-1 found that Hobby doesn't offer them, so on the free plan a release switches all at once, behind feature flags.
 - **Rollback:** Vercel instant rollback to the previous production deployment (≤ 10 min, NFR-OPS-01). Migrations are expand-only within a release, so the previous deployment still works.
 
 ## 9. Capacity model
@@ -265,7 +268,7 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
   - A bill counts on the restaurant's local day on which it was closed (ASSUMPTION-11).
 - **Pub/sub:** ≈ 17,500 concurrent connections and ≈ 300 messages/s at launch, ≈ 52,500 at 3×. S-3 (2026-10-14) measured Ably: publish → receive p95 ≈ 50 ms, per-channel isolation verified. Ably Pro fits launch (50k connections, 1,447 REST requests/s against ≈ 75 publishes/s at peak); 3× needs Enterprise.
 - **Headroom:** the load test must pass at 2× peak (≈ 600 req/s) without breaching NFR-PERF.
-- **Cost estimate:** TBD-11, draft in [cost-estimate.md](cost-estimate.md): ≈ $1,540–1,740 a month at launch without menu images (≈ $3–3.50 per restaurant), ≈ $3,700–4,350 at 3×. S-3 confirmed the pub/sub figure (Ably Pro). The cost drivers, largest first:
+- **Cost estimate:** TBD-11 (deferred 2026-10-15: free plans only for now), draft in [cost-estimate.md](cost-estimate.md): ≈ $1,540–1,740 a month at launch without menu images (≈ $3–3.50 per restaurant), ≈ $3,700–4,350 at 3×. S-3 confirmed the pub/sub figure (Ably Pro). The cost drivers, largest first:
   - pub/sub connections and messages (≈ 55–60%);
   - Vercel per-request charges: CDN requests, invocations, origin transfer;
   - menu images, if FR-022 is a Must (TBD-5);
@@ -411,14 +414,15 @@ Full detail in [test-plan.md](test-plan.md).
 | R-01 | Vercel runtime limits for a JVM Ktor app (cold starts after scale-to-zero, duration, streaming) | NFR-PERF p99, NFR-OPS | Live updates off the functions (ADR-0003); S-1 measured 5–7 s cold starts on the free account; CR-001 deferred; paid-plan check is R-12 | Manh Nguyen |
 | R-02 | A photographed table QR code used away from the table | Orders on strangers' bills, kitchen pranks | QR rotation (FR-031), per-session rate limits (ADR-0008), staff can cancel, optional waiter confirmation (FR-016, TBD-8) | Manh Nguyen |
 | R-03 | An endpoint misses a tenant or session check | Cross-restaurant data leak | Service checks + forced RLS (ADR-0005, S-2: 0 leaks); authorisation-matrix tests per endpoint | Manh Nguyen |
-| R-04 | Vietnamese law requires local storage of some data | Regions in §8 may not comply | Legal review before G2 (TBD-10); a CR if a region or the platform must change | Manh Nguyen |
-| R-06 | No private network between the functions and the managed services | Wider attack surface for credentials | TLS everywhere; IP allow-lists where providers support them; least-privilege users; rotation | Manh Nguyen |
+| R-04 | Vietnamese law requires local storage of some data | Regions in §8 may not comply | Legal review (TBD-10), carried as a G2 condition: change region before G5 if required; a CR to change provider before G5 if storage in Vietnam is required | Manh Nguyen |
+| R-06 | No private network between the functions and the managed services | Wider attack surface for credentials | TLS everywhere; least-privilege users; rotation; secret scanning. Source-IP allow-lists aren't possible: Vercel has no static IPs for container images (§8, ADR-0002) | Manh Nguyen |
 | R-08 | Dependence on a pub/sub vendor | Cost, vendor outage | Thin events; polling fallback built in; vendor behind a `RealtimePublisher` port | Manh Nguyen |
 | R-09 | Connection bursts from many serverless instances | Database saturation at scale-out | Pooler; pool up to 10 per instance, 2 s wait, 5 s statement timeout; Vercel concurrency settings; load test at 2× peak | Manh Nguyen |
 | R-10 | A flaw in the built-in sign-in (hashing, brute force, tokens) | Staff or admin account takeover | Argon2id with Bouncy Castle, rate limits (ADR-0008), rotating refresh tokens, admin TOTP (§7, ADR-0011; S-4: 19/19 token cases); ASVS V6/V7 checklist in Phase 3 | Manh Nguyen |
 | R-11 | Production database wakes from scale to zero (never measured) | Slow first request after a quiet spell | Neon Launch plan or above with scale to zero off. Accepted as a free-plan residual risk (2026-10-14) | Manh Nguyen |
 | R-12 | On the paid plan the instance doesn't stay warm, or scale-out cold-starts often | Guest p99 (NFR-PERF-01/02) fails | ADR-0002 condition: measure on the production Pro account before G5; JDK AOT cache; reopen CR-001 if p99 fails. Accepted as a free-plan residual risk (2026-10-14) | Manh Nguyen |
 | R-13 | Ably delay or refusals rise above the 190 subscribers S-3 could test | NFR-PERF-03 missed at 17,500 connections | Outbox + sweep and in-request retry of refused publishes; event-log catch-up; load test on a paid plan before launch. Accepted as a free-plan residual risk (2026-10-15) | Manh Nguyen |
+| R-14 | Neon's free plan keeps point-in-time restore for 6 h, not 7 days | Damage noticed after 6 h can't be rolled back; at worst a day's loss back to the daily snapshot | Neon Launch plan or above in production. Accepted as a free-plan residual risk (2026-10-15) | Manh Nguyen |
 | D-01 | Hand-written OpenAPI contract can drift from the code | Contract errors | Response validation in contract tests; route-listing test (ADR-0007) | Manh Nguyen |
 
 STATUS.md holds the full risk register. R-05 (NFR numbers off) and R-07 (no operations owner) are product and operations risks and are tracked there only.

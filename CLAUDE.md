@@ -11,7 +11,7 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 | File | Holds |
 |---|---|
 | requirements.md | v1.1 (baselined at G1, changed by CR-002). Changing it needs a CR |
-| architecture.md | Draft for G2 |
+| architecture.md | v1.0, approved at G2 (2026-10-15) with the TBD-10 condition; changing it needs a CR |
 | adr/0001–0009, 0011 | Decisions; ADR-0002 (Vercel) is Accepted with conditions (paid-plan cold-start check before G5); 0003 (live updates through Ably) is Accepted after S-3; 0004 (Neon PostgreSQL) and 0008 (rate limiting: WAF + Upstash) are Accepted; 0010 is reserved by CR-001; 0011 (built-in staff sign-in) is Accepted too |
 | cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts) is Approved |
 | rtm.md, test-plan.md | Traceability and test plan |
