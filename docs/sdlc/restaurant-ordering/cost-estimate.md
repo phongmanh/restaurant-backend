@@ -121,4 +121,5 @@ $19 platform fee covers 10k metric series, 50 GB of logs and 50 GB of traces. La
 | TBD-5 is decided | Keep or drop the menu-image line |
 | TBD-12 is decided | Replace the Grafana line |
 | TBD-10 is decided | Regions may change; prices are regional at Vercel |
+| Year 2 onward (TBD-4 working values, 2026-10-14) | Database storage grows to ≈ 100 GB by the end of year 2 (≈ $35/month at $0.35/GB) and stays there, because orders and bills older than 2 years move to an archive in object storage. Compressed, the archive is a few GB a year: under $2/month even after 10 years. If legal requires a different period, scale these figures |
 | Phase 5 load test | Replace C-3 to C-5 (CPU and memory per request) with measured values |
