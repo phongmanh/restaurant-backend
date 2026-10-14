@@ -78,7 +78,7 @@ The ktor-sdlc default stack applies, except for:
 | Guest authentication | Service-issued QR token and table-session token (ES256) | ADR-0006 |
 | Staff and admin authentication | Built-in accounts: Argon2id password hashes, service-issued ES256 access tokens and rotating refresh tokens, TOTP for platform admins; no external identity provider | ADR-0011 (CR-002) |
 | OpenAPI | Hand-written contract; responses validated against it in contract tests; no generation from code | ADR-0007 |
-| Rate limiting | Vercel WAF + Redis counters (the in-memory Ktor RateLimit plugin can't share counters across serverless instances) | ADR-0008 (Proposed) |
+| Rate limiting | Vercel WAF + Redis counters (the in-memory Ktor RateLimit plugin can't share counters across serverless instances) | ADR-0008 (Accepted: WAF per IP, Upstash Redis per key) |
 | Metrics and tracing | Push over OTLP (Micrometer OTLP registry + OpenTelemetry Ktor instrumentation library), because there is no stable instance to scrape | ADR-0009 |
 | Scheduled jobs | Vercel Cron calling internal job endpoints | ADR-0002 |
 

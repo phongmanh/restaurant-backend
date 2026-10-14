@@ -231,11 +231,12 @@ async function limitBurst() {
   const c = int("c", 50);
   const lim = int("limit", 10);
   const window = int("window", 60);
+  const timeout = opts.timeout === undefined ? undefined : int("timeout", 200);
   const key = `burst-${runId()}`;
   await get("/spike/info");
   const start = Date.now();
   const results = await Promise.all(
-    Array.from({ length: c }, () => limit({ store, key, limit: lim, window }).catch((e) => ({ error: e.message }))),
+    Array.from({ length: c }, () => limit({ store, key, limit: lim, window, ...(timeout ? { timeoutMs: timeout } : {}) }).catch((e) => ({ error: e.message }))),
   );
   const wall = Date.now() - start;
   const other = await limit({ store, key: `${key}-other`, limit: lim, window });
@@ -243,12 +244,16 @@ async function limitBurst() {
   const perInstance = new Map();
   let failedOpen = 0;
   let fromApp429 = 0;
+  const openErrors = new Map();
   const retryAfter = new Set();
   for (const r of results) {
     const label = r.error ? "error" : r.status;
     statuses.set(label, (statuses.get(label) ?? 0) + 1);
     if (!r.result) continue;
-    if (r.result.failedOpen) failedOpen++;
+    if (r.result.failedOpen) {
+      failedOpen++;
+      openErrors.set(r.result.error, (openErrors.get(r.result.error) ?? 0) + 1);
+    }
     if (r.status === 429 && r.headers["x-spike-limiter"]) fromApp429++;
     if (r.headers?.["retry-after"]) retryAfter.add(r.headers["retry-after"]);
     const entry = perInstance.get(r.result.instanceId) ?? { allowed: 0, denied: 0 };
@@ -257,10 +262,11 @@ async function limitBurst() {
   }
   const allowed = statuses.get(200) ?? 0;
   const verdict = allowed === lim ? "exact" : allowed > lim ? `**${allowed - lim} over**` : `**${lim - allowed} under**`;
-  print(`### limit-burst, store \`${store}\`, ${c} parallel hits on one key, limit ${lim} per ${window} s`, [
+  print(`### limit-burst, store \`${store}\`, ${c} parallel hits on one key, limit ${lim} per ${window} s, timeout ${timeout ?? 200} ms`, [
     `- allowed ${allowed} of ${c} against a limit of ${lim}: ${verdict}; wall time ${wall} ms`,
     `- statuses ${formatCounts(statuses)}; 429s from the app (x-spike-limiter) ${fromApp429}; failed open ${failedOpen}`,
     `- Retry-After values: ${[...retryAfter].join(", ") || "none"}`,
+    ...(openErrors.size ? [`- fail-open errors: ${[...openErrors].map(([e, n]) => `${n}× \`${e}\``).join(", ")}`] : []),
     `- instances used: ${perInstance.size}; allowed/denied per instance: ${[...perInstance.values()].map((e) => `${e.allowed}/${e.denied}`).join(", ")}`,
     `- a different key straight after: ${other.status}${other.status === 200 ? " (separate bucket)" : " (**shares the bucket?**)"}`,
   ]);
