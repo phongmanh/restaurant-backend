@@ -2,9 +2,9 @@
 
 | Version | Status | Owner | Reviewers |
 |---|---|---|---|
-| 0.2 | Draft | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
+| 0.3 | Draft, ready for G2 review | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
 
-Baseline: [requirements.md](requirements.md) v1.1 (G1 2026-10-13; CR-002 2026-10-14). Decisions marked **Proposed** depend on the spikes in §17 and become Accepted, or change, before G2.
+Baseline: [requirements.md](requirements.md) v1.2 (G1 2026-10-13; CR-002 and CR-003 2026-10-14). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). Still open for G2: TBD-10 (data residency, legal review) and the owner's review of the cost estimate (TBD-11).
 
 ## 1. Drivers
 Quality goals, ranked (ASSUMPTION-8, confirmed by the owner 2026-10-14):
@@ -408,17 +408,26 @@ Full detail in [test-plan.md](test-plan.md).
 ## 16. Risks and technical debt
 | ID | Risk or debt | Impact | Mitigation | Owner |
 |---|---|---|---|---|
-| R-01 | Vercel runtime limits for a JVM Ktor app (cold starts after scale-to-zero, duration, streaming) | NFR-PERF p99, NFR-OPS | Spike S-1; AOT cache or native image; CR to change platform if S-1 fails | Manh Nguyen |
+| R-01 | Vercel runtime limits for a JVM Ktor app (cold starts after scale-to-zero, duration, streaming) | NFR-PERF p99, NFR-OPS | Live updates off the functions (ADR-0003); S-1 measured 5–7 s cold starts on the free account; CR-001 deferred; paid-plan check is R-12 | Manh Nguyen |
+| R-02 | A photographed table QR code used away from the table | Orders on strangers' bills, kitchen pranks | QR rotation (FR-031), per-session rate limits (ADR-0008), staff can cancel, optional waiter confirmation (FR-016, TBD-8) | Manh Nguyen |
+| R-03 | An endpoint misses a tenant or session check | Cross-restaurant data leak | Service checks + forced RLS (ADR-0005, S-2: 0 leaks); authorisation-matrix tests per endpoint | Manh Nguyen |
+| R-04 | Vietnamese law requires local storage of some data | Regions in §8 may not comply | Legal review before G2 (TBD-10); a CR if a region or the platform must change | Manh Nguyen |
 | R-06 | No private network between the functions and the managed services | Wider attack surface for credentials | TLS everywhere; IP allow-lists where providers support them; least-privilege users; rotation | Manh Nguyen |
 | R-08 | Dependence on a pub/sub vendor | Cost, vendor outage | Thin events; polling fallback built in; vendor behind a `RealtimePublisher` port | Manh Nguyen |
 | R-09 | Connection bursts from many serverless instances | Database saturation at scale-out | Pooler; pool up to 10 per instance, 2 s wait, 5 s statement timeout; Vercel concurrency settings; load test at 2× peak | Manh Nguyen |
+| R-10 | A flaw in the built-in sign-in (hashing, brute force, tokens) | Staff or admin account takeover | Argon2id with Bouncy Castle, rate limits (ADR-0008), rotating refresh tokens, admin TOTP (§7, ADR-0011; S-4: 19/19 token cases); ASVS V6/V7 checklist in Phase 3 | Manh Nguyen |
+| R-11 | Production database wakes from scale to zero (never measured) | Slow first request after a quiet spell | Neon Launch plan or above with scale to zero off. Accepted as a free-plan residual risk (2026-10-14) | Manh Nguyen |
+| R-12 | On the paid plan the instance doesn't stay warm, or scale-out cold-starts often | Guest p99 (NFR-PERF-01/02) fails | ADR-0002 condition: measure on the production Pro account before G5; JDK AOT cache; reopen CR-001 if p99 fails. Accepted as a free-plan residual risk (2026-10-14) | Manh Nguyen |
+| R-13 | Ably delay or refusals rise above the 190 subscribers S-3 could test | NFR-PERF-03 missed at 17,500 connections | Outbox + sweep and in-request retry of refused publishes; event-log catch-up; load test on a paid plan before launch. Accepted as a free-plan residual risk (2026-10-15) | Manh Nguyen |
 | D-01 | Hand-written OpenAPI contract can drift from the code | Contract errors | Response validation in contract tests; route-listing test (ADR-0007) | Manh Nguyen |
 
-## 17. Proofs of concept (to run before G2)
-| Spike | Question | Exit criterion | Feeds |
-|---|---|---|---|
-| S-1 Ktor on Vercel (`spikes/s1-vercel/`) | On the container runtime, measure cold start p50/p99 (plain and with the AOT cache), warm latency, concurrency per instance, maximum duration, SSE streaming, CPU and memory, proxy headers, and SIGTERM timing; check Rolling Releases and WAF availability. Rate-limit check (Q9–Q12, added 2026-10-14): a WAF per-IP rule, per-key limits in Upstash Redis and in the WAF called from Kotlin, fail-open behaviour | Warm p95 ≤ 50 ms for a trivial DB-free route; cold start small enough that p99 targets hold at the expected cold-start rate. Rate limits: check p95 ≤ 10 ms inside the function, a 50-hit burst allows exactly the limit across instances, store failures fail open within the timeout | ADR-0002, ADR-0008 |
-| S-2 PostgreSQL through the pooler | pgjdbc + Hikari via transaction pooling (`prepareThreshold=0`), `SET LOCAL` RLS, advisory xact locks, Flyway from CI, latency from `sin1` | Order-placement transaction p95 ≤ 40 ms from a Vercel function | ADR-0004, ADR-0005 |
-| S-3 Live updates | Provider choice; end-to-end delay with 1,000–5,000 simulated subscribers; token scoping per channel; cost at 17,500 and 52,500 connections | p95 ≤ 1 s publish → receive; per-channel isolation verified | ADR-0003 |
-| S-4 Built-in sign-in (`spikes/s4-auth/`) | Argon2id time and memory at the §7 parameters on a Vercel function in `sin1` (cold and warm, 1 and 4 at once); library choice for Argon2id, JWT and TOTP; token checks | Warm sign-in p95 ≤ 500 ms; valid, expired, forged, wrong-algorithm, wrong-audience tokens and an admin token without `otp` behave as specified | §7, ADR-0011 |
-| S-5 Report query (`spikes/s5-reports/`, closed 2026-10-14) | `daily_sales` aggregation and a 31-day report on ≈ 1 year of synthetic data for one large restaurant | NFR-PERF-04 met | §9 |
+STATUS.md holds the full risk register. R-05 (NFR numbers off) and R-07 (no operations owner) are product and operations risks and are tracked there only.
+
+## 17. Proofs of concept (all closed before G2)
+| Spike | Question | Exit criterion | Feeds | Result |
+|---|---|---|---|---|
+| S-1 Ktor on Vercel (`spikes/s1-vercel/`) | On the container runtime, measure cold start p50/p99 (plain and with the AOT cache), warm latency, concurrency per instance, maximum duration, SSE streaming, CPU and memory, proxy headers, and SIGTERM timing; check Rolling Releases and WAF availability. Rate-limit check (Q9–Q12, added 2026-10-14): a WAF per-IP rule, per-key limits in Upstash Redis and in the WAF called from Kotlin, fail-open behaviour | Warm p95 ≤ 50 ms for a trivial DB-free route; cold start small enough that p99 targets hold at the expected cold-start rate. Rate limits: check p95 ≤ 10 ms inside the function, a 50-hit burst allows exactly the limit across instances, store failures fail open within the timeout | ADR-0002, ADR-0008 | Closed 2026-10-14. Warm p95 ≈ 49 ms (met). Cold start 5–7 s on the free account (not met; ≈ 4.7 s is the platform): CR-001 deferred, paid-plan check R-12. Rate limits: Upstash check p95 10.9 ms, exact across instances, fails open; WAF from Kotlin 28.8 ms, so Upstash plus a WAF per-IP rule (ADR-0008) |
+| S-2 PostgreSQL through the pooler | pgjdbc + Hikari via transaction pooling (`prepareThreshold=0`), `SET LOCAL` RLS, advisory xact locks, Flyway from CI, latency from `sin1` | Order-placement transaction p95 ≤ 40 ms from a Vercel function | ADR-0004, ADR-0005 | Closed 2026-10-14, met: order transaction p95 28.7 ms (31.7 ms at 10 concurrent); RLS 10/10, 0 leaks; advisory locks exclusive; Flyway from CI works. Wake from scale to zero not measured (R-11) |
+| S-3 Live updates | Provider choice; end-to-end delay with 1,000–5,000 simulated subscribers; token scoping per channel; cost at 17,500 and 52,500 connections | p95 ≤ 1 s publish → receive; per-channel isolation verified | ADR-0003 | Closed 2026-10-15, met on Ably's free plan: p95 47–49 ms at 50–190 subscribers; isolation 9/9. 1k–5k extrapolated (R-13) |
+| S-4 Built-in sign-in (`spikes/s4-auth/`) | Argon2id time and memory at the §7 parameters on a Vercel function in `sin1` (cold and warm, 1 and 4 at once); library choice for Argon2id, JWT and TOTP; token checks | Warm sign-in p95 ≤ 500 ms; valid, expired, forged, wrong-algorithm, wrong-audience tokens and an admin token without `otp` behave as specified | §7, ADR-0011 | Closed 2026-10-14, met: warm sign-in p95 86 ms (Bouncy Castle Argon2id); 19/19 token cases; 10 at once p95 713 ms on 1 CPU |
+| S-5 Report query (`spikes/s5-reports/`) | `daily_sales` aggregation and a 31-day report on ≈ 1 year of synthetic data for one large restaurant | NFR-PERF-04 met | §9 | Closed 2026-10-14, met: 31-day report p95 10.4 ms in PostgreSQL, 65 ms on the client, 76 ms cold (target 3 s) |

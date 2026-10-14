@@ -28,7 +28,7 @@
 |---|---|---|---|---|
 | 1 | Requirements | requirements.md | Approved (v1.2 through CR-003) | 1.2 |
 | 1–6 | RTM | rtm.md | Draft (design column added in Phase 2; FR/NFR rows baselined at G1) | 1.1 |
-| 2 | Architecture + threat model + capacity model | architecture.md | Draft (built-in sign-in per CR-002) | 0.2 |
+| 2 | Architecture + threat model + capacity model | architecture.md | Draft, ready for G2 review (v0.3 2026-10-15: spike results in §17, risk table in §16 synced with STATUS, baseline v1.2) | 0.3 |
 | 2+ | ADRs | adr/0001–0009, 0011 | 10 Accepted (0001, 0002 with conditions, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0011); 0010 reserved by CR-001 | — |
 | 2 | Monthly cost estimate (TBD-11) | cost-estimate.md | Draft (Ably line confirmed by S-3; for the owner's review) | 0.2 |
 | 1–5 | Test plan + summary report | test-plan.md | Draft master plan (§1 and §5 approved at G1) | 0.4 |
