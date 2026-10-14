@@ -2,7 +2,7 @@
 
 **Throwaway.** This code answers the S-2 questions for [ADR-0004](../../docs/sdlc/restaurant-ordering/adr/0004-database-hosting-pooling.md) (database hosting and pooling) and [ADR-0005](../../docs/sdlc/restaurant-ordering/adr/0005-tenant-isolation.md) (RLS with `SET LOCAL`), and is then deleted.
 
-Status: **run 2 from `sin1` done, 2026-10-13. The exit criterion is met** (order transaction p95 28.7 ms over the pooler). Left: the cold-start samples. 15 tests pass against an in-process PostgreSQL 18, and every `measure.mjs` mode has run against `./gradlew runLocal`. That proves the code, not the numbers: there's no pooler and no network locally.
+Status: **closed 2026-10-14. The exit criterion is met** (order transaction p95 28.7 ms over the pooler); ADR-0004 Accepted. The `cold` sample (Neon waking from scale to zero) was not run: the owner accepted it as a free-plan residual risk (STATUS R-11). 15 tests pass against an in-process PostgreSQL 18, and every `measure.mjs` mode has run against `./gradlew runLocal`. That proves the code, not the numbers: there's no pooler and no network locally.
 
 ## What ADR-0004 and ADR-0005 assume, and S-2 must prove
 - The app reaches PostgreSQL through a **transaction-mode pooler**: Hikari `maximumPoolSize = 3` (10 from run 3), short idle timeouts, pgjdbc `prepareThreshold=0`.

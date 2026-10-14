@@ -73,8 +73,8 @@ The ktor-sdlc default stack applies, except for:
 | Module layout | One Gradle module, packages by feature | ADR-0001 |
 | Deployment platform | Vercel container runtime (an OCI image run as a Function, as in `ktor-sample`), region `sin1`; cold start and limits measured by spike S-1 | ADR-0002 (Proposed) |
 | Live updates | Managed pub/sub for notifications + PostgreSQL event log for catch-up | ADR-0003 (Proposed) |
-| Database hosting | Managed PostgreSQL in Singapore with a transaction-mode pooler; Hikari pool of up to 10 per instance (2 s wait, 5 s statement timeout); `prepareThreshold=0` | ADR-0004 (Proposed) |
-| Tenant isolation | `restaurant_id` checks in services + PostgreSQL RLS via `SET LOCAL` | ADR-0005 |
+| Database hosting | Neon PostgreSQL in Singapore (AWS `ap-southeast-1`) with its transaction-mode pooler; S-2 met its exit criterion; Hikari pool of up to 10 per instance (2 s wait, 5 s statement timeout); `prepareThreshold=0` | ADR-0004 |
+| Tenant isolation | `restaurant_id` checks in services + forced PostgreSQL RLS via `set_config(…, true)` (`SET LOCAL` with a bind parameter); missing tenant gives 0 rows; verified in S-2 | ADR-0005 |
 | Guest authentication | Service-issued QR token and table-session token (ES256) | ADR-0006 |
 | Staff and admin authentication | Built-in accounts: Argon2id password hashes, service-issued ES256 access tokens and rotating refresh tokens, TOTP for platform admins; no external identity provider | ADR-0011 (CR-002) |
 | OpenAPI | Hand-written contract; responses validated against it in contract tests; no generation from code | ADR-0007 |
@@ -82,7 +82,7 @@ The ktor-sdlc default stack applies, except for:
 | Metrics and tracing | Push over OTLP (Micrometer OTLP registry + OpenTelemetry Ktor instrumentation library), because there is no stable instance to scrape | ADR-0009 |
 | Scheduled jobs | Vercel Cron calling internal job endpoints | ADR-0002 |
 
-Toolchain (pinned in `gradle/libs.versions.toml` at the start of Phase 4, latest stable then): Kotlin 2.4.x · Ktor 3.6.x · JDK 25 (LTS) · Exposed latest stable · PostgreSQL 17 or newer, as the provider offers (S-2). Ktor's compiler plugin is only needed for OpenAPI generation, which ADR-0007 doesn't use.
+Toolchain (pinned in `gradle/libs.versions.toml` at the start of Phase 4, latest stable then): Kotlin 2.4.x · Ktor 3.6.x · JDK 25 (LTS) · Exposed latest stable · PostgreSQL 17 or newer, as the provider offers (S-2 ran on Neon's 18.6). Ktor's compiler plugin is only needed for OpenAPI generation, which ADR-0007 doesn't use.
 
 ## 4. Modules
 Layout A from the skill: one Gradle module, packages by feature (ADR-0001).
@@ -137,7 +137,7 @@ Shared `api-contract` KMP module with the clients: **not now**. It will be recon
 ## 6. Data stores
 | Store | Holds | Why this store | Size and growth | Consistency | Backup and retention |
 |---|---|---|---|---|---|
-| PostgreSQL (managed, Singapore; ADR-0004) | All business data, staff credentials (password hashes, encrypted TOTP secrets, refresh-token and link-token hashes), the event log, outbox, idempotency keys, audit log | Transactions across order, idempotency key, event and outbox; relational reporting | ≈ 100k orders and 300k lines per day at 500 restaurants (ASSUMPTION-9) → ≈ 50 GB/year including indexes; event log ≈ 500k rows/day, kept 7 days | Strong, single primary; reads from the primary (no replicas until measured) | PITR ≥ 7 days (RPO ≤ 5 min); daily snapshot copied to a second region/account; quarterly restore drill (NFR-REL-01) |
+| PostgreSQL (Neon, Singapore; ADR-0004) | All business data, staff credentials (password hashes, encrypted TOTP secrets, refresh-token and link-token hashes), the event log, outbox, idempotency keys, audit log | Transactions across order, idempotency key, event and outbox; relational reporting | ≈ 100k orders and 300k lines per day at 500 restaurants (ASSUMPTION-9) → ≈ 50 GB/year including indexes; event log ≈ 500k rows/day, kept 7 days | Strong, single primary; reads from the primary (no replicas until measured) | PITR ≥ 7 days (RPO ≤ 5 min; needs Neon's Launch plan or above, the free plan keeps 6 h); daily snapshot copied to a second region/account; quarterly restore drill (NFR-REL-01) |
 | Redis (managed, serverless, same region; ADR-0008) | Rate-limit counters only | Atomic counters with TTL shared by all instances; keeps that churn off PostgreSQL | < 100 MB | Best effort. If Redis is down, app-level limits fail open and WAF limits still apply | None needed (ephemeral) |
 | Object storage (e.g. Vercel Blob; FR-022) | Menu images | Large binaries off the database; served by CDN | ≈ 1,000 items × 500 restaurants × ≤ 500 KB (after resize) ≈ 250 GB worst case | Write-once objects under generated names | Versioning on; deleted with the item after 30 days |
 | Managed pub/sub (ADR-0003) | Nothing durable: thin "something changed" notifications | Fan-out to ≈ 17,500 live clients, which Vercel functions can't hold open | — | At most once; the event log is the source of truth | None |
@@ -317,7 +317,7 @@ Level: ASVS 5.0 L2. Assets:
 | Guest routes: QR open/join | Abuse of a photographed QR away from the table (API6) | Rotation; per-session order rate limits; staff cancel; optional waiter confirmation (FR-016) | V2 Validation and Business Logic | R-02, FR-016 |
 | Guest routes: orders, bill | Information disclosure: another table's orders (API1) | Session ID from the token only; every query filters by `session_id`; foreign IDs → 404 | V8 Authorization | FR-005, NFR-SEC-02 |
 | Guest routes: orders | Tampering: client-supplied prices, quantities, items of another restaurant (API3) | Request DTOs carry item IDs and quantities only; server prices; items must belong to the session's restaurant | V2, V15 Secure Coding and Architecture | FR-003 |
-| Staff routes | Information disclosure / tampering across restaurants (API1) | `Caller.restaurantId` from the database; repository methods take `RestaurantId`; RLS with `SET LOCAL app.restaurant_id` | V8 Authorization | FR-042, NFR-SEC-02 |
+| Staff routes | Information disclosure / tampering across restaurants (API1) | `Caller.restaurantId` from the database; repository methods take `RestaurantId`; forced RLS keyed by `app.restaurant_id`, set per transaction; `app` role without `BYPASSRLS`, checked by a test | V8 Authorization | FR-042, NFR-SEC-02 |
 | Staff routes | Elevation of privilege: kitchen edits the menu; manager edits staff of another restaurant (API5) | Role checks in services per the matrix; tests per role | V8 Authorization | FR-010, FR-041 |
 | Staff and admin tokens | Spoofing with forged, expired or foreign tokens (API2) | ES256 only, signature against the staff key set, `iss`, `aud` (`staff`/`admin`), `exp`; admin routes need `otp` in `amr`; staff keys separate from guest keys | V9 Self-contained Tokens, V6 Authentication | FR-010, NFR-SEC-04 |
 | Sign-in, TOTP step | Credential stuffing and password guessing (API2); account enumeration | Per-account lock in PostgreSQL (10 failures / 15 min); per-IP limits in Redis and WAF; common-password list; same 401 and dummy hash for unknown emails; audit | V6 Authentication | FR-010, NFR-SEC-04 |
