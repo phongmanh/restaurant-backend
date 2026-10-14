@@ -12,9 +12,10 @@ import kotlin.time.TimeSource
 enum class Via { POOLED, DIRECT }
 
 /**
- * The app's two connection pools, both as the `app` role. ADR-0004's settings: at most 3
- * connections per instance, short idle timeouts, and pgjdbc `prepareThreshold=0` unless a request
- * asks for another value (Q3).
+ * The app's two connection pools, both as the `app` role. ADR-0004's settings: at most 10
+ * connections per instance (3 in runs 1 and 2, where requests queued), a 2 s wait for a connection
+ * so a request fails fast instead of queueing, short idle timeouts, and pgjdbc `prepareThreshold=0`
+ * unless a request asks for another value (Q3).
  */
 class Database(pooled: JdbcTarget, direct: JdbcTarget) : AutoCloseable {
     private val pools: Map<Via, TimedPool> = mapOf(
@@ -88,10 +89,10 @@ class Database(pooled: JdbcTarget, direct: JdbcTarget) : AutoCloseable {
 
     companion object {
         const val DEFAULT_PREPARE_THRESHOLD = 0
-        private const val MAX_POOL_SIZE = 3
+        private const val MAX_POOL_SIZE = 10
         private const val IDLE_TIMEOUT_MS = 30_000L
         private const val MAX_LIFETIME_MS = 300_000L
-        private const val CONNECTION_TIMEOUT_MS = 5_000L
+        private const val CONNECTION_TIMEOUT_MS = 2_000L
 
         fun setTenant(conn: Connection, restaurantId: UUID) {
             conn.prepareStatement("SELECT set_config('app.restaurant_id', ?, true)").use {

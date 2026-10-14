@@ -18,7 +18,9 @@ PostgreSQL is the default store. On serverless, each instance has its own connec
 ## Decision
 Option 1, provider confirmed by S-2.
 - The app connects through the **transaction-mode pooler** with:
-  - Hikari `maximumPoolSize = 3` and short idle timeouts;
+  - Hikari `maximumPoolSize = 10`, `minimumIdle = 1` (connections open on demand, so cold starts don't pay for 10) and short idle timeouts;
+  - `connectionTimeout = 2 s`: a request that can't get a connection fails fast with 503 instead of queueing;
+  - `statement_timeout = 5 s` on the `app` role (a role setting, because the pooler doesn't support session `SET`);
   - pgjdbc `prepareThreshold=0`, because server-side prepared statements don't survive transaction pooling;
   - only transaction-scoped session state (`SET LOCAL`, `pg_try_advisory_xact_lock`).
 - Migrations use a direct (unpooled) connection from CI, with the DDL user.
@@ -27,4 +29,5 @@ Option 1, provider confirmed by S-2.
 ## Consequences
 - Positive: connection bursts are absorbed; preview databases per PR.
 - Negative: no `LISTEN/NOTIFY` and no session-level advisory locks (we don't need them); each transaction's latency includes the pooler hop.
-- Follow-ups: S-2 measures order-transaction latency from `sin1`; confirm the PITR window, HA and a cross-region backup copy; region per TBD-10.
+- Pool size (S-2 run 3, 2026-10-14, owner's decision): 3 per instance made requests queue (50 concurrent 2 s transactions took 6.2 s), because Vercel sends many concurrent requests to one instance. With 10, warm: 2.3–2.8 s and 0 errors; order transactions at 10 concurrent p95 22.6 ms. The pooler, not the app pool, caps PostgreSQL connections, so a bigger app pool doesn't overload the database.
+- Follow-ups: S-2 measures order-transaction latency from `sin1` (done: p95 28.7 ms); confirm the PITR window, HA and a cross-region backup copy; region per TBD-10.

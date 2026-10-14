@@ -5,7 +5,7 @@
 Status: **run 2 from `sin1` done, 2026-10-13. The exit criterion is met** (order transaction p95 28.7 ms over the pooler). Left: the cold-start samples. 15 tests pass against an in-process PostgreSQL 18, and every `measure.mjs` mode has run against `./gradlew runLocal`. That proves the code, not the numbers: there's no pooler and no network locally.
 
 ## What ADR-0004 and ADR-0005 assume, and S-2 must prove
-- The app reaches PostgreSQL through a **transaction-mode pooler**: Hikari `maximumPoolSize = 3`, short idle timeouts, pgjdbc `prepareThreshold=0`.
+- The app reaches PostgreSQL through a **transaction-mode pooler**: Hikari `maximumPoolSize = 3` (10 from run 3), short idle timeouts, pgjdbc `prepareThreshold=0`.
 - Only transaction-scoped state is used: `SET LOCAL app.restaurant_id` for RLS, and `pg_try_advisory_xact_lock` for job locks.
 - Migrations run from CI over a **direct (unpooled)** connection as `migrator`; the app connects as `app` (DML only).
 - Exit criterion (architecture §17): **order-placement transaction p95 ≤ 40 ms from a Vercel function.**
@@ -93,7 +93,23 @@ Database: Neon, created through Vercel's Neon integration, AWS `ap-southeast-1`,
 | Q7 connections | Cold instance: JVM to ready **2,718 ms**, of which opening the pooled pool took 895 ms and the direct one 144 ms (cold samples below). **Vercel scales out fast:** 10 concurrent requests used 4 instances, 50 used 9–25. 50 concurrent transactions holding 2 s: at most **52 `app` backends of `max_connections` 112**, 0 errors, but a wall time of 6.2 s instead of 2 s: requests queued for the 3 connections per instance. The spike's direct pool keeps 1 connection per instance straight to PostgreSQL, so it grows with instances; the production app uses only the pooled path, where PostgreSQL connections are capped by the pooler (`default_pool_size` = 90 % of `max_connections`) and the pooler takes up to 10,000 clients | Yes, with a sizing point for ADR-0004 (below) |
 | Q8 provider | Neon via Vercel's integration, AWS `ap-southeast-1`, PostgreSQL 18.6. Pooler: PgBouncer, transaction mode, `max_client_conn` 10,000, `default_pool_size` 90 % of `max_connections`, `query_wait_timeout` 120 s, not configurable; unsupported: `SET`/`RESET`, `LISTEN`/`NOTIFY`, SQL `PREPARE`, session advisory locks. Plans (neon.com/pricing, 2026-10-13): **Free** 100 CU-hours and 1 GB storage per project (20 GB per account), PITR 6 h, scale to zero after 5 min (can't be turned off); **Launch** $0.106/CU-hour, $0.35/GB-month, PITR up to 7 days, scale to zero can be disabled; **Scale** $0.222/CU-hour, PITR up to 30 days, fixed sizes up to 56 CU. Branches: 10 per project (Free, Launch), 25 (Scale), extra $1.50/branch-month | Facts for TBD-11; PITR needs at least Launch |
 
-**Sizing point for ADR-0004.** `maximumPoolSize = 3` held the database load safely, but Vercel sends many concurrent requests to one instance, so at 50 concurrent requests on 9 instances, requests waited for a connection (wall time 3× the hold time). Ordinary transactions take ~13 ms, so the wait is small at real traffic, but a slow transaction blocks the instance's other requests. Options for G2: raise the pool size (the pooler absorbs it: 10,000 clients) or keep 3 and set a short `connectionTimeout` so the request fails fast. Decide with the owner.
+**Sizing point for ADR-0004.** `maximumPoolSize = 3` held the database load safely, but Vercel sends many concurrent requests to one instance, so at 50 concurrent requests on 9 instances, requests waited for a connection (wall time 3× the hold time). Ordinary transactions take ~13 ms, so the wait is small at real traffic, but a slow transaction blocks the instance's other requests. Options for G2: raise the pool size (the pooler absorbs it: 10,000 clients) or keep 3 and set a short `connectionTimeout` so the request fails fast. **Decided 2026-10-14 by the owner: 10, with a 2 s `connectionTimeout` and a 5 s `statement_timeout`; checked in run 3.**
+
+### Run 3: pool size 10 (2026-10-14)
+Same database and project; `Database.kt` set to `maximumPoolSize = 10` and `connectionTimeout = 2 s`, and `migrate` set `statement_timeout = '5s'` on `app`. Deployment `restaurant-s2-spike-avsu59wnw-liam-36c7.vercel.app` (production target, public alias removed right after).
+
+| Check | Pool 3 (run 2) | Pool 10 (run 3) |
+|---|---|---|
+| `connections` c 50, hold 2 s: wall time, errors | 6.2 s, 0 | first run while Vercel was still adding instances: 10.6 s, 6 timeouts; then warm, 3 runs: **2.8, 2.3, 2.3 s, 0 errors** (7 instances) |
+| `app` backends during `connections` | 52 | 70 (7 instances × 10) of `max_connections` 112 |
+| `order` c 10, acquire + transaction p95 | 31.7 ms | first run 54.9 ms (cold); warm **22.6 ms**, acquire p95 0.33 ms |
+| `order` c 1, p95 | 28.7 ms | 19.8 ms (p99 90 ms, one 795 ms outlier) |
+| `burst` n 500, c 50 | no leak | no leak, 0 errors, 20 instances |
+| Statement held 6 s (`lock --hold 6000`) | — | cancelled at 5.28 s, SQL state `57014` "canceling statement due to statement timeout", as intended |
+
+Notes:
+- The cold run's 6 timeouts: each new pooled connection takes ~1–1.7 s to open (TLS + auth; this instance's first took 1,704 ms), and these test transactions hold their connection for 2 s, so on a fresh instance some requests waited past the 2 s `connectionTimeout`. Real transactions take ~17 ms, so a 2 s wait rarely runs out; the load test (test plan) checks this on a cold burst.
+- 70 backends from 7 instances shows the app pools can add up fast. The pooler caps the real PostgreSQL connections (`default_pool_size` = 90 % of `max_connections`) and queues the rest, so the database is protected; the compute size sets that cap (TBD-11).
 
 ### Run 2: from `sin1` (2026-10-13)
 Deployment `restaurant-s2-spike-d1oiubf9s-liam-36c7.vercel.app` (`dpl_DdYUaEbohJqaZnh2h6Z5N281oaTd`), production target on the free test account; the public alias `restaurant-s2-spike.vercel.app` was removed. Client: Vietnam (client round trip p50 ≈ 40–45 ms, which doesn't count). Commands: `info`, `rls`, `ping` (pooled, direct, n 200), `order` (pooled c 1, direct c 1, pooled c 10, n 200), `prepared` (n 60, c 3), `burst` (n 500, c 50), `lock` (c 10, 3 s), `connections` (c 50, 2 s). `max_connections` read 112, where Neon's docs list 104 for 0.25 CU; the free plan autoscales up to 2 CU, so the value depends on the compute size at the time.

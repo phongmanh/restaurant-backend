@@ -73,7 +73,7 @@ The ktor-sdlc default stack applies, except for:
 | Module layout | One Gradle module, packages by feature | ADR-0001 |
 | Deployment platform | Vercel container runtime (an OCI image run as a Function, as in `ktor-sample`), region `sin1`; cold start and limits measured by spike S-1 | ADR-0002 (Proposed) |
 | Live updates | Managed pub/sub for notifications + PostgreSQL event log for catch-up | ADR-0003 (Proposed) |
-| Database hosting | Managed PostgreSQL in Singapore with a transaction-mode pooler; Hikari pool of 2–3 per instance; `prepareThreshold=0` | ADR-0004 (Proposed) |
+| Database hosting | Managed PostgreSQL in Singapore with a transaction-mode pooler; Hikari pool of up to 10 per instance (2 s wait, 5 s statement timeout); `prepareThreshold=0` | ADR-0004 (Proposed) |
 | Tenant isolation | `restaurant_id` checks in services + PostgreSQL RLS via `SET LOCAL` | ADR-0005 |
 | Guest authentication | Service-issued QR token and table-session token (ES256) | ADR-0006 |
 | Staff and admin authentication | Built-in accounts: Argon2id password hashes, service-issued ES256 access tokens and rotating refresh tokens, TOTP for platform admins; no external identity provider | ADR-0011 (CR-002) |
@@ -251,7 +251,7 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
 - **In flight:** at ≈ 50 ms average service time, ≈ 15 requests are in flight at peak, 45 at 3× growth.
 - **Bottleneck: PostgreSQL connections, not CPU.** Every serverless instance holds its own pool, so instance count × pool size can exceed the database's limit during scale-out bursts. The tactic (ADR-0004):
   - a transaction-mode pooler in front of PostgreSQL;
-  - Hikari `maximumPoolSize` 3 per instance;
+  - Hikari `maximumPoolSize` 10 per instance, opened on demand (`minimumIdle` 1), 2 s connection wait; with 3, requests queued in S-2 because Vercel sends many concurrent requests to one instance;
   - pooler server-side pool ≈ 40 connections;
   - short transactions with no remote calls inside.
 - **Database size:** 2 vCPU / 8 GB with HA standby at launch (to validate with S-2 and the load test). 3× growth fits with a larger instance; no read replicas before measurements show a need.
@@ -403,7 +403,7 @@ Full detail in [test-plan.md](test-plan.md).
 | R-01 | Vercel runtime limits for a JVM Ktor app (cold starts after scale-to-zero, duration, streaming) | NFR-PERF p99, NFR-OPS | Spike S-1; AOT cache or native image; CR to change platform if S-1 fails | Manh Nguyen |
 | R-06 | No private network between the functions and the managed services | Wider attack surface for credentials | TLS everywhere; IP allow-lists where providers support them; least-privilege users; rotation | Manh Nguyen |
 | R-08 | Dependence on a pub/sub vendor | Cost, vendor outage | Thin events; polling fallback built in; vendor behind a `RealtimePublisher` port | Manh Nguyen |
-| R-09 | Connection bursts from many serverless instances | Database saturation at scale-out | Pooler; pool 3 per instance; Vercel concurrency settings; load test at 2× peak | Manh Nguyen |
+| R-09 | Connection bursts from many serverless instances | Database saturation at scale-out | Pooler; pool up to 10 per instance, 2 s wait, 5 s statement timeout; Vercel concurrency settings; load test at 2× peak | Manh Nguyen |
 | D-01 | Hand-written OpenAPI contract can drift from the code | Contract errors | Response validation in contract tests; route-listing test (ADR-0007) | Manh Nguyen |
 
 ## 17. Proofs of concept (to run before G2)

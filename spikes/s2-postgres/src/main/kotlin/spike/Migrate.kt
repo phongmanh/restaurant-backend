@@ -27,7 +27,7 @@ fun migrate(migrator: JdbcTarget, app: JdbcTarget): MigrateReport {
     var ok = true
 
     ensureAppRole(migrator, app)
-    lines += "role ${app.user}: present, LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE"
+    lines += "role ${app.user}: present, LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE, statement_timeout $APP_STATEMENT_TIMEOUT"
 
     val result = Flyway.configure()
         .dataSource(migrator.jdbcUrl, migrator.user, migrator.password)
@@ -57,6 +57,9 @@ fun migrate(migrator: JdbcTarget, app: JdbcTarget): MigrateReport {
     return MigrateReport(lines, ok)
 }
 
+/** ADR-0004: the longest a statement may run as `app`. */
+private const val APP_STATEMENT_TIMEOUT = "5s"
+
 /**
  * Creates `app` with plain SQL, as `migrator`. A role made in Neon's console would be a member of
  * neon_superuser, whose BYPASSRLS would make every RLS result meaningless.
@@ -79,6 +82,9 @@ private fun ensureAppRole(migrator: JdbcTarget, app: JdbcTarget) {
             } else {
                 it.execute("CREATE ROLE ${app.user} LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD $password")
             }
+            // ADR-0004: a slow statement can't hold one of an instance's connections for long. A role
+            // setting, because the transaction pooler doesn't support session SET.
+            it.execute("ALTER ROLE ${app.user} SET statement_timeout = '$APP_STATEMENT_TIMEOUT'")
         }
         conn.prepareStatement(
             "SELECT rolsuper, rolbypassrls, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = ?",
