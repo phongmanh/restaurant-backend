@@ -28,3 +28,4 @@ Option 2:
 - Positive: no IdP dependency for guests; abuse is limited by rotation and rate limits.
 - Negative: a photographed code works until it is rotated (R-02); FR-016 waiter confirmation is the stronger control if needed (TBD-8).
 - Follow-ups: Phase 3 defines the token formats, the claims and the rotation runbook.
+- Note (2026-10-14, CR-002): staff and admin tokens are also issued by the service (ADR-0011) with the same ES256 mechanism, but with their own signing keys and audiences (`staff`, `admin`), so a guest key can never verify a staff token. Option 3 no longer applies: there is no external IdP.

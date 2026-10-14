@@ -25,3 +25,4 @@ Option 2. A managed serverless Redis in the same region (e.g. Upstash via the Ve
 - Positive: fairness between restaurants; abuse control per session.
 - Negative: an extra managed service and secret.
 - Follow-ups: 429 responses use problem details with `Retry-After`; load test with a noisy tenant (NFR-SCAL-02).
+- Addition (2026-10-14, CR-002): per-IP limits in Redis and the WAF on `/v1/auth/*` (sign-in, TOTP step, refresh, accept invitation, reset). The per-account lock after failed sign-ins is kept in PostgreSQL instead (architecture §7), so it still holds when Redis is down and these limits fail open.

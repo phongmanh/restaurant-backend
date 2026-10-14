@@ -2,9 +2,9 @@
 
 | Version | Status | Owner | Reviewers |
 |---|---|---|---|
-| 0.1 | Draft | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
+| 0.2 | Draft | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
 
-Baseline: [requirements.md](requirements.md) v1.0 (G1, 2026-10-13). Decisions marked **Proposed** depend on the spikes in §17 and become Accepted, or change, before G2.
+Baseline: [requirements.md](requirements.md) v1.1 (G1 2026-10-13; CR-002 2026-10-14). Decisions marked **Proposed** depend on the spikes in §17 and become Accepted, or change, before G2.
 
 ## 1. Drivers
 Quality goals, ranked (ASSUMPTION-8, to confirm at G2):
@@ -48,7 +48,6 @@ graph LR
   redis[(Redis: rate limits)]
   blob[(Object storage: menu images)]
   rt[Managed pub/sub]
-  idp[Staff identity provider - OIDC, TBD-1]
   otel[Observability backend - OTLP]
 
   guestApp & guestWeb & staffApp & admin -->|HTTPS| edge --> api
@@ -58,15 +57,13 @@ graph LR
   api --> redis
   api --> blob
   api -->|publish after commit| rt
-  api -->|JWKS| idp
-  staffApp & admin -->|sign in| idp
   api --> otel
 ```
 Trust boundaries:
 - internet → Vercel edge (TLS, WAF);
 - edge → function (Vercel's network);
-- function → database, Redis, object storage, pub/sub, IdP and observability. These are all third-party managed services reached over TLS with credentials, with no private network (risk R-06).
-- Guests are anonymous and untrusted. Staff are authenticated but limited to their restaurant. Platform admins are a separate group with MFA.
+- function → database, Redis, object storage, pub/sub and observability. These are all third-party managed services reached over TLS with credentials, with no private network (risk R-06).
+- Guests are anonymous and untrusted. Staff sign in to the service itself (email and password, ADR-0011) and are limited to their restaurant. Platform admins are a separate group that also needs an authenticator-app code (TOTP). No external identity provider.
 
 ## 3. Stack
 The ktor-sdlc default stack applies, except for:
@@ -78,7 +75,8 @@ The ktor-sdlc default stack applies, except for:
 | Live updates | Managed pub/sub for notifications + PostgreSQL event log for catch-up | ADR-0003 (Proposed) |
 | Database hosting | Managed PostgreSQL in Singapore with a transaction-mode pooler; Hikari pool of 2–3 per instance; `prepareThreshold=0` | ADR-0004 (Proposed) |
 | Tenant isolation | `restaurant_id` checks in services + PostgreSQL RLS via `SET LOCAL` | ADR-0005 |
-| Guest authentication | Service-issued QR token and table-session token (ES256), not the IdP | ADR-0006 |
+| Guest authentication | Service-issued QR token and table-session token (ES256) | ADR-0006 |
+| Staff and admin authentication | Built-in accounts: Argon2id password hashes, service-issued ES256 access tokens and rotating refresh tokens, TOTP for platform admins; no external identity provider | ADR-0011 (CR-002) |
 | OpenAPI | Hand-written contract; responses validated against it in contract tests; no generation from code | ADR-0007 |
 | Rate limiting | Vercel WAF + Redis counters (the in-memory Ktor RateLimit plugin can't share counters across serverless instances) | ADR-0008 (Proposed) |
 | Metrics and tracing | Push over OTLP (Micrometer OTLP registry + OpenTelemetry Ktor instrumentation library), because there is no stable instance to scrape | ADR-0009 |
@@ -124,8 +122,10 @@ Shared `api-contract` KMP module with the clients: **not now**. It will be recon
 ## 5. API
 - **Style:** REST + JSON, base path `/v1`, per the skill's API design reference. Three route groups with separate authentication:
   - guest routes with a table-session token;
-  - staff routes with a staff OIDC token;
-  - admin routes with an OIDC token that has the platform-admin role and MFA (`amr`/`acr` claim).
+  - staff routes with a staff access token (`aud` = `staff`);
+  - admin routes with an admin access token (`aud` = `admin`, `amr` contains `otp`) and the platform-admin flag in the database.
+
+  Sign-in routes (`/v1/auth/*`: sign-in, TOTP step, refresh, sign-out, accept invitation, reset password) need no token and have their own rate limits (§7).
 
   Internal job routes (`/internal/jobs/*`) need the cron secret and are not in the public contract.
 - **Contract:** `docs/api/openapi.yaml`, hand-written in Phase 3 and frozen at G3. CI runs `oasdiff breaking` against the previous release's contract, and contract tests validate every route-test response against the schema (ADR-0007).
@@ -137,7 +137,7 @@ Shared `api-contract` KMP module with the clients: **not now**. It will be recon
 ## 6. Data stores
 | Store | Holds | Why this store | Size and growth | Consistency | Backup and retention |
 |---|---|---|---|---|---|
-| PostgreSQL (managed, Singapore; ADR-0004) | All business data, the event log, outbox, idempotency keys, audit log | Transactions across order, idempotency key, event and outbox; relational reporting | ≈ 100k orders and 300k lines per day at 500 restaurants (ASSUMPTION-9) → ≈ 50 GB/year including indexes; event log ≈ 500k rows/day, kept 7 days | Strong, single primary; reads from the primary (no replicas until measured) | PITR ≥ 7 days (RPO ≤ 5 min); daily snapshot copied to a second region/account; quarterly restore drill (NFR-REL-01) |
+| PostgreSQL (managed, Singapore; ADR-0004) | All business data, staff credentials (password hashes, encrypted TOTP secrets, refresh-token and link-token hashes), the event log, outbox, idempotency keys, audit log | Transactions across order, idempotency key, event and outbox; relational reporting | ≈ 100k orders and 300k lines per day at 500 restaurants (ASSUMPTION-9) → ≈ 50 GB/year including indexes; event log ≈ 500k rows/day, kept 7 days | Strong, single primary; reads from the primary (no replicas until measured) | PITR ≥ 7 days (RPO ≤ 5 min); daily snapshot copied to a second region/account; quarterly restore drill (NFR-REL-01) |
 | Redis (managed, serverless, same region; ADR-0008) | Rate-limit counters only | Atomic counters with TTL shared by all instances; keeps that churn off PostgreSQL | < 100 MB | Best effort. If Redis is down, app-level limits fail open and WAF limits still apply | None needed (ephemeral) |
 | Object storage (e.g. Vercel Blob; FR-022) | Menu images | Large binaries off the database; served by CDN | ≈ 1,000 items × 500 restaurants × ≤ 500 KB (after resize) ≈ 250 GB worst case | Write-once objects under generated names | Versioning on; deleted with the item after 30 days |
 | Managed pub/sub (ADR-0003) | Nothing durable: thin "something changed" notifications | Fan-out to ≈ 17,500 live clients, which Vercel functions can't hold open | — | At most once; the event log is the source of truth | None |
@@ -151,14 +151,30 @@ Shared `api-contract` KMP module with the clients: **not now**. It will be recon
   - the order and bill retention depends on TBD-4.
 
 ## 7. Authentication and authorisation
-**Staff and admins.**
-- **Identity provider:** OIDC, TBD-1. Clients use Authorization Code with PKCE. The API accepts JWT access tokens, verified against the JWKS with RS256/ES256 only, `iss`, `aud` and `exp` with a 30 s leeway, and a lifetime ≤ 15 min (ASSUMPTION-5).
-- **Claims:** `sub` maps to `staff_members.idp_subject`. Restaurant and role are **read from our database** (`staff_members`), not from token claims, so a deactivation or role change takes effect on the next call. Platform admin is a flag in the database plus an MFA claim in the token.
+**Staff and admins** (built-in accounts, ADR-0011, CR-002). No external identity provider: the service stores the credentials and issues the tokens.
+
+- **Passwords.** Argon2id, OWASP parameters (19 MiB memory, 2 iterations, parallelism 1), 16-byte random salt, stored as a PHC string (`$argon2id$v=19$m=19456,t=2,p=1$…`), so the parameters can be raised later and old hashes upgraded at the next sign-in. Rules (ASVS 5.0 V6.2): 8–64 characters, every character allowed, no composition rules, rejected if it is on a bundled list of common passwords. A vetted library does the hashing (choice confirmed in S-4); no custom cryptography. At most 4 hashes run at once per instance (a semaphore), so a burst can't exhaust the function's memory.
+- **Sign-in** `POST /v1/auth/sign-in` with email and password:
+  - unknown email and wrong password give the same `401 invalid_credentials`, and an unknown email still runs Argon2id against a dummy hash, so response time doesn't reveal which emails exist;
+  - a deactivated account gets the same 401;
+  - a platform admin gets `200 {"mfa_required": true, "mfa_token": …}` instead of tokens. The `mfa_token` is single-use and lives 5 min. `POST /v1/auth/mfa` with it and a 6-digit TOTP code returns the tokens.
+- **TOTP for admins** (RFC 6238: HMAC-SHA1, 6 digits, 30 s step, ±1 step accepted). The 160-bit secret is encrypted with AES-256-GCM under a key from Vercel sensitive environment variables. A code's time step can't be used twice (the last used step is stored). Enrolment happens on the admin's first sign-in through an invitation. A lost authenticator is reset by another platform admin, or for the last admin by a one-off command run by the operator; both are audited.
+- **Access token.** ES256 JWT, lifetime 15 min (ASSUMPTION-5). Claims: `iss` (the service URL), `aud` (`staff` or `admin`), `sub` (staff member ID), `sid` (the refresh-token family), `amr` (`["pwd"]`, or `["pwd","otp"]` after TOTP), `iat`, `exp`, and `kid` in the header. The API checks the signature with the staff key set, the algorithm (ES256 only), `iss`, `aud` and `exp` with a 30 s leeway. Admin routes also require `otp` in `amr`. Staff tokens use their own signing keys, separate from the guest keys in ADR-0006; both sets live in Vercel sensitive environment variables and rotate with overlap (the current and previous public keys verify).
+- **Who the caller is.** Restaurant, role, active flag and platform-admin flag are **read from `staff_members` on every call**, not from token claims, so a deactivation or role change takes effect on the next call.
+- **Refresh token.** 256-bit random, stored as a SHA-256 hash with its family ID, lifetime 12 h (one shift). Every refresh (`POST /v1/auth/refresh`) returns a new refresh token and invalidates the old one. If a used refresh token comes back, the whole family is revoked (it was probably stolen) and the event is audited. Sign-out, a password change, a role change and deactivation revoke the member's families.
+- **Where clients keep tokens.**
+  - Staff web app: the access token in memory only; the refresh token in an `HttpOnly; Secure; SameSite=Strict` cookie with `Path=/v1/auth`. The staff app and the API must be on the same site (e.g. `staff.<domain>` and `api.<domain>`) for the cookie to be sent; a strict CSP applies.
+  - Mobile apps (if the staff app ships to stores, TBD-2): the refresh token in the response body, kept in Android Keystore or iOS Keychain.
+- **Invitations and password resets** (FR-040, FR-041). The inviter (admin or manager) gets a one-time link and passes it on themselves; release 1 sends no email. The token is 256-bit random, stored as a SHA-256 hash, single-use: 72 h for an invitation, 24 h for a reset. The link puts the token in the URL fragment (`https://staff.<domain>/invite#<token>`) so it never reaches server logs or `Referer` headers. Opening it lets the person set a password (and, for an admin, enrol TOTP). Issuing a new link for the same person invalidates the old one. Who may issue a reset: a manager for their own staff, a platform admin for a manager, another platform admin for an admin.
+- **Brute force and credential stuffing** (ASVS 5.0 V6.3).
+  - Per account, in PostgreSQL (so it holds even when Redis is down): after 10 failed sign-ins or TOTP codes in 15 min, the account is locked for 15 min; the next success resets the count. The lock gives the same 401, so it doesn't reveal that the account exists.
+  - Per IP, in Redis and the WAF (ADR-0008): sign-in, TOTP, refresh and link acceptance.
+  - Every sign-in, failure, lock, MFA step, refresh-token reuse, invitation and reset is written to the audit log (NFR-SEC-03).
 
 **Guests** (ADR-0006).
 - **QR code.** The QR encodes `https://<app-domain>/t/<qrToken>`. The `qrToken` is a signed, compact token: restaurant ID, table ID, key ID, ES256 signature over a per-table key version. Rotation bumps the table's key version, so old codes fail at once.
 - **Table session.** Presenting a valid QR token opens or joins the table's open session. The response is a **table-session token**: ES256 JWT, `sub` = device ID, claims for session, table and restaurant, lifetime 6 h. Every guest call also checks in the database that the session is still open, so closing a session revokes all its tokens at once.
-- **Web app.** The customer web app keeps the session token in memory and `sessionStorage` (low value, scoped to one visit), with a strict CSP. The staff web app's token handling follows the IdP's SPA guidance (TBD-1). A BFF is preferred if the staff app is server-rendered on Vercel.
+- **Web app.** The customer web app keeps the session token in memory and `sessionStorage` (low value, scoped to one visit), with a strict CSP. The staff web app's token handling is described under staff and admins above.
 
 **Service-to-service.**
 - Vercel Cron → API: `Authorization: Bearer <CRON_SECRET>` on `/internal/jobs/*`.
@@ -253,7 +269,6 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
 | PostgreSQL (via pooler) | Pool wait 2 s; query timeout 3 s (reports 10 s); `statement_timeout` 5 s for the app user | None | — | 503 `service_unavailable` with `Retry-After`; no orders accepted (NFR-AVAIL budget) |
 | Redis (rate limits) | 100 ms | None | Yes (open after repeated timeouts) | Fail open for app-level limits; WAF limits still apply; alert |
 | Pub/sub publish | 1 s | 2 with backoff (idempotent: event ID) | Yes | Event stays in the outbox; cron sweep republishes; clients still catch up by polling (NFR-REL-03) |
-| IdP JWKS | 2 s; keys cached 10 min | 1 | — | Cached keys keep working; unknown `kid` → 401 until JWKS is reachable |
 | Object storage | 5 s upload | None (client retries with `Idempotency-Key`) | — | Upload 503; menus show without images |
 
 - **Idempotency:** `Idempotency-Key` required on order placement, session open/join, waiter calls, staff-placed orders, session close and restaurant onboarding. Stored 24 h, in the same transaction as the change.
@@ -288,9 +303,9 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
 
 ## 12. Security
 Level: ASVS 5.0 L2. Assets:
-- staff personal data;
+- staff personal data and credentials (password hashes, TOTP secrets, refresh tokens, invitation and reset links);
 - order, bill and sales records (financial);
-- QR signing keys and session tokens;
+- token signing keys (guest and staff) and session tokens;
 - tenant isolation;
 - availability during service hours;
 - the audit log;
@@ -304,15 +319,19 @@ Level: ASVS 5.0 L2. Assets:
 | Guest routes: orders | Tampering: client-supplied prices, quantities, items of another restaurant (API3) | Request DTOs carry item IDs and quantities only; server prices; items must belong to the session's restaurant | V2, V15 Secure Coding and Architecture | FR-003 |
 | Staff routes | Information disclosure / tampering across restaurants (API1) | `Caller.restaurantId` from the database; repository methods take `RestaurantId`; RLS with `SET LOCAL app.restaurant_id` | V8 Authorization | FR-042, NFR-SEC-02 |
 | Staff routes | Elevation of privilege: kitchen edits the menu; manager edits staff of another restaurant (API5) | Role checks in services per the matrix; tests per role | V8 Authorization | FR-010, FR-041 |
-| Staff and admin tokens | Spoofing with forged, expired or foreign tokens (API2) | JWKS validation of signature, `iss`, `aud`, `exp`; asymmetric algorithms only; admin needs an MFA claim | V9, V10 OAuth and OIDC, V6 Authentication | FR-010, NFR-SEC-04 |
-| Admin routes | Elevation of privilege; brute force | Separate route group; MFA; audit of every action; IP allow-list optional | V8, V6, V16 Security Logging | FR-040, NFR-SEC-03 |
+| Staff and admin tokens | Spoofing with forged, expired or foreign tokens (API2) | ES256 only, signature against the staff key set, `iss`, `aud` (`staff`/`admin`), `exp`; admin routes need `otp` in `amr`; staff keys separate from guest keys | V9 Self-contained Tokens, V6 Authentication | FR-010, NFR-SEC-04 |
+| Sign-in, TOTP step | Credential stuffing and password guessing (API2); account enumeration | Per-account lock in PostgreSQL (10 failures / 15 min); per-IP limits in Redis and WAF; common-password list; same 401 and dummy hash for unknown emails; audit | V6 Authentication | FR-010, NFR-SEC-04 |
+| Stored credentials | Information disclosure: a database leak exposes passwords or TOTP secrets | Argon2id (19 MiB, t=2); TOTP secrets AES-256-GCM encrypted with a key outside the database; refresh and link tokens stored as SHA-256 hashes | V6, V11 Cryptography | NFR-SEC-01 |
+| Refresh tokens | Session theft and replay | `HttpOnly; Secure; SameSite=Strict` cookie scoped to `/v1/auth`; rotation on every use; reuse revokes the family; 12 h lifetime; revoked on sign-out, password or role change and deactivation | V7 Session Management | FR-010 |
+| Invitation and reset links | A leaked link lets someone else take the account | 256-bit single-use token, hashed at rest; 72 h (invite) / 24 h (reset); token in the URL fragment; a new link voids the old; audit | V6 Authentication | FR-040, FR-041 |
+| Admin routes | Elevation of privilege; brute force | Separate route group; TOTP at every sign-in; audit of every action; IP allow-list optional | V8, V6, V16 Security Logging | FR-040, NFR-SEC-03 |
 | Pub/sub channels | Information disclosure: subscribing to another restaurant's channel | Channel names derived on the server; subscribe-only tokens per channel; payloads carry IDs and versions only, no personal data | V8, V14 Data Protection | FR-005, FR-011, NFR-PRIV-01 |
 | Internal job routes | Spoofing: anyone calling `/internal/jobs/*` | Cron secret, compared in constant time; jobs idempotent and locked | V13 Configuration, V11 Cryptography | NFR-SEC-01 |
 | Menu image upload | Malicious file, oversized upload (API4) | Size limit; magic-byte check; re-encode/resize; generated names; served from the storage/CDN domain, never the API domain | V5 File Handling | FR-022 |
 | All routes | Denial of service, resource consumption (API4) | WAF rate rules; app rate limits per session, staff and restaurant; body size limits; page-size caps; query timeouts | V4 API and Web Service, V2 | NFR-SCAL-02, NFR-SEC-04 |
 | All routes | Misconfiguration (API8): debug mode, stack traces, CORS `*` | No development mode in production; StatusPages hides internals; CORS allow-list; security headers; DAST in Phase 5 | V13 Configuration, V3 Web Frontend Security | NFR-SEC-01 |
 | Endpoint inventory (API9) | Undocumented or forgotten routes | Contract is the inventory; route-listing test vs contract; `/internal` excluded from the edge for anything except Cron | V4 | NFR-COMPAT-01 |
-| Third-party services (API10) | Unsafe consumption: pub/sub, IdP, storage responses | Timeouts; validated, size-limited responses; errors mapped | V4, V15 | NFR-REL-02 |
+| Third-party services (API10) | Unsafe consumption: pub/sub and storage responses | Timeouts; validated, size-limited responses; errors mapped | V4, V15 | NFR-REL-02 |
 | Database | Tampering / repudiation: altered bills or audit | App user has no DDL; no UPDATE/DELETE on `audit_events`; closed bills immutable; hash-chained audit | V16 Security Logging, V14 | NFR-SEC-03, FR-013 |
 | Secrets and CI/CD | Leaked credentials; malicious dependency | Sensitive env vars; secret scanning in CI; dependency and image/bundle scanning; protected `main`; production promotion only from CI; SBOM | V13, V15 | NFR-SEC-01 |
 | Personal data | Over-collection; data kept too long; data outside the agreed region | Data inventory; retention jobs; logs without PII; regions per TBD-10 | V14 Data Protection | NFR-PRIV-01/02 |
@@ -393,5 +412,5 @@ Full detail in [test-plan.md](test-plan.md).
 | S-1 Ktor on Vercel (`spikes/s1-vercel/`) | On the container runtime, measure cold start p50/p99 (plain and with the AOT cache), warm latency, concurrency per instance, maximum duration, SSE streaming, CPU and memory, proxy headers, and SIGTERM timing; check Rolling Releases and WAF availability | Warm p95 ≤ 50 ms for a trivial DB-free route; cold start small enough that p99 targets hold at the expected cold-start rate | ADR-0002 |
 | S-2 PostgreSQL through the pooler | pgjdbc + Hikari via transaction pooling (`prepareThreshold=0`), `SET LOCAL` RLS, advisory xact locks, Flyway from CI, latency from `sin1` | Order-placement transaction p95 ≤ 40 ms from a Vercel function | ADR-0004, ADR-0005 |
 | S-3 Live updates | Provider choice; end-to-end delay with 1,000–5,000 simulated subscribers; token scoping per channel; cost at 17,500 and 52,500 connections | p95 ≤ 1 s publish → receive; per-channel isolation verified | ADR-0003 |
-| S-4 Identity provider | After TBD-1: claims, JWKS rotation, MFA claim, invitation flow | Valid, expired, foreign-audience and non-MFA tokens behave as specified | §7 |
+| S-4 Built-in sign-in (`spikes/s4-auth/`) | Argon2id time and memory at the §7 parameters on a Vercel function in `sin1` (cold and warm, 1 and 4 at once); library choice for Argon2id, JWT and TOTP; token checks | Warm sign-in p95 ≤ 500 ms; valid, expired, forged, wrong-algorithm, wrong-audience tokens and an admin token without `otp` behave as specified | §7, ADR-0011 |
 | S-5 Report query | `daily_sales` aggregation and a 31-day report on ≈ 1 year of synthetic data for one large restaurant | NFR-PERF-04 met | §9 |

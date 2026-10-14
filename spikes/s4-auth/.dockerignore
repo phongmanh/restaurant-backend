@@ -1,0 +1,10 @@
+.env
+.env.*
+build/
+.gradle/
+.kotlin/
+.idea/
+.vercel/
+scripts/
+results/
+*.md

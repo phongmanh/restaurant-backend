@@ -58,4 +58,4 @@ Staff and platform admins sign in with an email and password stored in our own d
 ## Decision
 | Date | Decision (Approved / Rejected / Deferred) | By | Notes |
 |---|---|---|---|
-| 2026-10-14 | Approved | Manh Nguyen (product owner) | Applied the same day: requirements v1.1, ADR-0011 Accepted, RTM, STATUS. Still to do before G2: architecture.md, ADR-0006/0008 notes, test-plan.md, then S-4 |
+| 2026-10-14 | Approved | Manh Nguyen (product owner) | Applied the same day: requirements v1.1, ADR-0011 Accepted, RTM, STATUS. Architecture v0.2, ADR-0006/0008 notes and test plan v0.4 followed the same day; S-4 built, waiting for the Vercel deploy |
