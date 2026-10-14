@@ -3,6 +3,7 @@
 | Version | Date | Status | Inputs |
 |---|---|---|---|
 | 0.1 | 2026-10-14 | Draft for G2. The pub/sub line is a placeholder until S-3 | Architecture §9 capacity model, S-1, S-2, S-4 results, vendor price pages checked 2026-10-14 |
+| 0.2 | 2026-10-14 | S-3 ran: the Ably line is confirmed on Ably, prices rechecked, unchanged; no figure changes. For the owner's review | S-3 results (`spikes/s3-pubsub/README.md`), Ably pricing and limits pages checked 2026-10-14 |
 
 All prices are USD per month, list price, before tax. This is a paper estimate: it answers "what would a real launch cost?" for the G2 capacity model. The project itself stays on free plans (decision 2026-10-14), so nothing here means buying a plan.
 
@@ -13,7 +14,7 @@ All prices are USD per month, list price, before tax. This is a paper estimate: 
 | Vercel Pro (functions, CDN, firewall) | 437 – 562 | 1,278 – 1,652 |
 | Neon Launch (PostgreSQL) | 101 – 179 | 255 – 528 |
 | Upstash Redis (rate limits) | 10 | 10 |
-| Ably (pub/sub), **placeholder until S-3** | ≈ 970 | ≈ 2,100 + Enterprise base (quote) |
+| Ably Pro (pub/sub), confirmed by S-3 | ≈ 970 | ≈ 2,100 + Enterprise base (quote) |
 | Grafana Cloud Pro (observability, TBD-12) | 19 | 42 |
 | Other (off-site backup copy, domain) | 3 | 3 |
 | **Total without menu images** | **≈ 1,540 – 1,740** | **≈ 3,700 – 4,350** |
@@ -24,7 +25,7 @@ All prices are USD per month, list price, before tax. This is a paper estimate: 
 The ranges come from two things not yet measured: how long Vercel keeps instances alive (memory billing) and whether the database runs at a fixed size or autoscales.
 
 What drives the bill, largest first:
-1. **Pub/sub (≈ 55–60%).** 17,500 concurrent connections at launch rule out Ably's Standard plan (10k), so the Pro base fee ($399) applies, plus connection minutes and messages. At 3× (52,500) it needs Enterprise pricing. S-3 replaces this placeholder.
+1. **Pub/sub (≈ 55–60%).** 17,500 concurrent connections at launch rule out Ably's Standard plan (10k), so the Pro base fee ($399) applies, plus connection minutes and messages. At 3× (52,500) it needs Enterprise pricing. S-3 kept Ably (delay p95 ≈ 50 ms, isolation verified) and rechecked these prices on 2026-10-14.
 2. **Request count at the CDN.** Vercel bills every request three times: as a CDN request ($2.60/M in `sin1`), as an invocation ($0.60/M) and as origin transfer. The event catch-up endpoint (75 req/s) is the largest single group.
 3. **Menu images**, if FR-022 is a Must. ≈ 90 M image requests and ≈ 4.5 TB a month at launch.
 4. **The database**, which is cheap next to these: Neon bills compute by the hour, and the data is small.
@@ -92,7 +93,9 @@ A daily `pg_dump` off-site (architecture §6) leaves Neon as egress. A full 10 G
 ### Upstash Redis
 Fixed 250 MB plan: $10. Commands aren't billed on fixed plans (limit 10,000 a second). Pay-as-you-go would cost ≈ $150 at ≈ 76 M commands. The price page doesn't list regions: confirm Singapore in the console.
 
-### Ably, placeholder until S-3
+### Ably Pro, confirmed by S-3
+S-3 measured delay and isolation on Ably and found Pro's limits sufficient at launch: 50k connections, 10k messages/s, 1,447 REST requests/s against ≈ 75 publish requests/s at peak. The prices below were rechecked on 2026-10-14 and haven't changed.
+
 | Item | Formula | $/month |
 |---|---|---|
 | Pro base (up to 50k connections) | | 399 |
@@ -117,7 +120,7 @@ $19 platform fee covers 10k metric series, 50 GB of logs and 50 GB of traces. La
 ## 6. What changes the estimate
 | When | Update |
 |---|---|
-| S-3 runs | Replace the Ably lines with the chosen provider's price at 17,500 and 52,500 connections |
+| S-3 runs | Done 2026-10-14: Ably kept, prices unchanged. At 3×, ask Ably for an Enterprise quote |
 | TBD-5 is decided | Keep or drop the menu-image line |
 | TBD-12 is decided | Replace the Grafana line |
 | TBD-10 is decided | Regions may change; prices are regional at Vercel |

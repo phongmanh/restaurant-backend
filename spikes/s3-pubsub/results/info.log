@@ -1,0 +1,7 @@
+
+#### `info` (2026-10-14T16:43:53.246Z)
+- ably-js 2.29.0, client time 2026-10-14T16:43:53.238Z
+- REST round trip (`time()`, n 10): n 10, p50 73 · p95 131 · p99 131 · max 131 ms
+- Realtime connect incl. token (n 5): n 5, p50 164 · p95 233 · p99 233 · max 233 ms
+- Endpoint: host main.realtime.ably.net, serverId frontdoor.1404.ap-southeast-1-A.i-01384ab85c00b4f83.a2drD1TogAF4ir
+

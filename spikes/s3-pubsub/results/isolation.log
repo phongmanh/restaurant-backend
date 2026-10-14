@@ -1,0 +1,24 @@
+23:44:01.138 Ably: Channel state for channel "session.mv8cakpp-b": failed; reason: [_ErrorInfo: Channel denied access based on given capability; channelId = session.mv8cakpp-b; statusCode=401; code=40160; see https://help.ably.io/error/40160 ]
+23:44:01.174 Ably: Channel state for channel "restaurant.mv8cakpp.staff": failed; reason: [_ErrorInfo: Channel denied access based on given capability; channelId = restaurant.mv8cakpp.staff; statusCode=401; code=40160; see https://help.ably.io/error/40160 ]
+23:44:01.206 Ably: Protocol.onNack(): serial = 0; count = 1; err = [_ErrorInfo: Unable to publish a message due to lacking the required 'publish' capability; channelId = session.mv8cakpp-a; statusCode=401; code=40160; see https://help.ably.io/error/40160 ]
+23:44:01.245 Ably: Protocol.onNack(): serial = 1; count = 1; err = [_ErrorInfo: Unable to enter, update or leave presence due to lacking the required 'presence' capability; channelId = session.mv8cakpp-a; statusCode=401; code=40160; see https://help.ably.io/error/40160 ]
+23:44:01.295 Ably: PaginatedResource.handlePage(): Unexpected error getting resource: err = [_ErrorInfo: action not permitted, app = EOG_LQ; statusCode=401; code=40160; see https://help.ably.io/error/40160 ]
+23:44:01.426 Ably: Channel state for channel "session.mv8cakpp-b": failed; reason: [_ErrorInfo: Channel denied access based on given capability; channelId = session.mv8cakpp-b; statusCode=401; code=40160; see https://help.ably.io/error/40160 ]
+23:44:01.471 Ably: Auth(): Warning: library initialized with a token literal without any way to renew the token when it expires (no authUrl, authCallback, or key). See https://help.ably.io/error/40171 for help
+23:44:01.581 Ably: Auth(): library initialized with a token literal without any way to renew the token when it expires (no authUrl, authCallback, or key). See https://help.ably.io/error/40171 for help
+23:44:01.582 Ably: Connection state: failed; reason: [_ErrorInfo: Need a new token, but authOptions does not include any way to request one (no authUrl, authCallback, or key); statusCode=403; code=40171; remediation=Initialise the client with one of ClientOptions.{ key, authUrl, authCallback } so the SDK can refresh tokens.]
+23:44:01.582 Ably: Transport.onProtocolMessage(): Ably requested re-authentication, but unable to obtain a new token: [_ErrorInfo: Need a new token, but authOptions does not include any way to request one (no authUrl, authCallback, or key); statusCode=403; code=40171; remediation=Initialise the client with one of ClientOptions.{ key, authUrl, authCallback } so the SDK can refresh tokens.]
+
+#### `isolation` (2026-10-14T16:44:41.594Z)
+| Check | Result | Detail |
+|---|---|---|
+| Subscribe to its own channel | pass | attached and received |
+| Attach another session's channel | pass | refused: 40160 Channel denied access based on given capability; channelId = session.mv8cakpp-b |
+| Attach the restaurant's staff channel | pass | refused: 40160 Channel denied access based on given capability; channelId = restaurant.mv8cakpp |
+| Publish on its own channel | pass | refused: 40160 Unable to publish a message due to lacking the required 'publish' capability; ch |
+| Enter presence on its own channel | pass | refused: 40160 Unable to enter, update or leave presence due to lacking the required 'presence' |
+| Read its channel's history | pass | refused: 40160 action not permitted, app = EOG_LQ |
+| List channels (REST `/channels`) | pass | refused: 40160 action not permitted, app = EOG_LQ |
+| Ask for another channel on re-auth, then attach it | pass | refused: 40160 Channel denied access based on given capability; channelId = session.mv8cakpp-b |
+| Token expires (ttl 20 s, checked at 40 s, no renewal) | pass | state failed, 40171 Need a new token, but authOptions does not include any way t |
+

@@ -72,7 +72,7 @@ The ktor-sdlc default stack applies, except for:
 |---|---|---|
 | Module layout | One Gradle module, packages by feature | ADR-0001 |
 | Deployment platform | Vercel container runtime (an OCI image run as a Function, as in `ktor-sample`), region `sin1`; cold start and limits measured by spike S-1 | ADR-0002 (Accepted with conditions) |
-| Live updates | Managed pub/sub for notifications + PostgreSQL event log for catch-up | ADR-0003 (Proposed) |
+| Live updates | Managed pub/sub (Ably) for notifications + PostgreSQL event log for catch-up | ADR-0003 (Accepted 2026-10-15, S-3) |
 | Database hosting | Neon PostgreSQL in Singapore (AWS `ap-southeast-1`) with its transaction-mode pooler; S-2 met its exit criterion; Hikari pool of up to 10 per instance (2 s wait, 5 s statement timeout); `prepareThreshold=0` | ADR-0004 |
 | Tenant isolation | `restaurant_id` checks in services + forced PostgreSQL RLS via `set_config(…, true)` (`SET LOCAL` with a bind parameter); missing tenant gives 0 rows; verified in S-2 | ADR-0005 |
 | Guest authentication | Service-issued QR token and table-session token (ES256) | ADR-0006 |
@@ -263,9 +263,9 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
   - Updated in the transaction that closes a bill (FR-013): one upsert per table, rows in key order so concurrent closes queue instead of deadlocking; ≈ +2 ms per close.
   - Rebuilt every night for each restaurant's previous day (delete the day, insert it from the raw rows; Vercel Cron, ADR-0002). Idempotent, ≈ 50–60 ms per restaurant-day; repairs any missed update.
   - A bill counts on the restaurant's local day on which it was closed (ASSUMPTION-11).
-- **Pub/sub:** ≈ 17,500 concurrent connections and ≈ 300 messages/s at launch, ≈ 52,500 at 3×. The provider and plan are chosen in S-3.
+- **Pub/sub:** ≈ 17,500 concurrent connections and ≈ 300 messages/s at launch, ≈ 52,500 at 3×. S-3 (2026-10-14) measured Ably: publish → receive p95 ≈ 50 ms, per-channel isolation verified. Ably Pro fits launch (50k connections, 1,447 REST requests/s against ≈ 75 publishes/s at peak); 3× needs Enterprise.
 - **Headroom:** the load test must pass at 2× peak (≈ 600 req/s) without breaching NFR-PERF.
-- **Cost estimate:** TBD-11, draft in [cost-estimate.md](cost-estimate.md): ≈ $1,540–1,740 a month at launch without menu images (≈ $3–3.50 per restaurant), ≈ $3,700–4,350 at 3×. The pub/sub figure is a placeholder until S-3. The cost drivers, largest first:
+- **Cost estimate:** TBD-11, draft in [cost-estimate.md](cost-estimate.md): ≈ $1,540–1,740 a month at launch without menu images (≈ $3–3.50 per restaurant), ≈ $3,700–4,350 at 3×. S-3 confirmed the pub/sub figure (Ably Pro). The cost drivers, largest first:
   - pub/sub connections and messages (≈ 55–60%);
   - Vercel per-request charges: CDN requests, invocations, origin transfer;
   - menu images, if FR-022 is a Must (TBD-5);

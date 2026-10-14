@@ -2,7 +2,7 @@
 
 **Throwaway.** This code answers the S-3 questions for [ADR-0003](../../docs/sdlc/restaurant-ordering/adr/0003-live-updates.md) (live updates through managed pub/sub, with a PostgreSQL event log for catch-up), and is then deleted.
 
-Status: **deferred by the owner, 2026-10-14.** The spike is ready to run: the script compiles and refuses to start without a key, and nothing has run against Ably yet. To resume, do owner step 1.
+Status: **closed 2026-10-15 by the owner** (run 2026-10-14, exit criterion met). ADR-0003 accepted with Ably; R-13 accepted as a free-plan residual risk.
 
 ## What ADR-0003 assumes, and S-3 must prove
 - A managed pub/sub service holds the long-lived connections, so the Ktor functions on Vercel never do.
@@ -67,13 +67,22 @@ node --env-file=.env.spike scripts/measure.mjs idle --minutes 10
 About 110,000 Ably messages in total, under 2 % of the free month (a realistic event costs 8: 2 publishes and 6 deliveries). Run `delay` and `idle` in the background, and read only the Markdown block each one prints at the end.
 
 ## Results
-Not run yet.
+Run 2026-10-14 from the laptop in Vietnam against Ably's free plan (ably-js 2.29.0). Raw output is in `results/`.
 
 | Question | Result | Meets criterion? |
 |---|---|---|
-| Q1 delay, realistic | | |
-| Q2 delay, wide | | |
-| Q3 isolation | | |
-| Q4 idle | | |
-| Q5 cost and region | | |
-| Q6 publish call | | |
+| Q1 delay, realistic | Publish → receive p95 **47 ms** at 50 subscribers, **47 ms** at 100, **49 ms** at 190 (p99 86–119 ms, max 421 ms); 100 % within 1 s. Rerun at 190 after the accounting fix: p95 42 ms, **0 of 18,646 deliveries lost**, 0 duplicates | **Yes** (target p95 ≤ 1 s). The curve is flat from 50 to 190, which supports extrapolating to 1k–5k; not measured above 190 (residual risk R-13) |
+| Q2 delay, wide | 190 subscribers on one channel: p95 **97 ms**, p99 119 ms, 22,800 of 22,800 delivered | Yes |
+| Q3 isolation | 9 of 9 pass. A subscribe-only token for session A is refused (40160) on another session's channel, on the staff channel, for publish, presence, history and channel listing, and when it asks for another channel on re-auth. A token without a renewal path stops working when it expires | **Yes** |
+| Q4 idle | Connected after 10 min with no traffic, 0 state changes; the next message arrived in 141 ms. Ably's own heartbeats survive the network's ~40 s idle cut. One subscriber in the 190 rerun dropped once (80003) and resumed without losing a message | Yes |
+| Q5 cost and region | Endpoint `ap-southeast-1` (Singapore, next to `sin1`); REST round trip from the laptop p50 73 ms; connect + token + attach p50 ≈ 220 ms. Prices checked again 2026-10-14, unchanged: Pro $399 + $2.50/M messages + $1/M connection-minutes + $1/M channel-minutes, 50k connections. Launch (17,500) ≈ **$970/month** on Pro; 3× (52,500) is over Pro's 50k, so Enterprise (quote) or fewer connections. Details in cost-estimate.md | Yes (priced) |
+| Q6 publish call | REST publish p50 35 ms, p95 43–50 ms, p99 75–138 ms from the laptop | Informational: ≈ 45 ms added to a state-changing request if it publishes inline (see finding 2) |
+
+**Findings for the design**
+1. **The first run's "lost" deliveries were refused publishes, not losses.** The free plan allows **50 REST requests/s per account**. The realistic runs sent 60 (30 events × 2 channels), so Ably refused ≈ 14 % of them with 42918 (HTTP 429), as its limits page describes. The first script counted those as lost deliveries. After counting only accepted publishes, nothing was lost. Paid plans allow 362/s (Standard) and 1,447/s (Pro). At the launch peak (≈ 300 messages/s, ≈ 37 events/s at 8 messages each) the app makes ≈ 75 publish requests/s, and ≈ 225 at 3×, so Pro has headroom. Ably's batch publish (one request for both channels of an event) would halve that.
+2. **Publish failures must not fail the request.** ADR-0003's outbox already covers a refused publish: the row stays, and the sweep retries. Phase 3 should also retry 42918 once or twice with a short backoff in the request, so a brief burst doesn't wait for the next sweep, and should publish after the response is sent, or at least with a tight timeout, so the ≈ 45 ms publish call doesn't add to the request's latency.
+3. **Delay doesn't depend on subscriber count in this range.** p95 47 → 47 → 49 ms from 50 to 190. The only sizeable cost is fan-out on one channel (97 ms at 190 on one channel), which production avoids: a channel has 2 (session) or 4–5 (staff) subscribers.
+
+**Not measured (free plan):** delay at 1,000–5,000 subscribers and at 17,500 connections; behaviour at Pro's rate limits. These are residual risk R-13, to be closed by a load test on a paid plan before launch.
+
+**Owner step 2 is still open:** delete the Ably app `restaurant-s3-spike`, or revoke its key, once S-3 is closed.

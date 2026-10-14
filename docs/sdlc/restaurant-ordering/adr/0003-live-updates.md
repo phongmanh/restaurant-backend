@@ -2,7 +2,7 @@
 
 | Status | Date | Deciders | Requirements |
 |---|---|---|---|
-| Proposed (provider chosen by spike S-3) | 2026-10-13 | Manh Nguyen (tech lead) | FR-005, FR-008, FR-011, NFR-PERF-03, NFR-REL-03, NFR-SCAL-01, NFR-PRIV-01 |
+| Accepted (S-3 met its exit criterion on Ably); provider Ably, Pro plan at launch | 2026-10-15 (proposed 2026-10-13) | Manh Nguyen (product owner, tech lead) | FR-005, FR-008, FR-011, NFR-PERF-03, NFR-REL-03, NFR-SCAL-01, NFR-PRIV-01 |
 
 ## Context
 About 17,500 clients (52,500 after 3× growth) must see order changes within 2 s at p95, without missing any. Vercel functions can't hold that many long-lived WebSocket/SSE connections (ADR-0002), and a notification transport alone can't guarantee "no gaps".
@@ -26,9 +26,15 @@ Option 1:
 - **Tokens.** The API mints subscribe-only tokens for exactly one channel.
 - **Fallback.** If pub/sub is unavailable, clients poll the catch-up endpoint (interval set in Phase 3).
 
-The provider is chosen in S-3 on delay, isolation, cost at 17,500 and 52,500 connections, and region.
+**Provider: Ably**, chosen through S-3 (2026-10-14, `spikes/s3-pubsub/README.md`):
+- Delay: publish → receive p95 47–49 ms from 50 to 190 subscribers, flat (target ≤ 1 s); 0 of 18,646 deliveries of accepted publishes lost.
+- Isolation: a subscribe-only token for one channel was refused on every other channel and action (9/9).
+- Region: Ably's Singapore endpoint (`ap-southeast-1`), next to `sin1`. Notifications carry no personal data, so TBD-10 affects it less than the database, but the region is still reviewed with it.
+- Cost: Pro ($399 + usage, 50k connections, 1,447 REST requests/s) ≈ $970/month at launch; 3× (52,500 connections) needs Enterprise (cost-estimate.md).
+- Not measured: more than 190 subscribers (free plan). Accepted as residual risk R-13, closed by a load test on a paid plan before launch.
 
 ## Consequences
 - Positive: meets NFR-REL-03 independent of the transport; the vendor can be swapped behind the `RealtimePublisher` port; no personal data leaves for the vendor.
 - Negative: one extra round trip per change (notification → fetch); a per-restaurant counter row serialises event writes per restaurant (≈ 1–2 writes/s per restaurant at peak, acceptable).
-- Follow-ups: S-3; Phase 3 designs the catch-up endpoint, page size and polling interval; purge events after 7 days.
+- Follow-ups: Phase 3 designs the catch-up endpoint, page size and polling interval; purge events after 7 days.
+- Follow-ups from S-3 (Phase 3): a refused publish (42918, rate limit) never fails the request; the request retries it once or twice with a short backoff and otherwise leaves it to the sweep; publishing happens after the response is sent or under a tight timeout, so the ≈ 45 ms publish call isn't added to the request; one batch publish per event covers both channels.

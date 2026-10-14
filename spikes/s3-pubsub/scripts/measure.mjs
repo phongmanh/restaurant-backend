@@ -117,17 +117,18 @@ async function delay() {
   const publishTimes = [];
   const publishErrors = [];
   const pending = [];
-  let seq = 0;
+  let seq = 0, attempted = 0;
   const start = performance.now();
   const interval = 1000 / rate;
   while (performance.now() - start < seconds * 1000) {
     const event = channels.events[seq % channels.events.length];
     const s = seq++;
     for (const ch of event) {
-      (published.get(ch) ?? published.set(ch, []).get(ch)).push(s);
+      attempted++;
       const t0 = performance.now();
+      // Only an accepted publish is owed to the subscribers; a rejected one is counted apart.
       pending.push(restClient.channels.get(ch).publish("evt", { seq: s, t0 })
-        .then(() => publishTimes.push(performance.now() - t0))
+        .then(() => { publishTimes.push(performance.now() - t0); (published.get(ch) ?? published.set(ch, []).get(ch)).push(s); })
         .catch((e) => publishErrors.push(`${e.code ?? ""} ${e.message?.slice(0, 80)}`)));
     }
     const next = start + seq * interval;
@@ -148,10 +149,10 @@ async function delay() {
   for (const rt of clients) rt.close();
   const within1s = delays.filter((d) => d <= 1000).length;
   print(`delay --layout ${layout} --subs ${subs} --rate ${rate} --seconds ${seconds}`, [
-    `- ${clients.length} subscribers on ${channels.members.size} channels, ${seq} events, ${[...published.values()].reduce((n, a) => n + a.length, 0)} publishes; ≈ ${perSecond} Ably messages/s`,
+    `- ${clients.length} subscribers on ${channels.members.size} channels, ${seq} events, ${attempted} publishes attempted, ${[...published.values()].reduce((n, a) => n + a.length, 0)} accepted; ≈ ${perSecond} Ably messages/s`,
     `- **Publish → receive: ${summary(delays)}**; ${(100 * within1s / Math.max(1, delays.length)).toFixed(2)} % within 1 s`,
-    `- Deliveries: ${delays.length} of ${expected} expected, **${lost} lost**, ${dups} duplicates`,
-    `- REST publish call (the time the app's request would spend publishing): ${summary(publishTimes)}; ${publishErrors.length} errors${publishErrors.length ? ` (first: ${publishErrors[0]})` : ""}`,
+    `- Deliveries of accepted publishes: ${delays.length} of ${expected} expected, **${lost} lost**, ${dups} duplicates`,
+    `- REST publish call (the time the app's request would spend publishing): ${summary(publishTimes)}; ${publishErrors.length} rejected${publishErrors.length ? ` (${countBy(publishErrors)})` : ""}`,
     `- Connect + attach per subscriber: ${summary(connectTimes)}`,
     `- Connection drops during the run: ${stateChanges.length}${stateChanges.length ? ` (${stateChanges.slice(0, 5).join("; ")})` : ""}`,
   ]);
@@ -346,4 +347,10 @@ function parseOptions(args) {
     if (v == null || v.startsWith("--")) o[k] = true; else { o[k] = v; i++; }
   }
   return o;
+}
+
+function countBy(list) {
+  const counts = new Map();
+  for (const x of list) counts.set(x, (counts.get(x) ?? 0) + 1);
+  return [...counts].map(([k, n]) => `${n}× ${k}`).join("; ");
 }

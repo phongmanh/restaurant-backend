@@ -12,10 +12,10 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 |---|---|
 | requirements.md | v1.1 (baselined at G1, changed by CR-002). Changing it needs a CR |
 | architecture.md | Draft for G2 |
-| adr/0001–0009, 0011 | Decisions; ADR-0002 (Vercel) is Accepted with conditions (paid-plan cold-start check before G5); 0003 is Proposed pending S-3; 0004 (Neon PostgreSQL) and 0008 (rate limiting: WAF + Upstash) are Accepted; 0010 is reserved by CR-001; 0011 (built-in staff sign-in) is Accepted too |
+| adr/0001–0009, 0011 | Decisions; ADR-0002 (Vercel) is Accepted with conditions (paid-plan cold-start check before G5); 0003 (live updates through Ably) is Accepted after S-3; 0004 (Neon PostgreSQL) and 0008 (rate limiting: WAF + Upstash) are Accepted; 0010 is reserved by CR-001; 0011 (built-in staff sign-in) is Accepted too |
 | cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts) is Approved |
 | rtm.md, test-plan.md | Traceability and test plan |
-| cost-estimate.md | Monthly cost (TBD-11); pub/sub line waits on S-3 |
+| cost-estimate.md | Monthly cost (TBD-11), v0.2 for the owner's review; S-3 confirmed the Ably line |
 
 ## Process rules
 - One phase at a time; gates are the owner's decision. Never mark a gate or a CR approved yourself.
