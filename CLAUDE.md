@@ -15,6 +15,7 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 | adr/0001–0009, 0011 | Decisions; ADR-0002 (Vercel), 0003, 0004 and 0008 are Proposed pending spikes; 0010 is reserved by CR-001; 0011 (built-in staff sign-in) is Accepted |
 | cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts) is Approved |
 | rtm.md, test-plan.md | Traceability and test plan |
+| cost-estimate.md | Monthly cost (TBD-11); pub/sub line waits on S-3 |
 
 ## Process rules
 - One phase at a time; gates are the owner's decision. Never mark a gate or a CR approved yourself.

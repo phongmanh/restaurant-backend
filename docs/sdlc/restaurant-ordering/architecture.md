@@ -257,11 +257,11 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
 - **Database size:** 2 vCPU / 8 GB with HA standby at launch (to validate with S-2 and the load test). 3× growth fits with a larger instance; no read replicas before measurements show a need.
 - **Pub/sub:** ≈ 17,500 concurrent connections and ≈ 300 messages/s at launch, ≈ 52,500 at 3×. The provider and plan are chosen in S-3.
 - **Headroom:** the load test must pass at 2× peak (≈ 600 req/s) without breaching NFR-PERF.
-- **Cost estimate:** TBD-11, after S-1 to S-3 and vendor quotes. The cost drivers are:
-  - Vercel function GB-hours and invocations;
-  - pub/sub connections and messages;
-  - database instance and storage;
-  - observability ingest.
+- **Cost estimate:** TBD-11, draft in [cost-estimate.md](cost-estimate.md): ≈ $1,540–1,740 a month at launch without menu images (≈ $3–3.50 per restaurant), ≈ $3,700–4,350 at 3×. The pub/sub figure is a placeholder until S-3. The cost drivers, largest first:
+  - pub/sub connections and messages (≈ 55–60%);
+  - Vercel per-request charges: CDN requests, invocations, origin transfer;
+  - menu images, if FR-022 is a Must (TBD-5);
+  - database compute and storage.
 
 ## 10. Reliability
 | Dependency | Timeout | Retries | Circuit breaker | If it fails |

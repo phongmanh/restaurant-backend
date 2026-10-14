@@ -30,6 +30,7 @@
 | 1–6 | RTM | rtm.md | Draft (design column added in Phase 2; FR/NFR rows baselined at G1) | 1.1 |
 | 2 | Architecture + threat model + capacity model | architecture.md | Draft (built-in sign-in per CR-002) | 0.2 |
 | 2+ | ADRs | adr/0001–0009, 0011 | 6 Accepted (0001, 0005, 0006, 0007, 0009, 0011); 4 Proposed pending spikes (0002, 0003, 0004, 0008); 0010 reserved by CR-001 | — |
+| 2 | Monthly cost estimate (TBD-11) | cost-estimate.md | Draft (pub/sub placeholder until S-3) | 0.1 |
 | 1–5 | Test plan + summary report | test-plan.md | Draft master plan (§1 and §5 approved at G1) | 0.4 |
 | 3 | Feature designs | design/<feature>.md | Not started | — |
 | 6 | Release checklist | release-checklist.md | Not started | — |
@@ -121,11 +122,11 @@ A TBD that blocks a Must requirement blocks the gate.
 | TBD-2 | TBD | Customer mobile platforms (Android, iOS, both); staff app as a store app? | No (G2) | Manh Nguyen | Open |
 | TBD-3 | TBD | Support window for old mobile app versions (proposed 12 months) | No (G2) | Manh Nguyen | Open |
 | TBD-4 | TBD | Retention periods (accounting records, audit, staff data) and erasure deadline | No (G2: needed for the data design) | Manh Nguyen + legal | Open |
-| TBD-5 | TBD | FR-022 menu images: Must or Should | No | Manh Nguyen | Open |
+| TBD-5 | TBD | FR-022 menu images: Must or Should | No | Manh Nguyen | Open. Cost input: ≈ $470/month at launch on Vercel Blob (cost-estimate.md §4) |
 | TBD-6 | TBD | VAT and service charge on the bill (FR-007) | No | Manh Nguyen | Resolved at G1: prices include VAT |
 | TBD-7 | TBD | Correcting a closed bill (FR-013) | No | Manh Nguyen | Open |
 | TBD-8 | TBD | FR-016 waiter confirmation in release 1? | No | Manh Nguyen | Open |
 | TBD-9 | TBD | Team, budget, target launch date | No | Manh Nguyen | Open |
 | TBD-10 | TBD | Data residency and legal basis per data type (legal review) | No for G1; **blocks G2** (platform regions) | Manh Nguyen + legal | Open |
-| TBD-11 | TBD | Monthly cost estimate (Vercel, database, pub/sub, Redis, observability) after S-1 to S-3 | Yes (G2 capacity model) | Manh Nguyen | Open |
+| TBD-11 | TBD | Monthly cost estimate (Vercel, database, pub/sub, Redis, observability) after S-1 to S-3 | Yes (G2 capacity model) | Manh Nguyen | Draft 2026-10-14 in [cost-estimate.md](cost-estimate.md), for the owner's review: ≈ $1,540–1,740/month at launch without menu images, ≈ $3,700–4,350 at 3×; pub/sub ≈ 55–60% of it, a placeholder until S-3. Menu images would add ≈ $470 (TBD-5). Today $0 on free plans. Closes when S-3 replaces the pub/sub line |
 | TBD-12 | TBD | Observability backend vendor (OTLP) and its region | No | Manh Nguyen | Open |
