@@ -2,7 +2,14 @@
 
 | Version | Status | Owner | Approvers |
 |---|---|---|---|
-| 1.0 | Approved (G1, 2026-10-13) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
+| 1.1 | Approved (G1 2026-10-13; CR-002 2026-10-14) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
+
+**Version history**
+
+| Version | Date | Change |
+|---|---|---|
+| 1.0 | 2026-10-13 | Baselined at G1 |
+| 1.1 | 2026-10-14 | [CR-002](cr/CR-002-built-in-staff-accounts.md): staff and admins sign in with accounts built into the service (email and password; TOTP for admins) instead of an external identity provider. Changed: §2 staff app and admin console, FR-010, FR-040, FR-041, §5 staff account, §6 identity-provider row removed, TBD-1 resolved |
 
 ## 1. Brief
 - **Problem:** In a busy restaurant, guests wait for a waiter to take their order and to bring the bill. Orders taken by hand get lost or misread on the way to the kitchen. Restaurant owners have no simple, shared view of what was ordered and sold. Small and mid-sized restaurants can't run their own ordering system, so they need one they can rent.
@@ -45,8 +52,8 @@ Each staff member belongs to exactly one restaurant in release 1 (ASSUMPTION-3).
 |---|---|---|---|---|---|
 | Customer mobile app (Android / iOS: TBD-2) | Manh Nguyen (team TBD) | Table-session token from scanning the QR (anonymous) | Part of the guest load in NFR-SCAL-01 | 1.0.0 at launch; old versions supported for TBD-3 (proposed 12 months) | Release notes; `Deprecation`/`Sunset` headers; forced-update minimum version |
 | Customer web app (browser) | Manh Nguyen | Table-session token (how the browser holds it is decided in Phase 2: cookie via BFF or bearer) | Part of the guest load in NFR-SCAL-01 | Always the latest deployed version | Deployed together with the API |
-| Staff app (web on tablets and phones) | Manh Nguyen | Staff access token from the identity provider (OIDC, TBD-1) | ≈ 3–6 open screens per restaurant during service | Latest; old versions supported for TBD-3 if it is also shipped as a store app | Release notes; deprecation headers |
-| Admin console | Manh Nguyen | Staff access token with the platform-admin role, MFA required | Low (< 1 req/s) | Latest | Internal |
+| Staff app (web on tablets and phones) | Manh Nguyen | Staff access token issued by the service after sign-in with email and password (CR-002) | ≈ 3–6 open screens per restaurant during service | Latest; old versions supported for TBD-3 if it is also shipped as a store app | Release notes; deprecation headers |
+| Admin console | Manh Nguyen | Staff access token with the platform-admin role; MFA (authenticator-app code, TOTP) required at sign-in | Low (< 1 req/s) | Latest | Internal |
 
 Peak sizing (ASSUMPTION-1, confirmed at G1): 500 restaurants × 25 tables × 60% occupied at dinner peak × 2 guest devices per table ≈ **15,000 concurrent guest devices**, plus ≈ 2,500 staff screens. Request traffic ≈ **300 req/s** at peak, not counting live-update connections.
 
@@ -68,7 +75,7 @@ Priorities are MoSCoW (M Must, S Should, C Could, W Won't this release). "Anothe
 ### 3.2 Staff and kitchen
 | ID | Story | Priority | Acceptance criteria (Given / When / Then) |
 |---|---|---|---|
-| FR-010 | As a staff member, I want to sign in with my own account and get only my role's permissions, so that the restaurant controls who does what | M | Given an active staff account with a role (manager, waiter or kitchen) in one restaurant, when they sign in through the identity provider (TBD-1), then their calls are authorised by role and restricted to their restaurant.<br>Unauthenticated, expired, wrong-audience or wrong-issuer token → 401.<br>A role calling an operation it lacks (e.g. kitchen editing the menu) → 403.<br>A deactivated staff account is refused on its next call, at the latest when its access token expires (≤ 15 min, ASSUMPTION-5).<br>Identity provider down → no new sign-ins; existing tokens keep working until they expire. |
+| FR-010 | As a staff member, I want to sign in with my own account and get only my role's permissions, so that the restaurant controls who does what | M | Given an active staff account with a role (manager, waiter or kitchen) in one restaurant, when they sign in with their email and password, then their calls are authorised by role and restricted to their restaurant.<br>Wrong password or unknown email → the same 401, with no hint which one was wrong.<br>Unauthenticated, expired, forged or wrong-audience token → 401.<br>A role calling an operation it lacks (e.g. kitchen editing the menu) → 403.<br>A deactivated staff account is refused on its next call, at the latest when its access token expires (≤ 15 min, ASSUMPTION-5). |
 | FR-011 | As kitchen or waiter staff, I want a live feed of my restaurant's orders, so that I can start preparing at once | M | Given a signed-in waiter, kitchen or manager, when a guest places, cancels or changes an order, then it appears in the feed within NFR-PERF-03, with the table number, items, quantities, notes and time.<br>The feed contains only the caller's restaurant.<br>After a disconnect, the feed resumes without missing or duplicating any order (NFR-REL-03).<br>The current open orders can always be read as a list (fallback), filtered by status and paginated. |
 | FR-012 | As kitchen or waiter staff, I want to move an order through its stages, so that everyone sees its progress | M | Given an order, when staff with the right role change its status, then only these transitions are allowed: `placed → accepted → preparing → ready → served`, `placed → rejected` (reason required) and `placed → cancelled` (FR-006, FR-032).<br>Any other transition → 409.<br>Concurrent edit: two staff updating the same order version → exactly one succeeds; the other gets 412 and must re-read.<br>Every change records who made it and when (audit, NFR-SEC-03), and is pushed to the guests (FR-005) and staff (FR-011).<br>An order of another restaurant → 404. |
 | FR-013 | As a waiter or manager, I want to close the table's session when the guests have paid at the counter, so that the bill is final and the table is free | M | Given an open session, when staff close it and record the payment method (cash, card or bank transfer, recorded manually) and the amount received, then the bill is final, the session is closed, guest session tokens stop working and the next QR scan opens a new session.<br>Orders not yet `served` or `cancelled` → 409 unless staff confirm closing anyway (they are recorded as `cancelled` with a reason).<br>Closing twice (retry) → same result.<br>A closed bill can't be changed. Corrections are a manager action that is audited (TBD-7). |
@@ -95,8 +102,8 @@ Priorities are MoSCoW (M Must, S Should, C Could, W Won't this release). "Anothe
 ### 3.5 Restaurants (tenants), staff and access
 | ID | Story | Priority | Acceptance criteria (Given / When / Then) |
 |---|---|---|---|
-| FR-040 | As a platform admin, I want to onboard a restaurant with its profile and first manager, so that a new customer can start using the service | M | Given a platform admin, when they create a restaurant (name, address, time zone, default Asia/Ho_Chi_Minh, currency VND) and invite its first manager by email, then the restaurant exists, empty and isolated from all others, and the manager can sign in.<br>Non-platform-admin → 403 (404 for the admin route group, decided in Phase 3). Retry with the same `Idempotency-Key` → no duplicate restaurant. |
-| FR-041 | As a manager, I want to invite, change the role of, and deactivate staff in my restaurant, so that I control access | M | Given a manager, when they invite staff by email with a role, then the person can sign in with that role in this restaurant only.<br>A manager can't change their own role or deactivate themselves if they are the last manager (409).<br>Waiter or kitchen role → 403. Staff of another restaurant → 404.<br>Every change is audited (NFR-SEC-03). |
+| FR-040 | As a platform admin, I want to onboard a restaurant with its profile and first manager, so that a new customer can start using the service | M | Given a platform admin, when they create a restaurant (name, address, time zone, default Asia/Ho_Chi_Minh, currency VND) and invite its first manager by email address, then the restaurant exists, empty and isolated from all others, the admin receives a one-time invitation link (valid 72 h) to pass on, and the manager can set a password through it and sign in.<br>Non-platform-admin → 403 (404 for the admin route group, decided in Phase 3). Retry with the same `Idempotency-Key` → no duplicate restaurant. |
+| FR-041 | As a manager, I want to invite, change the role of, and deactivate staff in my restaurant, so that I control access | M | Given a manager, when they invite staff by email address with a role, then the manager receives a one-time invitation link (valid 72 h) to pass on, and the person can set a password through it and sign in with that role in this restaurant only.<br>A manager can't change their own role or deactivate themselves if they are the last manager (409).<br>Waiter or kitchen role → 403. Staff of another restaurant → 404.<br>Every change is audited (NFR-SEC-03). |
 | FR-042 | As a restaurant, I want my data to be invisible to every other restaurant, so that I can trust the service | M | For every endpoint: a caller (staff or guest session) of restaurant A who uses an ID belonging to restaurant B gets 404, and nothing of B is changed. Verified by the authorisation-matrix tests (NFR-SEC-02). |
 | FR-043 | As a platform admin, I want to suspend and reactivate a restaurant, so that I can handle non-payment or abuse | S | A suspended restaurant: guests can't open sessions or order; staff can sign in and read reports only; no data is deleted. |
 | FR-044 | As a manager, I want to edit my restaurant's profile (name, address, time zone, opening hours, languages), so that guests and reports show the right details | M | Invalid time zone or values → 400. Concurrent edits → 412. Waiter or kitchen role → 403. |
@@ -143,7 +150,7 @@ Retention values are proposals (TBD-4) pending the legal review.
 
 | Data | Classification | Purpose | Stored where | Shared with | Retention | Legal basis |
 |---|---|---|---|---|---|---|
-| Staff account: name, email, phone (optional), role, restaurant, identity-provider subject | Personal | Sign-in, access control, audit | Service database; identity provider | Identity provider (processor) | While active + 30 days after deactivation, then anonymised (audit keeps the pseudonymous ID) | Contract with the restaurant / staff member's consent (TBD-10) |
+| Staff account: name, email, phone (optional), role, restaurant, password hash (Argon2id), TOTP secret for admins (encrypted), refresh-token hashes | Personal (credentials are secrets) | Sign-in, access control, audit | Service database | — | While active + 30 days after deactivation, then anonymised (audit keeps the pseudonymous ID) | Contract with the restaurant / staff member's consent (TBD-10) |
 | Restaurant profile: name, address, time zone, opening hours; owner contact name, email, phone | Internal; owner contact is personal | Operating the tenant, billing contact | Service database | — | While the tenant exists + 90 days | Contract |
 | Menu: categories, items, prices, options, translations, images | Public | Shown to guests | Database; images in object storage | Guests | While the tenant exists | Contract |
 | Tables and QR tokens | Internal (tokens are secrets) | Linking guests to a table | Database (store only a hash or a key ID of the signing secret, decided in Phase 2) | Printed on the table | While the table exists | Contract |
@@ -158,7 +165,6 @@ No guest names, phone numbers, emails, payment cards or locations are collected.
 ## 6. Integrations
 | System | Owner | Protocol and contract | Environments (sandbox?) | Limits and SLA | If it's down |
 |---|---|---|---|---|---|
-| Staff identity provider (TBD-1) | Provider | OIDC; JWKS for token validation; invitation emails for FR-040/FR-041 | Separate dev/staging tenant needed | Provider rate limits on sign-in and admin APIs (to record when chosen) | No new staff sign-ins or invitations; existing access tokens keep working until expiry; guest ordering is unaffected |
 | Vercel (hosting platform) | Vercel | Platform runtime; limits on execution time, concurrency and long-lived connections to confirm in Phase 2 (R-01) | Preview and production deployments | Vercel plan SLA (TBD) | Service down → NFR-AVAIL budget; guests order via staff |
 | Managed PostgreSQL (provider chosen in Phase 2) | Provider | PostgreSQL wire protocol | Per environment | Connection limits matter with serverless instances (pooling, Phase 2) | Service returns 503; no orders accepted; recovery per NFR-REL-01 |
 | Object storage for menu images (FR-022, provider in Phase 2) | Provider | HTTPS object API; images served from a CDN | Per environment | Upload size ≤ 5 MB | Menus show without images; uploads fail with 503 |
@@ -181,7 +187,7 @@ One `AT-` scenario per Must FR, in [test-plan.md](test-plan.md) §5.
 - ASSUMPTION-5: Staff access tokens live ≤ 15 min.
 - ASSUMPTION-6: Anyone holding a table's current QR code can join its open session (the code is the only proof of presence). R-02 covers abuse; FR-016 and QR rotation are the mitigations.
 - ASSUMPTION-7: No service charge on the bill in release 1. Adding one later is a CR.
-- TBD-1: Staff identity provider.
+- ~~TBD-1~~: Resolved by CR-002 (2026-10-14): built-in staff accounts, no external identity provider.
 - TBD-2: Customer mobile platforms (Android, iOS or both) and whether the staff app is also a store app.
 - TBD-3: Support window for old mobile app versions (proposed 12 months).
 - TBD-4: Retention periods (accounting records, audit log, staff data) and the erasure deadline. Legal review.
@@ -197,3 +203,4 @@ One `AT-` scenario per Must FR, in [test-plan.md](test-plan.md) §5.
 |---|---|---|---|
 | Product owner | Manh Nguyen | Approved | 2026-10-13 |
 | Tech lead | Manh Nguyen | Approved | 2026-10-13 |
+| Product owner (v1.1, CR-002) | Manh Nguyen | Approved | 2026-10-14 |

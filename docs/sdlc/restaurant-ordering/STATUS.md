@@ -26,10 +26,10 @@
 ## Deliverables
 | Phase | Deliverable | File | Status (Not started / Draft / In review / Approved) | Version |
 |---|---|---|---|---|
-| 1 | Requirements | requirements.md | Approved | 1.0 |
+| 1 | Requirements | requirements.md | Approved (v1.1 through CR-002) | 1.1 |
 | 1–6 | RTM | rtm.md | Draft (design column added in Phase 2; FR/NFR rows baselined at G1) | 1.1 |
 | 2 | Architecture + threat model + capacity model | architecture.md | Draft | 0.1 |
-| 2+ | ADRs | adr/0001–0009 | 5 Accepted (0001, 0005, 0006, 0007, 0009); 4 Proposed pending spikes (0002, 0003, 0004, 0008) | — |
+| 2+ | ADRs | adr/0001–0009, 0011 | 6 Accepted (0001, 0005, 0006, 0007, 0009, 0011); 4 Proposed pending spikes (0002, 0003, 0004, 0008); 0010 reserved by CR-001 | — |
 | 1–5 | Test plan + summary report | test-plan.md | Draft master plan (§1 and §5 approved at G1) | 0.3 |
 | 3 | Feature designs | design/<feature>.md | Not started | — |
 | 6 | Release checklist | release-checklist.md | Not started | — |
@@ -70,6 +70,9 @@ Decision is one of: Approved / Approved with conditions / Rejected / Waived.
 | 2026-10-13 | S-2 design: create the `app` role with SQL, not in the Neon console (console roles join `neon_superuser`, which has BYPASSRLS); RLS policies use `nullif(current_setting('app.restaurant_id', true), '')::uuid` so a missing tenant gives 0 rows; the tenant is set with `set_config(…, true)` (`SET LOCAL` with a bind parameter). To fold into ADR-0004/0005 when S-2 closes | `spikes/s2-postgres/README.md` |
 | 2026-10-13 | S-3 runs on Ably's free plan (200 connections) and extrapolates delay to 1k–5k subscribers rather than paying for a 10k plan. The gap is a residual risk, closed by the Phase 5 load test on a paid plan | `spikes/s3-pubsub/README.md` |
 | 2026-10-14 | S-3 deferred; the spike is built and waits in `spikes/s3-pubsub/`. It still blocks G2 | `spikes/s3-pubsub/README.md` |
+| 2026-10-14 | Learning project: every service stays on its free plan; no paid plans for now. Checks that need a paid plan (S-1 warm production instance, S-3 beyond 200 connections, Phase 5 load test) become residual risks, not to-dos | Owner |
+| 2026-10-14 | Staff and admins sign in with accounts built into the service (email, password, TOTP for admins), not an external identity provider. Raised CR-002 to change requirements v1.0 | [CR-002](cr/CR-002-built-in-staff-accounts.md), ADR-0011 |
+| 2026-10-14 | CR-002 approved: requirements v1.1, ADR-0011 Accepted | [CR-002](cr/CR-002-built-in-staff-accounts.md) |
 
 ## Risks
 | ID | Risk ("If …, then …") | Likelihood (H/M/L) | Impact (H/M/L) | Owner | Mitigation | Status |
@@ -83,11 +86,13 @@ Decision is one of: Approved / Approved with conditions / Rejected / Waived.
 | R-07 | If no operations owner and on-call are named before launch, then incidents at dinner peak go unhandled | M | H | Manh Nguyen | Name an ops owner before G5; runbooks per architecture §13 | Open |
 | R-08 | If the pub/sub vendor fails or gets expensive, then live updates degrade or costs rise | M | M | Manh Nguyen | Thin events; polling fallback; `RealtimePublisher` port (ADR-0003) | Open |
 | R-09 | If many serverless instances open connections at once, then the database saturates during scale-out | M | H | Manh Nguyen | Transaction pooler; pool 3 per instance; cold-burst load profile (ADR-0004) | Open |
+| R-10 | If our own sign-in code has a flaw (weak hashing, no brute-force limit, token mishandling), then staff or admin accounts can be taken over | M | H | Manh Nguyen | CR-002 design: Argon2id, vetted Argon2 and JWT libraries, rate limits (ADR-0008), rotating refresh tokens, admin TOTP; ASVS V6/V7 checklist in Phase 3; tests in the test plan | Open |
 
 ## Change requests
 | CR ID | Title | Status | Affected items | Decision date |
 |---|---|---|---|---|
 | [CR-001](cr/CR-001-backend-container-platform.md) | Run the backend on a container platform instead of Vercel Functions (S-1: cold starts 5–7 s) | Deferred: keep Vercel; reopen if cold starts on a paid plan break p99 | requirements.md v1.0 (constraints, §6), ADR-0002 → ADR-0010, ADR-0003/0004/0008/0009, architecture.md, test-plan.md, rtm.md | |
+| [CR-002](cr/CR-002-built-in-staff-accounts.md) | Staff sign in with accounts built into the service, not an external identity provider | Approved | requirements.md v1.0 (consumers, FR-010, FR-040, FR-041, data and integrations tables), ADR-0011, ADR-0006/0008, architecture.md, test-plan.md, rtm.md | 2026-10-14 |
 
 ## Open items
 A TBD that blocks a Must requirement blocks the gate.
@@ -103,13 +108,14 @@ A TBD that blocks a Must requirement blocks the gate.
 | ASSUMPTION-7 | ASSUMPTION | No service charge on the bill in release 1 | No | Manh Nguyen | Open |
 | ASSUMPTION-8 | ASSUMPTION | Quality goals ranked: isolation > order integrity > availability > live-update latency > operability/cost (architecture §1) | G2: confirm | Manh Nguyen | Open |
 | ASSUMPTION-9 | ASSUMPTION | Load mix per endpoint group and data volume (≈ 100k orders/day) in architecture §9 | No (calibrated by S-1 and the pilot) | Manh Nguyen | Open |
+| ASSUMPTION-10 | ASSUMPTION | About 10 staff accounts per restaurant: ≈ 5,000 staff MAU at 500 restaurants, ≈ 15,000 at 3× growth; fewer than 10 platform admins (sizes staff sign-in load, ADR-0011) | No | Manh Nguyen | Open |
 | Q-1 | Question | How was the earlier Ktor service deployed on Vercel? | No | Manh Nguyen | Resolved 2026-10-13: Vercel container runtime (`ktor-sample`); findings in ADR-0002 |
 | S-1 | Spike | Ktor on Vercel's container runtime: cold start (plain/AOT), warm latency, concurrency, duration, SSE, CPU/memory, SIGTERM, platform features | Yes (G2) | Manh Nguyen | Run 2026-10-13, results in `spikes/s1-vercel/README.md`. Warm p95 ≈ 49 ms at the edge (meets). Cold start 5–7 s (plain p50 6.4–6.8 s, AOT p50 5.4 s; ~4.7 s is the platform, so AOT/native can't fix it) and the next request often cold-starts a second instance: **fails the cold-start criterion on the free account**; CR-001 deferred, Vercel kept. Still to measure on a paid plan: whether the production instance stays warm, and how often scale-out cold-starts hit (load test). Max duration and SSE cut at 300 s on the free Hobby account used for the spike (Pro: 800 s, still < 15 min), so ADR-0003 pub/sub stands. SIGTERM grace 30 s. Production on a Pro account (commercial use; Rolling Releases, log drains). Open: WAF check (Q9) |
 | S-2 | Spike | PostgreSQL through the pooler from `sin1`: latency, `SET LOCAL` RLS, transaction advisory locks, Flyway from CI | Yes (G2) | Manh Nguyen | Run 2 2026-10-13 from `sin1` against Neon Singapore (PostgreSQL 18.6): **exit criterion met**, order transaction over the pooler p95 28.7 ms (31.7 ms at 10 concurrent, incl. connection wait); ping p95 3.8 ms; RLS 10/10 and 0 leaks over 25 instances; advisory locks exclusive; prepared statements work through Neon's pooler. Q6 met: CI applied V2 through Flyway, and `app` is denied DDL. Open: cold-start samples, and a pool-size decision for ADR-0004 (requests queue at 3 connections per instance) (`spikes/s2-postgres/README.md`) |
 | S-3 | Spike | Pub/sub provider: delay with 1k–5k subscribers, channel isolation, cost at 17.5k/52.5k connections | Yes (G2) | Manh Nguyen | **Deferred 2026-10-14** by the owner. Ready to run when resumed (`spikes/s3-pubsub/README.md`): Ably free plan, up to 190 subscribers, 1k–5k extrapolated (decision 2026-10-13); needs the owner's Ably API key in `.env.spike`. Still blocks G2, and TBD-11 waits on its cost figures |
-| S-4 | Spike | Identity provider claims, JWKS rotation, MFA claim (after TBD-1) | Yes (G2) | Manh Nguyen | Blocked by TBD-1 |
+| S-4 | Spike | Built-in sign-in (CR-002): Argon2id time and memory on a Vercel function in `sin1`; token cases (valid, expired, forged, wrong audience, admin without TOTP). Exit: sign-in p95 ≤ 500 ms warm, every case as specified | Yes (G2) | Manh Nguyen | Not started; unblocked |
 | S-5 | Spike | Report query on ≈ 1 year of synthetic data | No (can be accepted as a risk) | Manh Nguyen | Not started |
-| TBD-1 | TBD | Staff identity provider (OIDC) | No (G2: needed for the auth model) | Manh Nguyen | Open |
+| TBD-1 | TBD | Staff identity provider (OIDC) | No (G2: needed for the auth model) | Manh Nguyen | Resolved 2026-10-14 by [CR-002](cr/CR-002-built-in-staff-accounts.md): built-in staff accounts, no external IdP ([ADR-0011](adr/0011-staff-identity-provider.md)) |
 | TBD-2 | TBD | Customer mobile platforms (Android, iOS, both); staff app as a store app? | No (G2) | Manh Nguyen | Open |
 | TBD-3 | TBD | Support window for old mobile app versions (proposed 12 months) | No (G2) | Manh Nguyen | Open |
 | TBD-4 | TBD | Retention periods (accounting records, audit, staff data) and erasure deadline | No (G2: needed for the data design) | Manh Nguyen + legal | Open |

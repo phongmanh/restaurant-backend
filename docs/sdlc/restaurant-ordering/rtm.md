@@ -12,7 +12,7 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | FR-006 | Guest cancels a `placed` order | M | architecture.md §10 | `orders`; `OrderCancelled` | | AT-006 | | |
 | FR-007 | Running bill with price snapshot (VAT-inclusive prices) | M | architecture.md §5 | `order_lines`, `bills` | | AT-007 | | |
 | FR-008 | Call waiter / request bill | S | ADR-0003 | `waiter_calls`; `WaiterCalled` | | | | |
-| FR-010 | Staff sign-in and roles | M | architecture.md §7 | `staff_members` | | AT-010 | | |
+| FR-010 | Staff sign-in and roles | M | architecture.md §7, ADR-0011 | `staff_members` | | AT-010 | | |
 | FR-011 | Live order feed for staff | M | ADR-0003 | `domain_events`, `outbox` | | AT-011 | | |
 | FR-012 | Order state machine with optimistic concurrency | M | architecture.md §7, §10 | `orders`; `OrderStatusChanged` | | AT-012 | | |
 | FR-013 | Close session, record payment at the counter | M | architecture.md §7; ADR-0006 | `table_sessions`, `bills`; `TableSessionClosed` | | AT-013 | | |
@@ -27,8 +27,8 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | FR-030 | Manage tables | M | architecture.md §4, §7 | `dining_tables` | | AT-030 | | |
 | FR-031 | Generate and rotate table QR codes | M | architecture.md §7; ADR-0006 | `table_qr_keys`; `TableQrRotated` | | AT-031 | | |
 | FR-032 | Table overview; open, move, close sessions | M | architecture.md §7 | `table_sessions`; `TableSessionMoved` | | AT-032 | | |
-| FR-040 | Onboard a restaurant and its first manager | M | architecture.md §7 | `restaurants`, `staff_members` | | AT-040 | | |
-| FR-041 | Manage staff and roles | M | architecture.md §7 | `staff_members`, `audit_events` | | AT-041 | | |
+| FR-040 | Onboard a restaurant and its first manager | M | architecture.md §7, ADR-0011 | `restaurants`, `staff_members` | | AT-040 | | |
+| FR-041 | Manage staff and roles | M | architecture.md §7, ADR-0011 | `staff_members`, `audit_events` | | AT-041 | | |
 | FR-042 | Tenant isolation on every call | M | ADR-0005 | all tenant tables (RLS) | | AT-042 | | |
 | FR-043 | Suspend / reactivate a restaurant | S | architecture.md §7 | `restaurants` | | | | |
 | FR-044 | Edit restaurant profile | M | architecture.md §11 | `restaurants` | | AT-044 | | |
@@ -48,7 +48,7 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | NFR-SEC-01 | ASVS L2 + API Top 10 | M | architecture.md §12 | | | | | |
 | NFR-SEC-02 | Tenant and table isolation tests | M | ADR-0005, ADR-0006 | | | AT-042 | | |
 | NFR-SEC-03 | Audit trail of staff actions | M | architecture.md §11 | `audit_events` | | AT-041 | | |
-| NFR-SEC-04 | Abuse rate limits; admin MFA | M | ADR-0008 | | | | | |
+| NFR-SEC-04 | Abuse rate limits; admin MFA | M | ADR-0008, ADR-0011 | | | | | |
 | NFR-PRIV-01 | Minimisation, retention job, staff data erasure | M | architecture.md §6, §11 | | | | | |
 | NFR-PRIV-02 | Data residency | M | ADR-0002, ADR-0004 | | | | | |
 | NFR-COMPAT-01 | Additive changes within `/v1`; oldest client supported | M | architecture.md §5; ADR-0007 | | | | | |
