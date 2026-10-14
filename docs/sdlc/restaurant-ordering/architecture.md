@@ -108,7 +108,7 @@ graph TD
 | `menu` | Categories, items, options, translations, images, sold-out | `menu_categories`, `menu_items`, `menu_item_options` |
 | `tables` | Tables, QR keys, table sessions, waiter calls | `dining_tables`, `table_qr_keys`, `table_sessions`, `waiter_calls` |
 | `orders` | Orders, lines, state machine, bills, payments recorded at the counter | `orders`, `order_lines`, `bills` |
-| `reports` | Daily aggregates and report queries | `daily_sales` |
+| `reports` | Daily aggregates and report queries | `daily_sales`, `daily_sales_payment`, `daily_sales_table`, `daily_sales_item` |
 | `realtime` | Event log, outbox relay, pub/sub token issuing | `domain_events`, `outbox` |
 | `core` | `Caller`, `DomainError`, `Transactor`, IDs, clock, idempotency, audit, rate-limit port, problem details, auth | `idempotency_keys`, `audit_events` |
 
@@ -255,6 +255,11 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
   - pooler server-side pool ≈ 40 connections;
   - short transactions with no remote calls inside.
 - **Database size:** 2 vCPU / 8 GB with HA standby at launch (to validate with S-2 and the load test). 3× growth fits with a larger instance; no read replicas before measurements show a need.
+- **Reports (FR-050, NFR-PERF-04; S-5, accepted 2026-10-14):** reports read only the daily aggregates, never the order rows. S-5 on a year of synthetic data for a 300-bills/day restaurant: 31-day report p95 10.4 ms inside PostgreSQL (76 ms on a cold cache), 93 days p95 131 ms. Computed from the order rows the same report took 0.6 s warm and up to 2.4 s cold with only 2 restaurants in the tables, and would read ≈ 20× more pages at 500.
+  - Four tables, one per FR-050 breakdown: `daily_sales` (bills, orders, gross per day), `daily_sales_payment`, `daily_sales_table`, `daily_sales_item` (≈ 85% of their ≈ 20 KB per restaurant-day).
+  - Updated in the transaction that closes a bill (FR-013): one upsert per table, rows in key order so concurrent closes queue instead of deadlocking; ≈ +2 ms per close.
+  - Rebuilt every night for each restaurant's previous day (delete the day, insert it from the raw rows; Vercel Cron, ADR-0002). Idempotent, ≈ 50–60 ms per restaurant-day; repairs any missed update.
+  - A bill counts on the restaurant's local day on which it was closed (ASSUMPTION-11).
 - **Pub/sub:** ≈ 17,500 concurrent connections and ≈ 300 messages/s at launch, ≈ 52,500 at 3×. The provider and plan are chosen in S-3.
 - **Headroom:** the load test must pass at 2× peak (≈ 600 req/s) without breaching NFR-PERF.
 - **Cost estimate:** TBD-11, draft in [cost-estimate.md](cost-estimate.md): ≈ $1,540–1,740 a month at launch without menu images (≈ $3–3.50 per restaurant), ≈ $3,700–4,350 at 3×. The pub/sub figure is a placeholder until S-3. The cost drivers, largest first:
@@ -413,4 +418,4 @@ Full detail in [test-plan.md](test-plan.md).
 | S-2 PostgreSQL through the pooler | pgjdbc + Hikari via transaction pooling (`prepareThreshold=0`), `SET LOCAL` RLS, advisory xact locks, Flyway from CI, latency from `sin1` | Order-placement transaction p95 ≤ 40 ms from a Vercel function | ADR-0004, ADR-0005 |
 | S-3 Live updates | Provider choice; end-to-end delay with 1,000–5,000 simulated subscribers; token scoping per channel; cost at 17,500 and 52,500 connections | p95 ≤ 1 s publish → receive; per-channel isolation verified | ADR-0003 |
 | S-4 Built-in sign-in (`spikes/s4-auth/`) | Argon2id time and memory at the §7 parameters on a Vercel function in `sin1` (cold and warm, 1 and 4 at once); library choice for Argon2id, JWT and TOTP; token checks | Warm sign-in p95 ≤ 500 ms; valid, expired, forged, wrong-algorithm, wrong-audience tokens and an admin token without `otp` behave as specified | §7, ADR-0011 |
-| S-5 Report query | `daily_sales` aggregation and a 31-day report on ≈ 1 year of synthetic data for one large restaurant | NFR-PERF-04 met | §9 |
+| S-5 Report query (`spikes/s5-reports/`, closed 2026-10-14) | `daily_sales` aggregation and a 31-day report on ≈ 1 year of synthetic data for one large restaurant | NFR-PERF-04 met | §9 |
