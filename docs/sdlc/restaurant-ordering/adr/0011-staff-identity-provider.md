@@ -53,6 +53,7 @@ Before that choice, the recommendation among external providers was option 1 (Co
 - Positive: no outside service in the sign-in path; $0; staff personal data stays in the service database; one token-signing mechanism for guests and staff (separate keys and audiences).
 - Negative: credential storage, brute-force protection and session handling are ours to get right (ASVS L2 V6/V7); invitation and reset links are passed on by hand until an email sender is added.
 - Follow-ups:
+  - Argon2id library: **Bouncy Castle**, chosen 2026-10-14 after S-4 (warm sign-in p95 86 ms on Vercel `sin1`; Password4j ≈ 2× slower). S-4 met its exit criterion.
   - S-4 redefined: Argon2id time and memory on a Vercel function in `sin1`, plus the token cases (valid, expired, forged, wrong audience, admin without TOTP). Exit criterion: sign-in p95 ≤ 500 ms warm, and every case behaves as specified.
   - Architecture §2, §5, §7, §10, §12 and §17 updated as listed in CR-002.
   - ADR-0008 adds sign-in, refresh and invitation limits.

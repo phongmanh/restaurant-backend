@@ -2,7 +2,7 @@
 
 **Throwaway.** This code answers the S-4 questions for [ADR-0011](../../docs/sdlc/restaurant-ordering/adr/0011-staff-identity-provider.md) and [CR-002](../../docs/sdlc/restaurant-ordering/cr/CR-002-built-in-staff-accounts.md) (staff accounts built into the service; design in architecture §7), and is then deleted.
 
-Status: **built and dry-run on the laptop, 2026-10-14; waiting for the owner's deploy** (owner steps below). 15 tests pass, and every `measure.mjs` mode has run against `./gradlew runLocal`: all 18 token cases pass. The laptop proves the code, not the numbers: Vercel gives an instance 1 CPU (S-1), the laptop 8.
+Status: **run on Vercel `sin1`, 2026-10-14. Both exit criteria are met:** warm sign-in p95 86 ms (≤ 500 ms), and 19 of 19 token cases behave as specified. 15 tests pass locally (Q4).
 
 ## Questions
 | # | Question | Endpoint | `measure.mjs` mode |
@@ -63,5 +63,43 @@ Order of the Vercel run: `info` → `tokens` → `compare --n 60` → `signin --
 | Q3 token cases | **18 of 18 pass**, incl. the admin TOTP step end to end |
 | Q4 stateful rules | `AuthFlowTest` passes: lock after 10 failures (also with the right password) and unlock after 15 min; TOTP code and MFA token single-use; refresh rotation, reuse revokes the family; sign-out; refresh expiry at 12 h |
 
-### Vercel `sin1`
-Not run yet: waiting for the owner steps.
+### Vercel `sin1` (2026-10-14)
+Deployment `restaurant-s4-spike-dcs63nl0u-liam-36c7.vercel.app` (`dpl_3sJvvNMNHqASoVZAJS8AqTpBiSTZ`), production target on the free test account; the public alias `restaurant-s4-spike.vercel.app` was removed. Instance: JDK 25.0.4.1, **1 CPU**, max heap 1,536 MB, container 2,048 MB, JVM start to ready 2.2–2.5 s. Client in Vietnam (round trip ≈ 40–45 ms, which doesn't count). Times are measured inside the function.
+
+| Question | Result | Meets criterion? |
+|---|---|---|
+| Q1 warm sign-in, one at a time | Bouncy Castle, 200 sign-ins: **total p50 38 · p95 86 · p99 102 ms** (max 129); Argon2id is almost all of it (p50 36 · p95 84 ms). The spread between p50 and p95 is the shared vCPU, not the code | **Yes: p95 ≤ 500 ms** |
+| Q1 burst, 10 at once | 40 sign-ins over 4 instances: total p50 311 · p95 713 · p99 801 ms. On 1 CPU the hashes running together share it, so each one stretches (Argon2id p50 219 ms) and the rest wait for a slot (up to 314 ms). Expected load is under 1 sign-in a second even at shift change, so this is a capacity note, not a failure | Not part of the criterion |
+| Q1 cold, first sign-in on a fresh instance | 3 samples after 6 min idle, each on a new instance: **inside the function 419–601 ms** (Argon2id 206–255 ms before the JIT warms up, plus first-use class loading); **client wait 7.7–8.2 s**, of which the platform's cold start is the bulk, as S-1 found (CR-001) | Cold starts are the known S-1 issue on the free account |
+| Q1 memory | Peak RSS per instance 214–516 MB of 2,048 MB; after 60 Password4j sign-ins 487 MB, after Bouncy Castle 374 MB. 4 hashes at once need ≈ 76 MiB for Argon2id itself | Yes |
+| Q2 library | 60 sign-ins each, one at a time: **Bouncy Castle p50 36 · p95 85 ms; Password4j p50 80 · p95 130 ms** (≈ 2× slower, more memory). Each reads the other's PHC strings | **Bouncy Castle, chosen by the owner 2026-10-14** |
+| Q3 token cases | **19 of 19 pass** (table below), including the admin TOTP step end to end | **Yes** |
+| Q4 stateful rules | Local tests (`AuthFlowTest`). One showed up on Vercel by accident: two `tokens` runs 12 s apart on one instance, and the second run's TOTP code was refused as a replay; with the next 30 s step it passed | Yes (locally) |
+
+**Vercel's edge firewall** refuses a bearer token with an empty signature (an `alg: none` token) with **403 and `x-vercel-mitigated: deny`**, before the function sees it. The same token with a junk signature reaches the app, which refuses it with 401. The app check is what counts; the edge is an extra layer (free plan, default rules), and clients should treat a 403 from the edge like a 401.
+
+**Hash slots on 1 CPU.** `HASH_PERMITS=4` doesn't add throughput on 1 CPU: four hashes take as long together as one after another. It only bounds memory. Phase 3 can set the permits to the instance's CPU count; the latency under a burst stays about the same either way.
+
+Token cases (2026-10-14T04:02:33Z):
+
+| Case | Route | Expected | Got | Pass |
+|---|---|---|---|---|
+| valid staff token | `/v1/staff/me` | 200 | 200 | yes |
+| no token | `/v1/staff/me` | 401 | 401 | yes |
+| not a JWT | `/v1/staff/me` | 401 | 401 | yes |
+| expired (15 min ago) | `/v1/staff/me` | 401 | 401 | yes |
+| signed with the previous staff key (rotation overlap) | `/v1/staff/me` | 200 | 200 | yes |
+| signed with the guest key | `/v1/staff/me` | 401 | 401 | yes |
+| wrong issuer | `/v1/staff/me` | 401 | 401 | yes |
+| MFA token used as an access token | `/v1/staff/me` | 401 | 401 | yes |
+| payload changed, signature kept | `/v1/staff/me` | 401 | 401 | yes |
+| `alg: none`, empty signature | `/v1/staff/me` | 401 | 403 at Vercel's edge | yes |
+| `alg: none`, junk signature (reaches the app) | `/v1/staff/me` | 401 | 401 | yes |
+| `alg: HS256` with a guessed secret | `/v1/staff/me` | 401 | 401 | yes |
+| staff token on the admin route (wrong audience) | `/v1/admin/me` | 401 | 401 | yes |
+| admin audience without `otp` in `amr` | `/v1/admin/me` | 403 | 403 | yes |
+| admin sign-in returns `mfa_required` | `/v1/auth/sign-in` | 200 + mfa_token | 200 + mfa_token | yes |
+| wrong TOTP code | `/v1/auth/mfa` | 401 | 401 | yes |
+| right TOTP code | `/v1/auth/mfa` | 200 | 200 | yes |
+| admin token with `otp` | `/v1/admin/me` | 200 | 200 | yes |
+| admin token on the staff route (wrong audience) | `/v1/staff/me` | 401 | 401 | yes |

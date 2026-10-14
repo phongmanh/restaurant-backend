@@ -80,9 +80,13 @@ async function tokens() {
   let failures = 0;
   const check = async (name, path, token, expected) => {
     const r = await request("GET", path, undefined, token);
-    const pass = r.status === expected;
+    // Vercel's edge firewall denies some malformed tokens before the function sees them
+    // (x-vercel-mitigated: deny). That's a refusal too, one layer earlier.
+    const edge = r.status === 403 && r.headers["x-vercel-mitigated"] === "deny";
+    const pass = r.status === expected || (edge && expected === 401);
     if (!pass) failures++;
-    rows.push(`| ${name} | \`${path}\` | ${expected} | ${r.status} | ${pass ? "yes" : "**no**"} |`);
+    const got = edge ? "403 at Vercel's edge" : r.status;
+    rows.push(`| ${name} | \`${path}\` | ${expected} | ${got} | ${pass ? "yes" : "**no**"} |`);
   };
 
   const staff = await signIn(WAITER, PASSWORD, "bc");
@@ -99,7 +103,8 @@ async function tokens() {
   await check("wrong issuer", "/v1/staff/me", cases.wrongIssuer, 401);
   await check("MFA token used as an access token", "/v1/staff/me", cases.mfaTokenAsAccess, 401);
   await check("payload changed, signature kept", "/v1/staff/me", forgeSubject(staffToken), 401);
-  await check("`alg: none`", "/v1/staff/me", algNone(staffToken), 401);
+  await check("`alg: none`, empty signature", "/v1/staff/me", algNone(staffToken), 401);
+  await check("`alg: none`, junk signature (reaches the app)", "/v1/staff/me", `${algNone(staffToken)}abc`, 401);
   await check("`alg: HS256` with a guessed secret", "/v1/staff/me", hs256(staffToken), 401);
   await check("staff token on the admin route (wrong audience)", "/v1/admin/me", staffToken, 401);
   await check("admin audience without `otp` in `amr`", "/v1/admin/me", cases.adminWithoutOtp, 403);
