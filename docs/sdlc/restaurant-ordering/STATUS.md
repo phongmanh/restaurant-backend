@@ -21,7 +21,7 @@
 | Product owner / Tech lead / Ops owner | Manh Nguyen, product owner / Manh Nguyen, tech lead / TBD |
 | Current phase | 2 Architecture |
 | Tailoring | Full (service) |
-| Last updated | 2026-10-13 |
+| Last updated | 2026-10-14 |
 
 ## Deliverables
 | Phase | Deliverable | File | Status (Not started / Draft / In review / Approved) | Version |
@@ -68,6 +68,8 @@ Decision is one of: Approved / Approved with conditions / Rejected / Waived.
 | 2026-10-13 | S-1 failed the cold-start criterion; raise CR-001 to move the backend to a container platform (ADR-0002 option 3) rather than accept the risk | CR-001 |
 | 2026-10-13 | CR-001 deferred: keep Vercel. S-1 ran on a free Hobby account; Pro keeps one production instance warm ("scale to one"), which S-1 didn't test | CR-001 |
 | 2026-10-13 | S-2 design: create the `app` role with SQL, not in the Neon console (console roles join `neon_superuser`, which has BYPASSRLS); RLS policies use `nullif(current_setting('app.restaurant_id', true), '')::uuid` so a missing tenant gives 0 rows; the tenant is set with `set_config(…, true)` (`SET LOCAL` with a bind parameter). To fold into ADR-0004/0005 when S-2 closes | `spikes/s2-postgres/README.md` |
+| 2026-10-13 | S-3 runs on Ably's free plan (200 connections) and extrapolates delay to 1k–5k subscribers rather than paying for a 10k plan. The gap is a residual risk, closed by the Phase 5 load test on a paid plan | `spikes/s3-pubsub/README.md` |
+| 2026-10-14 | S-3 deferred; the spike is built and waits in `spikes/s3-pubsub/`. It still blocks G2 | `spikes/s3-pubsub/README.md` |
 
 ## Risks
 | ID | Risk ("If …, then …") | Likelihood (H/M/L) | Impact (H/M/L) | Owner | Mitigation | Status |
@@ -103,8 +105,8 @@ A TBD that blocks a Must requirement blocks the gate.
 | ASSUMPTION-9 | ASSUMPTION | Load mix per endpoint group and data volume (≈ 100k orders/day) in architecture §9 | No (calibrated by S-1 and the pilot) | Manh Nguyen | Open |
 | Q-1 | Question | How was the earlier Ktor service deployed on Vercel? | No | Manh Nguyen | Resolved 2026-10-13: Vercel container runtime (`ktor-sample`); findings in ADR-0002 |
 | S-1 | Spike | Ktor on Vercel's container runtime: cold start (plain/AOT), warm latency, concurrency, duration, SSE, CPU/memory, SIGTERM, platform features | Yes (G2) | Manh Nguyen | Run 2026-10-13, results in `spikes/s1-vercel/README.md`. Warm p95 ≈ 49 ms at the edge (meets). Cold start 5–7 s (plain p50 6.4–6.8 s, AOT p50 5.4 s; ~4.7 s is the platform, so AOT/native can't fix it) and the next request often cold-starts a second instance: **fails the cold-start criterion on the free account**; CR-001 deferred, Vercel kept. Still to measure on a paid plan: whether the production instance stays warm, and how often scale-out cold-starts hit (load test). Max duration and SSE cut at 300 s on the free Hobby account used for the spike (Pro: 800 s, still < 15 min), so ADR-0003 pub/sub stands. SIGTERM grace 30 s. Production on a Pro account (commercial use; Rolling Releases, log drains). Open: WAF check (Q9) |
-| S-2 | Spike | PostgreSQL through the pooler from `sin1`: latency, `SET LOCAL` RLS, transaction advisory locks, Flyway from CI | Yes (G2) | Manh Nguyen | Run 2 2026-10-13 from `sin1` against Neon Singapore (PostgreSQL 18.6): **exit criterion met**, order transaction over the pooler p95 28.7 ms (31.7 ms at 10 concurrent, incl. connection wait); ping p95 3.8 ms; RLS 10/10 and 0 leaks over 25 instances; advisory locks exclusive; prepared statements work through Neon's pooler. Open: Q6 from CI (GitHub secrets), cold-start samples, and a pool-size decision for ADR-0004 (requests queue at 3 connections per instance) (`spikes/s2-postgres/README.md`) |
-| S-3 | Spike | Pub/sub provider: delay with 1k–5k subscribers, channel isolation, cost at 17.5k/52.5k connections | Yes (G2) | Manh Nguyen | Not started |
+| S-2 | Spike | PostgreSQL through the pooler from `sin1`: latency, `SET LOCAL` RLS, transaction advisory locks, Flyway from CI | Yes (G2) | Manh Nguyen | Run 2 2026-10-13 from `sin1` against Neon Singapore (PostgreSQL 18.6): **exit criterion met**, order transaction over the pooler p95 28.7 ms (31.7 ms at 10 concurrent, incl. connection wait); ping p95 3.8 ms; RLS 10/10 and 0 leaks over 25 instances; advisory locks exclusive; prepared statements work through Neon's pooler. Q6 met: CI applied V2 through Flyway, and `app` is denied DDL. Open: cold-start samples, and a pool-size decision for ADR-0004 (requests queue at 3 connections per instance) (`spikes/s2-postgres/README.md`) |
+| S-3 | Spike | Pub/sub provider: delay with 1k–5k subscribers, channel isolation, cost at 17.5k/52.5k connections | Yes (G2) | Manh Nguyen | **Deferred 2026-10-14** by the owner. Ready to run when resumed (`spikes/s3-pubsub/README.md`): Ably free plan, up to 190 subscribers, 1k–5k extrapolated (decision 2026-10-13); needs the owner's Ably API key in `.env.spike`. Still blocks G2, and TBD-11 waits on its cost figures |
 | S-4 | Spike | Identity provider claims, JWKS rotation, MFA claim (after TBD-1) | Yes (G2) | Manh Nguyen | Blocked by TBD-1 |
 | S-5 | Spike | Report query on ≈ 1 year of synthetic data | No (can be accepted as a risk) | Manh Nguyen | Not started |
 | TBD-1 | TBD | Staff identity provider (OIDC) | No (G2: needed for the auth model) | Manh Nguyen | Open |

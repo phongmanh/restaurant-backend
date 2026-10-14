@@ -1,0 +1,8 @@
+{
+  "name": "s3-pubsub-spike",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ably": "2.29.0"
+  }
+}
