@@ -4,6 +4,8 @@
 
 It deploys the way `ktor-sample` does (see that project's `docs/VERCEL.md`): an OCI image run as a Vercel Function (`"runtime": "container"`), with `PORT=8080` and the `PATH` fix in the entrypoint. The differences: JDK 25, and the function region pinned to `sin1`.
 
+Status: **closed by the owner, 2026-10-14**, on the free Hobby account's results. Warm latency meets; cold starts (5–7 s) fail there. The checks that need a paid plan (does the production instance stay warm, how often scale-out cold-starts) are residual risk R-12 and condition 1 of ADR-0002, due before G5.
+
 ## Questions and how each is answered
 | # | Question | Endpoint | Command |
 |---|---|---|---|

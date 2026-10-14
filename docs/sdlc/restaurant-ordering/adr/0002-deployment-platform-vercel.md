@@ -2,7 +2,7 @@
 
 | Status | Date | Deciders | Requirements |
 |---|---|---|---|
-| Proposed; S-1 cold starts failed on a free Hobby account. [CR-001](../cr/CR-001-backend-container-platform.md) (option 3) deferred: Vercel kept pending a paid-plan check | 2026-10-13 | Manh Nguyen (product owner, tech lead) | NFR-PERF-01..03, NFR-SCAL-01, NFR-AVAIL-01, NFR-OPS-01, NFR-PRIV-02 |
+| Accepted with conditions (see Conditions). S-1 closed on a free Hobby account, where cold starts failed; [CR-001](../cr/CR-001-backend-container-platform.md) (option 3) deferred | 2026-10-13, accepted 2026-10-14 | Manh Nguyen (product owner, tech lead) | NFR-PERF-01..03, NFR-SCAL-01, NFR-AVAIL-01, NFR-OPS-01, NFR-PRIV-02 |
 
 ## Context
 The stakeholder requires Vercel and has deployed a Ktor service there before. The default stack in the skill assumes a long-running container platform with probes, replicas and a scrapeable `/metrics`. On a serverless function platform:
@@ -39,6 +39,14 @@ Option 1: a JDK 25 image on Vercel's container runtime, in region `sin1`. If S-1
 
 Scheduled jobs run through Vercel Cron calling `/internal/jobs/*`, protected by `CRON_SECRET`. Migrations run from CI, never in a function.
 
+**S-1 results** (`spikes/s1-vercel/README.md`, free Hobby account): warm p95 ≈ 49 ms at the edge; 1 vCPU and 2 GB per instance; SIGTERM grace 30 s; `X-Forwarded-For` set by Vercel. Cold starts take 5–7 s (plain p50 6.4–6.8 s, AOT cache p50 5.4 s). About 4.7 s of that is the platform, so option 2 (native image) can't fix it. Requests end at 300 s on Hobby (Pro: 800 s), so live updates stay on managed pub/sub (ADR-0003).
+
+## Conditions
+Accepted by the owner on 2026-10-14 on these conditions:
+1. **Paid-plan cold-start check before G5** (R-12). On the production Pro account, measure whether the production instance stays warm through quiet spells, and how often scale-out cold-starts under the cold-burst load profile. NFR-PERF-01/02 p99 (500 / 800 ms) must hold. If they don't, reopen CR-001.
+2. **Production runs on Vercel Pro**: commercial use, Rolling Releases, log drains, `maxDuration` up to 800 s.
+3. **Region `sin1` stays subject to TBD-10** (data residency). A legal answer that rules it out needs a CR.
+
 ## Consequences
 - Positive: no servers to run; per-PR previews; rollback in seconds.
 - Negative, or risks we accept:
@@ -56,4 +64,4 @@ Scheduled jobs run through Vercel Cron calling `/internal/jobs/*`, protected by 
   - SIGTERM timing;
   - Rolling Releases and WAF availability.
 
-  Update §8 of the architecture with the results and move this ADR to Accepted.
+  Done 2026-10-14: architecture §8 holds the results; the paid-plan part continues as condition 1.

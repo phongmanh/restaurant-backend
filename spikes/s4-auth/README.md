@@ -2,7 +2,7 @@
 
 **Throwaway.** This code answers the S-4 questions for [ADR-0011](../../docs/sdlc/restaurant-ordering/adr/0011-staff-identity-provider.md) and [CR-002](../../docs/sdlc/restaurant-ordering/cr/CR-002-built-in-staff-accounts.md) (staff accounts built into the service; design in architecture §7), and is then deleted.
 
-Status: **run on Vercel `sin1`, 2026-10-14. Both exit criteria are met:** warm sign-in p95 86 ms (≤ 500 ms), and 19 of 19 token cases behave as specified. 15 tests pass locally (Q4).
+Status: **closed by the owner, 2026-10-14. Run on Vercel `sin1`, 2026-10-14. Both exit criteria are met:** warm sign-in p95 86 ms (≤ 500 ms), and 19 of 19 token cases behave as specified. 15 tests pass locally (Q4).
 
 ## Questions
 | # | Question | Endpoint | `measure.mjs` mode |

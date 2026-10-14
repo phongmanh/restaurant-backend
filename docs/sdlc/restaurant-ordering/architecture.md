@@ -71,7 +71,7 @@ The ktor-sdlc default stack applies, except for:
 | Concern | Choice | ADR |
 |---|---|---|
 | Module layout | One Gradle module, packages by feature | ADR-0001 |
-| Deployment platform | Vercel container runtime (an OCI image run as a Function, as in `ktor-sample`), region `sin1`; cold start and limits measured by spike S-1 | ADR-0002 (Proposed) |
+| Deployment platform | Vercel container runtime (an OCI image run as a Function, as in `ktor-sample`), region `sin1`; cold start and limits measured by spike S-1 | ADR-0002 (Accepted with conditions) |
 | Live updates | Managed pub/sub for notifications + PostgreSQL event log for catch-up | ADR-0003 (Proposed) |
 | Database hosting | Neon PostgreSQL in Singapore (AWS `ap-southeast-1`) with its transaction-mode pooler; S-2 met its exit criterion; Hikari pool of up to 10 per instance (2 s wait, 5 s statement timeout); `prepareThreshold=0` | ADR-0004 |
 | Tenant isolation | `restaurant_id` checks in services + forced PostgreSQL RLS via `set_config(…, true)` (`SET LOCAL` with a bind parameter); missing tenant gives 0 rows; verified in S-2 | ADR-0005 |
@@ -203,13 +203,13 @@ Shared `api-contract` KMP module with the clients: **not now**. It will be recon
 | Onboard / suspend restaurant | No | No | No | No | Yes | |
 | Audit log read | No | No | No | Own (TBD) | Any | |
 
-## 8. Deployment topology (ADR-0002, Proposed)
+## 8. Deployment topology (ADR-0002, Accepted with conditions)
 - **Platform:** Vercel, one project for the API. Function region `sin1` (Singapore), the nearest to Vietnam. **TBD-10** decides whether that region is legally acceptable; Vercel has no region in Vietnam.
 - **Runtime:** the Ktor app as a JDK 25 OCI image on Vercel's container runtime (`vercel.json` service, `"runtime": "container"`), the same model as the stakeholder's `ktor-sample`.
   - Instances scale to zero after 5 min idle (30 s in preview) and get `SIGTERM` with 30 s of grace.
   - `PORT=8080`, and the entrypoint rebuilds `PATH`.
   - No static IPs or Secure Compute for containers (R-06).
-  - Spike S-1 measures cold start (plain and with a JDK AOT cache), concurrency per instance, the maximum duration, SSE streaming, and CPU and memory per instance.
+  - Spike S-1 (closed 2026-10-14, free Hobby account): 1 vCPU and 2 GB per instance; warm p95 ≈ 49 ms at the edge; cold start 5–7 s (AOT cache p50 5.4 s, ≈ 4.7 s of it the platform); requests end at 300 s on Hobby, 800 s on Pro. Whether cold starts break p99 on the production Pro account is checked before G5 (ADR-0002 condition 1, R-12).
 - **Environments:**
 
   | Environment | Vercel | Database | Pub/sub, Redis | Purpose |
