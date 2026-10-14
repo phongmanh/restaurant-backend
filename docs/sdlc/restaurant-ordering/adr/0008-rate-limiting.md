@@ -2,7 +2,7 @@
 
 | Status | Date | Deciders | Requirements |
 |---|---|---|---|
-| Proposed (Redis provider and WAF rule limits confirmed in S-1) | 2026-10-13 | Manh Nguyen (tech lead) | NFR-SEC-04, NFR-SCAL-02, FR-001, FR-003, FR-008 |
+| Proposed (Redis provider and WAF rule limits confirmed in S-1 Q9–Q12, `spikes/s1-vercel/README.md`) | 2026-10-13 | Manh Nguyen (tech lead) | NFR-SEC-04, NFR-SCAL-02, FR-001, FR-003, FR-008 |
 
 ## Context
 Ktor's RateLimit plugin keeps counters in memory per instance. On serverless, requests spread over many short-lived instances, so per-instance counters don't limit anything. The limits needed are per IP (QR scans), per table session (orders, waiter calls), per staff user and per restaurant (fairness).
@@ -17,6 +17,9 @@ Ktor's RateLimit plugin keeps counters in memory per instance. On serverless, re
 3. **Counters in PostgreSQL**
    - Pros: no new store.
    - Cons: adds write load to the bottleneck.
+4. **WAF for IP and path limits + Vercel WAF rate limiting called from code for session, user and restaurant keys** (added 2026-10-14). `@vercel/firewall`'s `checkRateLimit` is a plain HTTPS request to the deployment's own host, so the service can send it from Kotlin with any key
+   - Pros: covers every key with no extra vendor, secret or cost line; the counters are Vercel's.
+   - Cons: documented only through the JS package, so the contract could change (kept behind the `RateLimiter` port); each rule has one fixed limit and window, set in the firewall config, not per restaurant at runtime; Pro allows 40 rate-limit rules per project (Hobby 1); counters are per region; the answer is only allowed or limited, with no count or reset time for `Retry-After`. S-1 Q11 measures it.
 
 ## Decision
 Option 2. A managed serverless Redis in the same region (e.g. Upstash via the Vercel Marketplace). Limits come from requirements ASSUMPTION-4 and are configurable. If Redis is unavailable, app-level limits fail open (WAF still applies) and an alert fires.

@@ -15,6 +15,15 @@
 //   sse          --seconds 300 --interval 1000 one event stream: buffering and maximum length
 //   cpu          --ms 2000                     CPU iterations in --ms (compare instance sizes)
 //
+// Rate limiting (ADR-0008; Q10–Q12). --store is redis or firewall (see /spike/limit):
+//   limit-latency --store redis --n 200        sequential checks, a fresh key each: time the store
+//                                              adds per request, measured inside the function
+//   limit-burst   --store redis --c 50         --c parallel hits on one key with --limit per --window:
+//                 --limit 10 --window 60       is the limit exact across instances?
+//   limit-down    --n 20 --timeout 200         both broken stores: do requests fail open, how fast?
+//   waf-edge      --n 40 --limit 20            sequential requests to /spike/waf under an edge rule
+//                 --window 10                  of --limit per --window per IP: who answers 429?
+//
 // Deployment Protection: set VERCEL_AUTOMATION_BYPASS_SECRET (Project Settings → Deployment
 // Protection → Protection Bypass for Automation) and it is sent as x-vercel-protection-bypass.
 //
@@ -30,7 +39,10 @@ const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 const httpAgent = new http.Agent({ keepAlive: true, keepAliveMsecs: 10_000 });
 const httpsAgent = new https.Agent({ keepAlive: true, keepAliveMsecs: 10_000 });
 
-const modes = { info, warm, cold, concurrency, duration, sse, cpu };
+const modes = {
+  info, warm, cold, concurrency, duration, sse, cpu,
+  "limit-latency": limitLatency, "limit-burst": limitBurst, "limit-down": limitDown, "waf-edge": wafEdge,
+};
 if (!modes[mode] || !baseUrl) {
   console.error(`usage: node scripts/measure.mjs <${Object.keys(modes).join("|")}> <baseUrl> [--option value]`);
   process.exit(2);
@@ -180,6 +192,147 @@ async function cpu() {
   const r = await get(`/spike/cpu?ms=${ms}`);
   const body = JSON.parse(r.body);
   print(`### cpu, ${ms} ms`, [`- ${body.iterations} iterations on instance ${body.instanceId.slice(0, 8)} (local laptop reference: run it against localhost)`]);
+}
+
+// ---------------------------------------------------------------- rate limiting
+
+async function limitLatency() {
+  const store = opts.store ?? "redis";
+  const n = int("n", 200);
+  const run = runId();
+  await get("/spike/info"); // wake it first
+  const checks = [];
+  const client = [];
+  const statuses = new Map();
+  const instances = new Set();
+  let failedOpen = 0;
+  let firstCheck;
+  for (let i = 0; i < n; i++) {
+    // A fresh key per request, so the firewall's fixed limit never trips during a latency run.
+    const r = await limit({ store, key: `lat-${run}-${i}`, limit: 1_000_000 });
+    statuses.set(r.status, (statuses.get(r.status) ?? 0) + 1);
+    client.push(r.ms);
+    if (!r.result) continue;
+    instances.add(r.result.instanceId);
+    if (r.result.failedOpen) { failedOpen++; continue; }
+    if (firstCheck === undefined) firstCheck = r.result.checkMs;
+    checks.push(r.result.checkMs);
+  }
+  print(`### limit-latency, store \`${store}\`, ${n} sequential checks`, [
+    `- check time inside the function (store round trip): ${summary(checks)}`,
+    `- first check (may include opening the connection to the store): ${firstCheck ?? "n/a"} ms`,
+    `- client latency (includes the network path to sin1): ${summary(client)}`,
+    `- statuses ${formatCounts(statuses)}, failed open ${failedOpen}, instances seen ${instances.size}`,
+  ]);
+}
+
+async function limitBurst() {
+  const store = opts.store ?? "redis";
+  const c = int("c", 50);
+  const lim = int("limit", 10);
+  const window = int("window", 60);
+  const key = `burst-${runId()}`;
+  await get("/spike/info");
+  const start = Date.now();
+  const results = await Promise.all(
+    Array.from({ length: c }, () => limit({ store, key, limit: lim, window }).catch((e) => ({ error: e.message }))),
+  );
+  const wall = Date.now() - start;
+  const other = await limit({ store, key: `${key}-other`, limit: lim, window });
+  const statuses = new Map();
+  const perInstance = new Map();
+  let failedOpen = 0;
+  let fromApp429 = 0;
+  const retryAfter = new Set();
+  for (const r of results) {
+    const label = r.error ? "error" : r.status;
+    statuses.set(label, (statuses.get(label) ?? 0) + 1);
+    if (!r.result) continue;
+    if (r.result.failedOpen) failedOpen++;
+    if (r.status === 429 && r.headers["x-spike-limiter"]) fromApp429++;
+    if (r.headers?.["retry-after"]) retryAfter.add(r.headers["retry-after"]);
+    const entry = perInstance.get(r.result.instanceId) ?? { allowed: 0, denied: 0 };
+    r.result.allowed ? entry.allowed++ : entry.denied++;
+    perInstance.set(r.result.instanceId, entry);
+  }
+  const allowed = statuses.get(200) ?? 0;
+  const verdict = allowed === lim ? "exact" : allowed > lim ? `**${allowed - lim} over**` : `**${lim - allowed} under**`;
+  print(`### limit-burst, store \`${store}\`, ${c} parallel hits on one key, limit ${lim} per ${window} s`, [
+    `- allowed ${allowed} of ${c} against a limit of ${lim}: ${verdict}; wall time ${wall} ms`,
+    `- statuses ${formatCounts(statuses)}; 429s from the app (x-spike-limiter) ${fromApp429}; failed open ${failedOpen}`,
+    `- Retry-After values: ${[...retryAfter].join(", ") || "none"}`,
+    `- instances used: ${perInstance.size}; allowed/denied per instance: ${[...perInstance.values()].map((e) => `${e.allowed}/${e.denied}`).join(", ")}`,
+    `- a different key straight after: ${other.status}${other.status === 200 ? " (separate bucket)" : " (**shares the bucket?**)"}`,
+  ]);
+}
+
+async function limitDown() {
+  const n = int("n", 20);
+  const timeout = int("timeout", 200);
+  await get("/spike/info");
+  for (const store of ["redis-down-timeout", "redis-down-error"]) {
+    const checks = [];
+    const statuses = new Map();
+    let failedOpen = 0;
+    let sampleError;
+    for (let i = 0; i < n; i++) {
+      const r = await limit({ store, key: `down-${i}`, timeoutMs: timeout });
+      statuses.set(r.status, (statuses.get(r.status) ?? 0) + 1);
+      if (!r.result) continue;
+      checks.push(r.result.checkMs);
+      if (r.result.failedOpen) failedOpen++;
+      sampleError ??= r.result.error;
+    }
+    print(`### limit-down, store \`${store}\`, ${n} sequential checks, timeout ${timeout} ms`, [
+      `- statuses ${formatCounts(statuses)}; failed open ${failedOpen} of ${n}`,
+      `- time spent on the broken store: ${summary(checks)}`,
+      `- error: \`${sampleError ?? "none"}\``,
+    ]);
+  }
+}
+
+async function wafEdge() {
+  const n = int("n", 40);
+  const lim = int("limit", 20);
+  const window = int("window", 10);
+  const statuses = [];
+  let first429;
+  for (let i = 0; i < n; i++) {
+    const r = await get("/spike/waf");
+    statuses.push(r.status);
+    if (r.status === 429 && !first429) first429 = { index: i + 1, ...r };
+  }
+  process.stderr.write(`waiting ${window + 1} s for the window to end\n`);
+  await sleep((window + 1) * 1000);
+  const after = await get("/spike/waf");
+  const counts = new Map();
+  for (const s of statuses) counts.set(s, (counts.get(s) ?? 0) + 1);
+  const passed = statuses.indexOf(429) === -1 ? n : statuses.indexOf(429);
+  const shown = ["retry-after", "x-vercel-mitigated", "x-vercel-id", "content-type", "server", "cache-control"];
+  print(`### waf-edge, ${n} sequential requests to /spike/waf, rule ${lim} per ${window} s per IP`, [
+    `- statuses ${formatCounts(counts)}; requests before the first 429: ${passed} (rule: ${lim})`,
+    first429
+      ? `- first 429 (request ${first429.index}): headers \`${JSON.stringify(Object.fromEntries(shown.filter((h) => first429.headers[h]).map((h) => [h, first429.headers[h]])))}\`; body \`${first429.body.slice(0, 160).replace(/\s+/g, " ")}\``
+      : "- no 429 at all: the rule didn't apply to these requests",
+    `- after waiting ${window + 1} s: ${after.status}`,
+  ]);
+}
+
+function limit(params) {
+  const query = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]));
+  return get(`/spike/limit?${query}`).then((r) => {
+    let result;
+    try { result = JSON.parse(r.body); } catch { result = undefined; }
+    return { ...r, result };
+  });
+}
+
+function runId() {
+  return Date.now().toString(36);
+}
+
+function formatCounts(map) {
+  return [...map.entries()].map(([k, v]) => `${k}×${v}`).join(", ");
 }
 
 // ---------------------------------------------------------------- helpers

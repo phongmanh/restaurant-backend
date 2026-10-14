@@ -15,7 +15,10 @@ It deploys the way `ktor-sample` does (see that project's `docs/VERCEL.md`): an 
 | Q6 | Is SSE streamed live or buffered, and how long can a stream stay open? (decides whether ADR-0003 needs a vendor) | `GET /spike/sse?seconds=&intervalMs=` | `sse` |
 | Q7 | CPU share per instance (input to the capacity model) | `GET /spike/cpu?ms=` | `cpu` |
 | Q8 | SIGTERM on scale-down: when, and how much grace | log line `spike shutdown …` | `vercel logs <url>` |
-| Q9 | Rolling Releases on our plan; WAF rate-limit rules for container services; log drains | — | Vercel dashboard (manual) |
+| Q9 | Rolling Releases on our plan; WAF rate-limit rules for container services; log drains | `GET /spike/waf` (WAF part) | Vercel dashboard (manual); `waf-edge` |
+| Q10 | Per-key limits in Upstash Redis (ADR-0008 option 2): time added per request from `sin1`, exact across instances? | `GET /spike/limit?store=redis` | `limit-latency`, `limit-burst` |
+| Q11 | Per-key limits in Vercel's WAF called from Kotlin (option 4, no Redis): same questions | `GET /spike/limit?store=firewall` | `limit-latency`, `limit-burst` |
+| Q12 | When the store fails (no answer, or an error), do requests fail open, and how fast? | `GET /spike/limit?store=redis-down-*` | `limit-down` |
 
 ## Run it
 Prerequisites: the Vercel CLI (`vercel login`), Node 18+.
@@ -50,6 +53,55 @@ Run the scripts from Vietnam (or note where they ran from): latency includes the
 
 **AOT variant (Q3).** Vercel rejects `Dockerfile.vercel-aot` (and `Dockerfile.aot`) as an entrypoint: "It must name a Dockerfile or Containerfile". Copy it over `Dockerfile.vercel` for that deploy only (`cp Dockerfile.vercel-aot Dockerfile.vercel && vercel deploy; git checkout Dockerfile.vercel`), and repeat `info` (the JVM args should show `-XX:AOTCache`) and both `cold` runs.
 
+## Rate-limit check (Q9–Q12, added 2026-10-14)
+Settles [ADR-0008](../../docs/sdlc/restaurant-ordering/adr/0008-rate-limiting.md), which is Proposed until S-1 confirms the Redis provider and the WAF rules. Everything runs on free plans: Vercel Hobby (one WAF rate-limit rule per project, fixed window, keyed by IP or JA4, window 10 s to 10 min) and Upstash's free plan (500k commands a month; this check uses a few thousand).
+
+**What's measured.** A rate limiter counts a client's requests in a time window and answers 429 past the limit. Our limits are per table session, staff user and restaurant (NFR-SEC-04, NFR-SCAL-02), so the count must be shared by every instance; Ktor's in-memory counters can't do that. `GET /spike/limit` does one fixed-window hit on `key` in the chosen store and times only the store's part (`checkMs`), so the client's own network doesn't blur the result. The stores (`RateLimit.kt`):
+- `redis`: Upstash over its REST API, one `EVAL` (increment and expiry in one round trip). REST is the slower of Upstash's two protocols; if it is fast enough, the TCP protocol is too.
+- `firewall`: Vercel's WAF rate limiting, called from Kotlin. The `@vercel/firewall` package (JS only) is a plain GET to `/.well-known/vercel/rate-limit-api/<id>` on the deployment's own host; `VercelFirewallLimiter` sends the same request (package 1.2.6). The limit and window are set in the WAF rule, not in the request, and the answer is only allowed or limited. This is not a documented API outside the JS package, so it could change.
+- `redis-down-timeout` (an address that never answers) and `redis-down-error` (the right URL, a wrong token): the two ways a store fails.
+
+**Owner steps.** The auto-mode classifier blocks production deploys, secrets and firewall publishing, so these are yours. Run them from `spikes/s1-vercel`:
+1. Redis: Vercel dashboard → Storage → Create → **Upstash for Redis**, region **Singapore (`ap-southeast-1`)**, **Free** plan, connected to the project `restaurant-s1-spike` for Production. The integration adds `KV_REST_API_URL` and `KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_*`); both names work. Check the names only: `vercel env ls`.
+2. Deploy: `vercel deploy --prod`, then `vercel alias rm restaurant-s1-spike.vercel.app`. Send me the deployment URL.
+3. Edge rule for Q9 (Hobby allows one rate-limit rule, so the two rules take turns):
+   ```bash
+   vercel firewall rules add "spike-waf-edge" \
+     --condition '{"type":"path","op":"pre","value":"/spike/waf"}' \
+     --action rate_limit --rate-limit-window 10 --rate-limit-requests 20 --rate-limit-keys ip --yes
+   vercel firewall publish --yes
+   ```
+4. After `waf-edge` has run, swap it for the keyed rule for Q11:
+   ```bash
+   vercel firewall rules remove "spike-waf-edge" --yes
+   vercel firewall rules add "spike-keyed" \
+     --condition '{"type":"rate_limit_api_id","op":"eq","value":"spike-keyed"}' \
+     --action rate_limit --rate-limit-window 60 --rate-limit-requests 10 --yes
+   vercel firewall publish --yes
+   ```
+5. Afterwards: `vercel firewall rules remove "spike-keyed" --yes && vercel firewall publish --yes`. The Upstash database can stay (free) for the next spike or go.
+
+**Commands** (Claude can run these; `.env.spike` holds the bypass secret):
+```bash
+E="node --env-file=.env.spike scripts/measure.mjs"
+$E limit-latency $URL --store redis --n 200
+$E limit-burst   $URL --store redis --c 50 --limit 10 --window 60     # three times
+$E limit-down    $URL --n 20 --timeout 200
+$E waf-edge      $URL --n 40 --limit 20 --window 10                    # with rule spike-waf-edge
+$E limit-latency $URL --store firewall --n 200                         # with rule spike-keyed
+$E limit-burst   $URL --store firewall --c 50 --limit 10 --window 60   # three times, ≥ 60 s apart
+```
+
+**Exit criteria** (proposed; the owner confirms):
+- Q9: past 20 requests in 10 s from one IP, the WAF answers 429 on the deployment URL before the request reaches the function, and the next window lets requests through again.
+- Q10 and Q11, each store: check time p95 ≤ **10 ms** inside the function (5% of the 200 ms guest-read budget; S-2's whole order transaction is p95 29 ms). A burst of 50 hits on one key with limit 10, spread over ≥ 2 instances, allows exactly 10 (Redis) or at most 10 (WAF; any overshoot recorded). Another key straight after is allowed (separate buckets).
+- Q12: every request answers 200 with `failedOpen`; the time lost is at most the timeout + 20 ms.
+
+**What the results decide for ADR-0008:**
+- WAF meets Q11 → keyed limits in the WAF too, and **no Redis**: one vendor, secret and cost line fewer. Costs to weigh: the API is undocumented outside JS, Pro allows 40 rate-limit rules per project, each rule has one fixed limit (no per-restaurant limits changed at runtime), and counters are per region (fine with one region, `sin1`).
+- Only Redis meets Q10 → ADR-0008 option 2 as written, Upstash in Singapore.
+- Neither → counters in PostgreSQL (option 3) or a CR.
+
 ## Exit criteria (from architecture §17)
 - Warm p95 ≤ 50 ms for `/spike/info`, measured at the edge (subtract the client's network RTT to `sin1`).
 - Cold starts small and rare enough that NFR-PERF-01/02 p99 (500 / 800 ms) hold at the expected cold-start rate. If not, AOT variant; then GraalVM native (ADR-0002 option 2); then a CR.
@@ -71,6 +123,9 @@ Deployed 2026-10-13 to project `liam-36c7/restaurant-s1-spike`, plain JVM image 
 | Q7 CPU | 1 vCPU. `/spike/cpu?ms=2000`, one thread: 4,101,596 iterations on Vercel (JDK 25) against ~3,300,000 on one Apple M1 Pro core (JDK 21) ≈ 1.24× an M1 Pro core. Memory 2048 MB | Input to the capacity model |
 | Q8 SIGTERM | Preview: SIGTERM 37–41 s after the instance's last request; the shutdown hook ran on every instance seen. With the hook kept alive, the last tick is **+29 s** on every instance: 30 s grace, then SIGKILL | Yes. 30 s is enough for Ktor's graceful stop |
 | Q9 platform features | The spike ran on a free **Hobby** account (the team `liam-36c7` is a personal test account, not the production one); fluid compute on. On Hobby: maxDuration capped at 300 s, no Rolling Releases, no log drains. These need Pro, which a commercial service needs anyway (Hobby is non-commercial only). WAF custom rules and rate limiting not checked | Plan-dependent features not measured; production on Pro (cost input to TBD-11). WAF still to check |
+| Q10 Redis limits | Not run yet | — |
+| Q11 WAF limits from Kotlin | Not run yet | — |
+| Q12 fail open | Local only (2026-10-14, no store): `redis-down-timeout` failed open 5 of 5 at 203–207 ms with a 200 ms timeout. Rerun on Vercel | — |
 
 ## Not verified locally
 - The Docker images weren't built on the development machine (the Docker daemon wasn't running). Vercel builds them anyway. To check locally first: `docker build -f Dockerfile.vercel .`.

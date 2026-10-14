@@ -27,7 +27,10 @@ fun main() {
     // the instance's CPU share without competing with Ktor's threads.
     val cpuDispatcher = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())
         .asCoroutineDispatcher()
-    val server = embeddedServer(Netty, port = port, host = "0.0.0.0") { spikeModule(stats, cpuDispatcher) }
+    val limiters = limitersFromEnv(System::getenv)
+    val server = embeddedServer(Netty, port = port, host = "0.0.0.0") {
+        spikeModule(stats, cpuDispatcher, limiters = limiters)
+    }
     server.monitor.subscribe(ApplicationStopped) { cpuDispatcher.close() }
 
     if (System.getProperty("spike.training").toBoolean()) {
@@ -57,6 +60,7 @@ private fun train(port: Int) {
         "/spike/info",
         "/spike/sleep?ms=10",
         "/spike/cpu?ms=10",
+        "/spike/waf",
         "/spike/sse?seconds=1&intervalMs=200",
     ).forEach { path ->
         val request = HttpRequest.newBuilder(URI("http://127.0.0.1:$port$path")).build()
