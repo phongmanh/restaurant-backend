@@ -2,7 +2,7 @@
 
 | Version | Status | Owner | Approvers |
 |---|---|---|---|
-| 1.1 | Approved (G1 2026-10-13; CR-002 2026-10-14) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
+| 1.2 | Approved (G1 2026-10-13; CR-002 2026-10-14; CR-003 2026-10-14) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
 
 **Version history**
 
@@ -10,6 +10,7 @@
 |---|---|---|
 | 1.0 | 2026-10-13 | Baselined at G1 |
 | 1.1 | 2026-10-14 | [CR-002](cr/CR-002-built-in-staff-accounts.md): staff and admins sign in with accounts built into the service (email and password; TOTP for admins) instead of an external identity provider. Changed: §2 staff app and admin console, FR-010, FR-040, FR-041, §5 staff account, §6 identity-provider row removed, TBD-1 resolved |
+| 1.2 | 2026-10-14 | [CR-003](cr/CR-003-record-resolved-items.md): the owner's resolved decisions written in, and the decree citation corrected. Changed: §2 customer mobile app and staff app, FR-050 (a bill counts on the day it was closed), NFR-COMPAT-01, §7 (Decree 356/2025), §9 (TBD-2 and TBD-3 resolved, ASSUMPTION-11 added) |
 
 ## 1. Brief
 - **Problem:** In a busy restaurant, guests wait for a waiter to take their order and to bring the bill. Orders taken by hand get lost or misread on the way to the kitchen. Restaurant owners have no simple, shared view of what was ordered and sold. Small and mid-sized restaurants can't run their own ordering system, so they need one they can rent.
@@ -50,9 +51,9 @@ Each staff member belongs to exactly one restaurant in release 1 (ASSUMPTION-3).
 ## 2. API consumers
 | Consumer | Owner | Authenticates with | Expected traffic (avg / peak) | Oldest version to support | How changes are announced |
 |---|---|---|---|---|---|
-| Customer mobile app (Android / iOS: TBD-2) | Manh Nguyen (team TBD) | Table-session token from scanning the QR (anonymous) | Part of the guest load in NFR-SCAL-01 | 1.0.0 at launch; old versions supported for TBD-3 (proposed 12 months) | Release notes; `Deprecation`/`Sunset` headers; forced-update minimum version |
+| Customer mobile app (Android and iOS) | Manh Nguyen (team TBD) | Table-session token from scanning the QR (anonymous) | Part of the guest load in NFR-SCAL-01 | 1.0.0 at launch; old versions supported for 12 months | Release notes; `Deprecation`/`Sunset` headers; forced-update minimum version |
 | Customer web app (browser) | Manh Nguyen | Table-session token (how the browser holds it is decided in Phase 2: cookie via BFF or bearer) | Part of the guest load in NFR-SCAL-01 | Always the latest deployed version | Deployed together with the API |
-| Staff app (web on tablets and phones) | Manh Nguyen | Staff access token issued by the service after sign-in with email and password (CR-002) | ≈ 3–6 open screens per restaurant during service | Latest; old versions supported for TBD-3 if it is also shipped as a store app | Release notes; deprecation headers |
+| Staff app (web on tablets and phones) | Manh Nguyen | Staff access token issued by the service after sign-in with email and password (CR-002) | ≈ 3–6 open screens per restaurant during service | Latest only: web only in release 1 (no store app) | Release notes; deprecation headers |
 | Admin console | Manh Nguyen | Staff access token with the platform-admin role; MFA (authenticator-app code, TOTP) required at sign-in | Low (< 1 req/s) | Latest | Internal |
 
 Peak sizing (ASSUMPTION-1, confirmed at G1): 500 restaurants × 25 tables × 60% occupied at dinner peak × 2 guest devices per table ≈ **15,000 concurrent guest devices**, plus ≈ 2,500 staff screens. Request traffic ≈ **300 req/s** at peak, not counting live-update connections.
@@ -111,7 +112,7 @@ Priorities are MoSCoW (M Must, S Should, C Could, W Won't this release). "Anothe
 ### 3.6 Reports
 | ID | Story | Priority | Acceptance criteria (Given / When / Then) |
 |---|---|---|---|
-| FR-050 | As a manager, I want daily sales reports, so that I know how the restaurant is doing | M | Given closed bills, when a manager asks for a date range (≤ 93 days), then they get, per day in the restaurant's time zone: number of sessions, orders, gross sales, sales per payment method, top items by quantity and revenue, and sales per table.<br>Only closed, non-cancelled lines are counted.<br>Range > 93 days or end before start → 400. Waiter or kitchen role → 403.<br>Reports finish within NFR-PERF-04. |
+| FR-050 | As a manager, I want daily sales reports, so that I know how the restaurant is doing | M | Given closed bills, when a manager asks for a date range (≤ 93 days), then they get, per day in the restaurant's time zone: number of sessions, orders, gross sales, sales per payment method, top items by quantity and revenue, and sales per table.<br>Only closed, non-cancelled lines are counted.<br>A bill counts on the restaurant's local day on which it was closed, even if the guests sat down the day before.<br>Range > 93 days or end before start → 400. Waiter or kitchen role → 403.<br>Reports finish within NFR-PERF-04. |
 | FR-051 | As a manager, I want to export sales lines as CSV, so that I can give them to my accountant | C | A date range ≤ 93 days, produced asynchronously if large. |
 
 ### 3.7 Won't have in release 1
@@ -139,7 +140,7 @@ The product owner confirmed these numbers at G1 (2026-10-13). "Peak" is the dinn
 | NFR-SEC-04 | Abuse limits | Rate limits per device, table session, staff user and restaurant on QR scans, orders and waiter calls. Admin console needs MFA | Tests at the limits; abuse-case tests |
 | NFR-PRIV-01 | Privacy | Collect only the fields in §5. Retention per §5, enforced by a scheduled deletion/anonymisation job. Staff personal data can be exported and erased on request within the legal deadline (TBD-4). Personal data never appears in logs | Privacy review; retention-job tests; log review |
 | NFR-PRIV-02 | Data residency | Data, backups, logs and traces stay in the regions agreed after the legal review (TBD-10) | Platform configuration review |
-| NFR-COMPAT-01 | Client compatibility | Every supported client version keeps working. Only additive changes within `/v1`. A breaking change needs `/v2` and a deprecation period ≥ the support window (TBD-3) | Contract tests against the oldest supported client's DTOs; OpenAPI breaking-change check in CI |
+| NFR-COMPAT-01 | Client compatibility | Every supported client version keeps working. Only additive changes within `/v1`. A breaking change needs `/v2` and a deprecation period ≥ the customer mobile app's support window (12 months) | Contract tests against the oldest supported client's DTOs; OpenAPI breaking-change check in CI |
 | NFR-OBS-01 | Observability | Request ID end to end (returned to clients, logged, traced); RED metrics per endpoint; business metrics (orders placed, feed delay, sessions open); a burn-rate alert per SLO, each with a runbook | Observability review (Phase 2/6) |
 | NFR-OPS-01 | Deployability | Zero-downtime deploys; rollback in ≤ 10 min; database migrations are backward compatible with the previous release | Deployment and rollback rehearsal on staging |
 | NFR-MAINT-01 | Maintainability | ktlint and detekt clean; line coverage ≥ 80% in services and domain; every endpoint has its route-test matrix | CI |
@@ -171,7 +172,7 @@ No guest names, phone numbers, emails, payment cards or locations are collected.
 | Live-update transport (if the platform needs a managed real-time service; Phase 2 ADR) | Provider TBD | e.g. SSE/WebSocket, or a hosted pub/sub | Per environment | Connection and message quotas vs NFR-SCAL-01 | Clients fall back to reading the list (NFR-REL-03) |
 
 ## 7. Compliance
-- **Regulations:** Vietnam's Personal Data Protection Law (in force 1 January 2026) and Decree 13/2023/ND-CP on personal data protection, plus implementing guidance. Vietnam's accounting rules for keeping sales records (retention, TBD-4). No PCI-DSS scope, because no payment card data is handled. GDPR doesn't apply unless restaurants outside Vietnam are onboarded (that would be a CR).
+- **Regulations:** Vietnam's Personal Data Protection Law (in force 1 January 2026) and Decree 356/2025/ND-CP on personal data protection (which replaced Decree 13/2023/ND-CP on 1 January 2026), plus implementing guidance. Vietnam's accounting rules for keeping sales records (retention, TBD-4). No PCI-DSS scope, because no payment card data is handled. GDPR doesn't apply unless restaurants outside Vietnam are onboarded (that would be a CR).
 - **Data residency:** TBD-10. Legal review must say whether data about Vietnamese staff and transactions must be stored in Vietnam (Cybersecurity Law / Decree 53/2022) or may be transferred abroad with a transfer impact assessment. This decides the Vercel and database regions.
 - **Audit requirements:** NFR-SEC-03. Who did what to orders, bills, menu prices, staff access, QR codes and tenants.
 - **ASVS level:** **L2**, because the service holds staff personal data and financial records for many restaurants, and a cross-tenant leak would hit every customer.
@@ -187,9 +188,10 @@ One `AT-` scenario per Must FR, in [test-plan.md](test-plan.md) §5.
 - ASSUMPTION-5: Staff access tokens live ≤ 15 min.
 - ASSUMPTION-6: Anyone holding a table's current QR code can join its open session (the code is the only proof of presence). R-02 covers abuse; FR-016 and QR rotation are the mitigations.
 - ASSUMPTION-7: No service charge on the bill in release 1. Adding one later is a CR.
+- ASSUMPTION-11: In the FR-050 report a bill counts on the restaurant's local day on which it was closed (paid), even if the guests sat down before midnight. Confirmed 2026-10-14 (S-5); written into FR-050 by CR-003.
 - ~~TBD-1~~: Resolved by CR-002 (2026-10-14): built-in staff accounts, no external identity provider.
-- TBD-2: Customer mobile platforms (Android, iOS or both) and whether the staff app is also a store app.
-- TBD-3: Support window for old mobile app versions (proposed 12 months).
+- ~~TBD-2~~: Resolved by CR-003 (owner's decision 2026-10-14): customer mobile app on Android and iOS; staff app web only in release 1.
+- ~~TBD-3~~: Resolved by CR-003 (owner's decision 2026-10-14): old customer mobile app versions are supported for 12 months.
 - TBD-4: Retention periods (accounting records, audit log, staff data) and the erasure deadline. Legal review.
 - TBD-5: FR-022 menu images: Must or Should.
 - ~~TBD-6~~: Resolved at G1: menu prices include VAT; no separate VAT line.

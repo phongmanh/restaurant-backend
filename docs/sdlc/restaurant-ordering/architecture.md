@@ -28,7 +28,7 @@ Quality goals, ranked (ASSUMPTION-8, confirmed by the owner 2026-10-14):
 | 4. Latency | A manager opens a 31-day report | Daily aggregates per restaurant, written when a session closes and reconciled nightly | NFR-PERF-04, FR-050 |
 | 5. Operability | A bad release at 18:55 | Vercel instant rollback to the previous deployment; expand-only migrations | NFR-OPS-01 |
 
-Constraints: Kotlin + Ktor; Vercel (stakeholder-mandated); Vietnam PDP Law and Decree 13 (residency TBD-10); ASVS L2; no payments; team, budget and date TBD-9.
+Constraints: Kotlin + Ktor; Vercel (stakeholder-mandated); Vietnam PDP Law and Decree 356/2025, which replaced Decree 13 (residency TBD-10); ASVS L2; no payments; team, budget and date TBD-9.
 
 ## 2. Context
 ```mermaid
