@@ -1,13 +1,13 @@
 openapi: 3.1.0
 info:
   title: Restaurant ordering API
-  version: 0.4.0-draft
+  version: 0.5.0-draft
   description: |
     Contract for the restaurant ordering service (`docs/sdlc/restaurant-ordering/`).
     Hand-written in Phase 3 and frozen at G3 (architecture §5, ADR-0007).
     Built up one feature design at a time; this draft holds the shared parts and
     `/v1/auth/*` from `design/core-and-auth.md`, and the routes of
-    `design/restaurants.md`, `design/menu.md` and `design/tables.md`. `x-allowed-when-suspended` on staff and guest
+    `design/restaurants.md`, `design/menu.md`, `design/tables.md` and `design/orders.md`. `x-allowed-when-suspended` on staff and guest
     operations mirrors the endpoint registry (restaurants §6).
 
     Conventions (core-and-auth §2): snake_case fields; UUID v7 IDs; RFC 3339 UTC times;
@@ -34,6 +34,8 @@ tags:
     description: Menu reads for guests, staff and admins; menu editing, sold-out and images
   - name: tables
     description: Tables, QR codes, table sessions and waiter calls
+  - name: orders
+    description: Orders, their status steps, bills, closing a session with its payment, and bill corrections
 
 paths:
   /v1/auth/sign-in:
@@ -1854,6 +1856,403 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/guest/orders:
+    post:
+      tags: [orders]
+      operationId: placeGuestOrder
+      summary: 'Place an order for the session; priced by the server, all lines or none'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceOrderRequest' }
+      responses:
+        '201':
+          description: 'Placed. A replay with the same key returns the same order with `Idempotent-Replayed: true`'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/OrderConflict' }
+        '422': { $ref: '#/components/responses/IdempotencyKeyReused' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    get:
+      tags: [orders]
+      operationId: listGuestOrders
+      summary: 'The session''s orders, newest first'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: true
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: 'The orders'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /v1/guest/orders/{orderId}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [orders]
+      operationId: getGuestOrder
+      summary: 'One of the session''s orders'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: true
+      responses:
+        '200':
+          description: 'The order'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/guest/orders/{orderId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [orders]
+      operationId: cancelGuestOrder
+      summary: 'Cancel an order the kitchen has not accepted; repeating it is harmless'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'Cancelled, or already cancelled'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/guest/bill:
+    get:
+      tags: [orders]
+      operationId: getGuestBill
+      summary: 'The session''s running bill'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: true
+      responses:
+        '200':
+          description: 'The bill'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bill' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /v1/staff/table-sessions/{sessionId}/orders:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [orders]
+      operationId: placeStaffOrder
+      summary: 'Place an order on a guest''s behalf (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceOrderRequest' }
+      responses:
+        '201':
+          description: 'Placed. A replay with the same key returns the same order with `Idempotent-Replayed: true`'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/OrderConflict' }
+        '422': { $ref: '#/components/responses/IdempotencyKeyReused' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/orders:
+    get:
+      tags: [orders]
+      operationId: listStaffOrders
+      summary: 'Orders of the open sessions, oldest first; the live feed''s list fallback (all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/OrderStatusFilter'
+        - $ref: '#/components/parameters/SessionFilter'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: 'The orders'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/orders/{orderId}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [orders]
+      operationId: getStaffOrder
+      summary: 'One order (all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The order'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/orders/{orderId}/status:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [orders]
+      operationId: changeOrderStatus
+      summary: 'Move an order one step; the role decides which steps (design/orders.md §2)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderStatusChange' }
+      responses:
+        '200':
+          description: 'Changed'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/orders/{orderId}/lines/{lineId}/reject:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+      - $ref: '#/components/parameters/LineId'
+    post:
+      tags: [orders]
+      operationId: rejectOrderLine
+      summary: 'Reject one line of an accepted order; the last line rejects the order (kitchen, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RejectLineRequest' }
+      responses:
+        '200':
+          description: 'Rejected'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/table-sessions/{sessionId}/bill:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [orders]
+      operationId: getSessionBill
+      summary: 'The session''s bill, open or closed (all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The bill; its `ETag` is what the close and corrections need'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bill' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/table-sessions/{sessionId}/close:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [orders]
+      operationId: closeTableSession
+      summary: 'Close the session and record the payment taken at the counter (waiter, manager)'
+      description: |
+        `If-Match` carries the bill's `ETag`: a round ordered after the bill was read makes the
+        close fail with 412. Unfinished orders block the close (409 `orders_not_finished`) unless
+        `force` is true; they then become `cancelled` with reason `closed_with_session`.
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CloseSessionRequest' }
+      responses:
+        '200':
+          description: 'Closed; the final bill. A replay with the same key returns it with `Idempotent-Replayed: true`'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bill' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/OrderConflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '422': { $ref: '#/components/responses/IdempotencyKeyReused' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/table-sessions/{sessionId}/bill/adjustments:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [orders]
+      operationId: adjustClosedBill
+      summary: 'Correct a closed bill with a signed entry, counted on the day it is made (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BillAdjustmentRequest' }
+      responses:
+        '201':
+          description: 'Recorded; the bill with its corrections'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bill' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/bills:
+    get:
+      tags: [orders]
+      operationId: listClosedBills
+      summary: 'Bills closed on one local day, newest first (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/BusinessDate'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: 'The bills'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
 components:
   securitySchemes:
     staffBearer:
@@ -2020,6 +2419,35 @@ components:
       required: false
       schema: { type: string, enum: [open, acknowledged], default: open }
 
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    LineId:
+      name: lineId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    OrderStatusFilter:
+      name: status
+      in: query
+      required: false
+      description: 'Comma-separated statuses; default `placed,accepted,preparing,ready`'
+      schema: { type: string, pattern: '^[a-z_]+(,[a-z_]+)*$', examples: ['placed,accepted'] }
+    SessionFilter:
+      name: session_id
+      in: query
+      required: false
+      description: 'Only this session''s orders'
+      schema: { type: string, format: uuid }
+    BusinessDate:
+      name: date
+      in: query
+      required: true
+      description: 'Local day in the restaurant''s time zone on which the bills were closed'
+      schema: { type: string, format: date }
+
   headers:
     XRequestID:
       description: Request ID generated by the service; quote it to support
@@ -2143,6 +2571,14 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+
+    OrderConflict:
+      description: 'A state conflict; `code` says which. `item_unavailable` lists `unavailable_items`; `orders_not_finished` lists `order_ids`'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/OrderProblem' }
 
   schemas:
     Problem:
@@ -2862,11 +3298,210 @@ components:
         closed_at: { type: string, format: date-time }
         table: { $ref: '#/components/schemas/TableRef' }
         version: { type: integer }
+        bill:
+          type: object
+          description: 'Bill summary from orders (design/orders.md §16)'
+          required: [order_count, total]
+          properties:
+            order_count: { type: integer }
+            total: { $ref: '#/components/schemas/Money' }
     MoveSessionRequest:
       type: object
       required: [to_table_id]
       properties:
         to_table_id: { type: string, format: uuid }
+    OrderProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            unavailable_items:
+              type: array
+              description: 'With `item_unavailable`: the hidden or sold-out items'
+              items: { type: string, format: uuid }
+            order_ids:
+              type: array
+              description: 'With `orders_not_finished`: the orders still in progress'
+              items: { type: string, format: uuid }
+    OrderLineInput:
+      type: object
+      required: [item_id, quantity]
+      properties:
+        item_id: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1, maximum: 20 }
+        option_ids: { type: array, maxItems: 50, uniqueItems: true, items: { type: string, format: uuid } }
+        note: { type: string, maxLength: 200 }
+    PlaceOrderRequest:
+      type: object
+      required: [lines]
+      description: 'No prices: the server prices every line from the current menu'
+      properties:
+        lines: { type: array, minItems: 1, maxItems: 50, items: { $ref: '#/components/schemas/OrderLineInput' } }
+    OrderStatus:
+      type: string
+      description: 'Clients must accept values they do not know and show them as in progress (design/orders.md §2)'
+      examples: [placed, accepted, preparing, ready, served, rejected, cancelled]
+    ReasonCode:
+      type: string
+      enum: [item_unavailable, kitchen_closed, duplicate_order, not_at_table, customer_request, closed_with_session, other]
+    Reason:
+      type: object
+      required: [code]
+      properties:
+        code: { $ref: '#/components/schemas/ReasonCode' }
+        note: { type: string, maxLength: 200, description: 'Staff only; absent for guests' }
+    OrderLineOption:
+      type: object
+      required: [option_id, group_name_vi, name_vi, price_delta]
+      properties:
+        option_id: { type: string, format: uuid }
+        group_name_vi: { type: string }
+        group_name_en: { type: string }
+        name_vi: { type: string }
+        name_en: { type: string }
+        price_delta: { $ref: '#/components/schemas/Money' }
+    OrderLine:
+      type: object
+      required: [id, item_id, name_vi, options, quantity, unit_price, unit_total, line_total, status]
+      properties:
+        id: { type: string, format: uuid }
+        item_id: { type: string, format: uuid }
+        name_vi: { type: string }
+        name_en: { type: string }
+        options: { type: array, items: { $ref: '#/components/schemas/OrderLineOption' } }
+        quantity: { type: integer, minimum: 1, maximum: 20 }
+        unit_price: { $ref: '#/components/schemas/Money' }
+        unit_total: { $ref: '#/components/schemas/Money' }
+        line_total: { $ref: '#/components/schemas/Money' }
+        note: { type: string }
+        status: { type: string, enum: [active, rejected] }
+        reason: { $ref: '#/components/schemas/Reason' }
+    Order:
+      type: object
+      required: [id, status, version, placed_at, status_changed_at, placed_by, table, lines, total]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        version: { type: integer }
+        placed_at: { type: string, format: date-time }
+        status_changed_at: { type: string, format: date-time }
+        placed_by: { type: string, enum: [guest, staff] }
+        placed_by_staff_id: { type: string, format: uuid, description: 'Staff only' }
+        session_id: { type: string, format: uuid }
+        table: { $ref: '#/components/schemas/TableRef' }
+        lines: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/OrderLine' } }
+        total: { $ref: '#/components/schemas/Money' }
+        reason: { $ref: '#/components/schemas/Reason' }
+    OrderPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Order' } }
+        next_cursor: { type: string }
+    OrderStatusChange:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [accepted, preparing, ready, served, rejected, cancelled] }
+        reason: { $ref: '#/components/schemas/ReasonInput' }
+    ReasonInput:
+      type: object
+      required: [code]
+      description: 'Required when rejecting; optional when cancelling. `closed_with_session` is set by the close only'
+      properties:
+        code: { type: string, enum: [item_unavailable, kitchen_closed, duplicate_order, not_at_table, customer_request, other] }
+        note: { type: string, maxLength: 200 }
+    RejectLineRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { $ref: '#/components/schemas/ReasonInput' }
+    PaymentMethod:
+      type: string
+      enum: [cash, card, bank_transfer]
+    BillLine:
+      type: object
+      required: [order_id, line_id, name_vi, options, quantity, unit_total, line_total]
+      properties:
+        order_id: { type: string, format: uuid }
+        line_id: { type: string, format: uuid }
+        name_vi: { type: string }
+        name_en: { type: string }
+        options: { type: array, items: { $ref: '#/components/schemas/OrderLineOption' } }
+        quantity: { type: integer }
+        unit_total: { $ref: '#/components/schemas/Money' }
+        line_total: { $ref: '#/components/schemas/Money' }
+    BillPayment:
+      type: object
+      required: [method, amount_received, change]
+      properties:
+        method: { $ref: '#/components/schemas/PaymentMethod' }
+        amount_received: { $ref: '#/components/schemas/Money' }
+        change: { $ref: '#/components/schemas/Money' }
+    BillAdjustment:
+      type: object
+      required: [id, amount, payment_method, reason_code, created_at, business_date]
+      properties:
+        id: { type: string, format: uuid }
+        amount: { $ref: '#/components/schemas/Money' }
+        payment_method: { $ref: '#/components/schemas/PaymentMethod' }
+        reason_code: { type: string, enum: [wrong_item_billed, wrong_payment_method, goodwill, other] }
+        note: { type: string }
+        created_at: { type: string, format: date-time }
+        created_by: { type: string, format: uuid }
+        business_date: { type: string, format: date }
+    Bill:
+      type: object
+      required: [session_id, status, version, table, lines, order_count, total]
+      description: 'Active lines of orders that are not cancelled or rejected. Staff also get `adjustments` and `adjusted_total` on a closed bill'
+      properties:
+        session_id: { type: string, format: uuid }
+        status: { type: string, enum: [open, closed] }
+        version: { type: integer }
+        table: { $ref: '#/components/schemas/TableRef' }
+        lines: { type: array, items: { $ref: '#/components/schemas/BillLine' } }
+        order_count: { type: integer }
+        total: { $ref: '#/components/schemas/Money' }
+        closed_at: { type: string, format: date-time }
+        business_date: { type: string, format: date }
+        payment: { $ref: '#/components/schemas/BillPayment' }
+        adjustments: { type: array, items: { $ref: '#/components/schemas/BillAdjustment' } }
+        adjusted_total: { $ref: '#/components/schemas/Money' }
+    BillSummary:
+      type: object
+      required: [session_id, table, total, closed_at]
+      properties:
+        session_id: { type: string, format: uuid }
+        table: { $ref: '#/components/schemas/TableRef' }
+        total: { $ref: '#/components/schemas/Money' }
+        adjusted_total: { $ref: '#/components/schemas/Money' }
+        payment_method: { $ref: '#/components/schemas/PaymentMethod' }
+        closed_at: { type: string, format: date-time }
+    BillPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/BillSummary' } }
+        next_cursor: { type: string }
+    CloseSessionRequest:
+      type: object
+      properties:
+        payment:
+          type: object
+          required: [method, amount_received]
+          description: 'Required when the total is above 0; must be absent when it is 0'
+          properties:
+            method: { $ref: '#/components/schemas/PaymentMethod' }
+            amount_received: { $ref: '#/components/schemas/Money' }
+        force: { type: boolean, default: false, description: 'Close anyway; unfinished orders become cancelled' }
+    BillAdjustmentRequest:
+      type: object
+      required: [amount, payment_method, reason_code]
+      properties:
+        amount: { $ref: '#/components/schemas/Money' }
+        payment_method: { $ref: '#/components/schemas/PaymentMethod' }
+        reason_code: { type: string, enum: [wrong_item_billed, wrong_payment_method, goodwill, other] }
+        note: { type: string, maxLength: 200 }
 
 # Error-code catalogue (architecture §5). Feature designs add their codes here.
 x-error-catalogue:
@@ -2909,3 +3544,9 @@ x-error-catalogue:
   - { code: table_has_open_session, status: 409, meaning: Disabling or deleting a table with guests }
   - { code: session_not_open, status: 409, meaning: The table session is closed }
   - { code: table_limit_reached, status: 409, meaning: The restaurant has 300 tables }
+  - { code: item_unavailable, status: 409, meaning: 'An ordered item is hidden or sold out; unavailable_items lists them' }
+  - { code: order_not_cancellable, status: 409, meaning: 'The kitchen has accepted the order, or it has finished; ask staff' }
+  - { code: invalid_transition, status: 409, meaning: The status step is not allowed from the order's current status }
+  - { code: line_not_rejectable, status: 409, meaning: 'The line is already rejected, or the order is not accepted or preparing' }
+  - { code: orders_not_finished, status: 409, meaning: 'Closing with unfinished orders without force; order_ids lists them' }
+  - { code: bill_not_closed, status: 409, meaning: Correcting a bill that is still open }

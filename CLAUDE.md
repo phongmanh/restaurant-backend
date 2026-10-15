@@ -13,8 +13,8 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 | requirements.md | v1.4 (baselined at G1, changed by CR-002 to CR-005). Changing it needs a CR |
 | architecture.md | v1.2: approved at G2 (2026-10-15) with the TBD-10 condition, then changed by CR-004 and CR-005. Changing it needs a CR |
 | adr/0001–0009, 0011 | Decisions; ADR-0002 (Vercel) is Accepted with conditions (paid-plan cold-start check before G5); 0003 (live updates through Ably) is Accepted after S-3; 0004 (Neon PostgreSQL) and 0008 (rate limiting: WAF + Upstash) are Accepted; 0010 is reserved by CR-001; 0011 (built-in staff sign-in) is Accepted too |
-| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003, CR-004 (menu read and image limits) and CR-005 (natural idempotency, no guest device data) are Approved |
-| design/ | Phase 3 feature designs: core-and-auth (Draft 0.6), restaurants (Draft 0.2), menu (Draft 0.2), tables (Draft 0.2); orders, realtime and reports come next |
+| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003, CR-004 (menu read and image limits) and CR-005 (natural idempotency, no guest device data) are Approved; CR-006 (orders decisions into requirements and architecture) is Proposed |
+| design/ | Phase 3 feature designs: core-and-auth (Draft 0.6), restaurants (Draft 0.2), menu (Draft 0.2), tables (Draft 0.3), orders (Draft 0.2); realtime and reports come next |
 | `docs/api/openapi.yaml` (repo root) | The API contract, built up feature by feature and frozen at G3 |
 | rtm.md, test-plan.md | Traceability and test plan |
 | cost-estimate.md | Monthly cost (TBD-11), v0.2 for the owner's review; S-3 confirmed the Ably line |
@@ -43,6 +43,8 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 - **Secrets are never stored in an idempotent response or written to a log.** That covers one-time secrets (invitation and reset links) and bearer tokens (session and access tokens). A replay issues a fresh one; for links, the fresh one replaces the old (core-and-auth §4, tables §3.1).
 - **Every endpoint registry entry sets `allowedWhenSuspended` explicitly;** there's no default, and the contract mirrors it as `x-allowed-when-suspended` (restaurants §6).
 - **A rule that spans several rows** (e.g. "at least one active manager") is serialised with `pg_advisory_xact_lock` on its scope. Otherwise two concurrent changes can each pass the check and break it together (restaurants §7).
+- **One lock order for every write:** table session → bill → order rows → event counter → audit chain head. A transaction that skips a step keeps the order of the rest; two writes that lock in opposite orders can deadlock under load (orders §3.1).
+- **Clients accept enum values they don't know** (shown as a neutral state), and the contract says so on the field. That keeps a new value, such as FR-016's `pending_confirmation`, additive within `/v1` (NFR-COMPAT-01; orders §2).
 - **YAML gotcha:** in OpenAPI files, quote any plain value that contains `: ` or, inside `{ }`, a `,`. Otherwise it parses into the wrong structure. Scripts that generate contract text quote every `summary` and `description`. In Python, write an apostrophe inside a double-quoted string: `'table''s'` is two adjacent literals and silently becomes `tables`. Lint passes either way, so read the parsed values back. It bit three times on 2026-10-15.
 
 ## Spikes: conventions and known gotchas

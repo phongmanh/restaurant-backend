@@ -6,19 +6,19 @@ Every requirement traces forward to design, code, tests and the release. Every t
 |---|---|---|---|---|---|---|---|---|
 | FR-001 | Start or join a table session from the QR | M | architecture.md §7; ADR-0006; design/tables.md | `dining_tables`, `table_sessions`; `POST /v1/guest/sessions` | | AT-001 | | |
 | FR-002 | Browse the menu | M | architecture.md §1, §9; design/menu.md | `menu_categories`, `menu_items`; `menu_state`; `GET /v1/guest/menu` (ETag per menu version) | | AT-002 | | |
-| FR-003 | Place an order (idempotent, server-priced) | M | architecture.md §1, §10 | `orders`, `order_lines`, `idempotency_keys`; `OrderPlaced` | | AT-003 | | |
-| FR-004 | Order more rounds in the same session | M | architecture.md §4 | `orders` | | AT-004 | | |
-| FR-005 | Live order status for guests | M | ADR-0003 | `domain_events`, `outbox` | | AT-005 | | |
-| FR-006 | Guest cancels a `placed` order | M | architecture.md §10 | `orders`; `OrderCancelled` | | AT-006 | | |
-| FR-007 | Running bill with price snapshot (VAT-inclusive prices) | M | architecture.md §5 | `order_lines`, `bills` | | AT-007 | | |
+| FR-003 | Place an order (idempotent, server-priced) | M | architecture.md §1, §10; design/orders.md | `orders`, `order_lines`, `bills`, `idempotency_keys`; `POST /v1/guest/orders`; `OrderPlaced` | | AT-003 | | |
+| FR-004 | Order more rounds in the same session | M | architecture.md §4; design/orders.md | `orders`, `bills` | | AT-004 | | |
+| FR-005 | Live order status for guests | M | ADR-0003; design/orders.md (reads, events) | `domain_events`, `outbox`; `GET /v1/guest/orders`, `/v1/guest/orders/{id}` | | AT-005 | | |
+| FR-006 | Guest cancels a `placed` order | M | architecture.md §10; design/orders.md | `orders`; `POST /v1/guest/orders/{id}/cancel`; `OrderStatusChanged` | | AT-006 | | |
+| FR-007 | Running bill with price snapshot (VAT-inclusive prices) | M | architecture.md §5; design/orders.md | `order_lines`, `bills`; `GET /v1/guest/bill` | | AT-007 | | |
 | FR-008 | Call waiter / request bill | S | ADR-0003; design/tables.md | `waiter_calls`; `/v1/guest/waiter-calls`, `/v1/staff/waiter-calls/*` | | | | |
 | FR-010 | Staff sign-in and roles | M | architecture.md §7, ADR-0011; design/core-and-auth.md | `staff_accounts`, `staff_sessions`, `staff_refresh_tokens`, `staff_mfa_challenges`, `staff_link_tokens`; `/v1/auth/*` | | AT-010 | | |
-| FR-011 | Live order feed for staff | M | ADR-0003 | `domain_events`, `outbox` | | AT-011 | | |
-| FR-012 | Order state machine with optimistic concurrency | M | architecture.md §7, §10 | `orders`; `OrderStatusChanged` | | AT-012 | | |
-| FR-013 | Close session, record payment at the counter | M | architecture.md §7; ADR-0006 | `table_sessions`, `bills`; `TableSessionClosed` | | AT-013 | | |
-| FR-014 | Waiter orders on a guest's behalf | S | architecture.md §7 | `orders` | | | | |
-| FR-015 | Kitchen rejects a single item | S | architecture.md §4 | `order_lines`; `OrderLineRejected` | | | | |
-| FR-016 | Waiter confirmation of guest orders | C | architecture.md §11 | `restaurants` settings | | | | |
+| FR-011 | Live order feed for staff | M | ADR-0003; design/orders.md (list fallback, events) | `domain_events`, `outbox`; `GET /v1/staff/orders` | | AT-011 | | |
+| FR-012 | Order state machine with optimistic concurrency | M | architecture.md §7, §10; design/orders.md | `orders`; `POST /v1/staff/orders/{id}/status`; `OrderStatusChanged` | | AT-012 | | |
+| FR-013 | Close session, record payment at the counter | M | architecture.md §7; ADR-0006; design/orders.md | `table_sessions`, `bills`, `bill_adjustments`; `/v1/staff/table-sessions/{id}/close`, `.../bill`, `.../bill/adjustments`; `BillClosed`, `TableSessionClosed` | | AT-013 | | |
+| FR-014 | Waiter orders on a guest's behalf | S | architecture.md §7; design/orders.md | `orders`; `POST /v1/staff/table-sessions/{id}/orders` | | | | |
+| FR-015 | Kitchen rejects a single item | S | architecture.md §4; design/orders.md | `order_lines`; `POST /v1/staff/orders/{id}/lines/{lineId}/reject`; `OrderLineRejected` | | | | |
+| FR-016 | Waiter confirmation of guest orders | C | architecture.md §11; design/orders.md §15 Q1 (owner 2026-10-15: not in release 1; CR-006) | `restaurants` settings | | | | |
 | FR-020 | Manage menu categories and items | M | architecture.md §4; design/menu.md | `menu_categories`, `menu_items` | | AT-020 | | |
 | FR-021 | Toggle item sold out | M | architecture.md §4; design/menu.md | `menu_items`; `menu_items.sold_out`; `PUT /v1/staff/menu/items/{id}/sold-out` | | AT-021 | | |
 | FR-022 | Menu item images | S (TBD-5) | architecture.md §6, §12; design/menu.md | object storage; `menu_items.image_key`; `PUT /v1/staff/menu/items/{id}/image`; ImageStore (TBD-13) | | | | |

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.2 Draft: CR-005 approved and the six §13 questions decided by the owner on 2026-10-15; the whole design is approved at G3 |
+| Version | 0.3 Draft (0.3: the auto-close job and `SessionAccess.lockForClose` from [orders](orders.md) §16): CR-005 approved and the six §13 questions decided by the owner on 2026-10-15; the whole design is approved at G3 |
 | Date | 2026-10-15 |
 | Package | `tables` (architecture §4) |
 | Requirements | FR-001 QR → session, FR-008 waiter call (Should), FR-030 tables, FR-031 QR codes, FR-032 floor view and sessions; FR-042, NFR-SEC-02 (session isolation), NFR-SEC-04 (scan limits), NFR-PRIV-01 |
@@ -121,7 +121,7 @@ Returns the session as in §3.1 (without a token), plus the guest's open waiter 
 
 ### 3.5 Abandoned sessions (§13 Q2)
 A session that's never closed would make the next guests at that table join the last guests' bill.
-- **No orders:** the hourly job closes an open session with no orders (or only cancelled ones) after 2 h without activity (`last_activity_at`). Audit actor `system`, event `TableSessionClosed`.
+- **No orders:** the hourly job closes an open session with no orders (or only cancelled ones) after 2 h without activity (`last_activity_at`). Audit actor `system`, event `TableSessionClosed`. It locks the session `FOR UPDATE`, then calls `EmptyBills.closeIfEmpty` from `orders` (orders §11) and closes the session only if that answers `true`, so an order placed at the same moment keeps the session open and no open bill is left behind.
 - **With orders:** a session is never closed automatically, because closing means settling money (FR-013). The floor view (§6) flags it `stale: true` once it has been open more than 6 h, so staff close it.
 
 ## 4. Waiter calls (FR-008, Should)
@@ -215,6 +215,7 @@ The QR endpoints don't return a token to store: the URL is the only form of the 
 ## 7. `SessionAccess` (for `orders`)
 - **`requireOpenForUpdate(restaurantId, sessionId)`** locks the session row `FOR SHARE` inside the order transaction and fails with `session_not_open` if it's closed. Closing takes `FOR UPDATE`. So an order can't slip into a session at the moment it closes: one waits for the other (FR-003 "session closed meanwhile → rejected").
 - **`touch(sessionId)`** sets `last_activity_at` (§3.5); orders call it on every order.
+- **`lockForClose(restaurantId, sessionId)`** takes the session row `FOR UPDATE` and fails with `session_not_open` if it's closed. `orders` calls it first, checks the bill, then calls `close` in the same transaction (orders §7.1).
 - **`close(restaurantId, sessionId, reason, by)`**, called by `orders` when it closes the bill (FR-013):
   - sets `closed`;
   - closes open waiter calls;
