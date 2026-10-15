@@ -23,6 +23,7 @@ enum class RevokeReason(
     PASSWORD_RESET("password_reset"),
     ROLE_CHANGED("role_changed"),
     DEACTIVATED("deactivated"),
+    TOTP_RESET("totp_reset"),
 }
 
 /** A live session: one sign-in. */

@@ -13,3 +13,7 @@ complexity:
     constructorThreshold: 12
     # A defaulted parameter isn't one every caller has to pass.
     ignoreDefaultParameters: true
+  TooManyFunctions:
+    # The rule is about a class's or file's public surface. Private helpers are how long functions
+    # get split, so counting them pushes the other way.
+    ignorePrivate: true

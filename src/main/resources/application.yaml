@@ -41,6 +41,10 @@ auth:
   emailHmacKey: "$EMAIL_HMAC_KEY:"
   # The refresh cookie's path as the browser sees it through the web apps' /api rewrite (§8.3).
   cookiePath: "$AUTH_COOKIE_PATH:/api/v1/auth"
+  # Where invitation and reset links open (restaurants §5, §7): <url>/invite#<token>, <url>/reset-password#<token>.
+  # Admins' links open in the admin web app. Production needs https.
+  staffAppUrl: "$STAFF_APP_URL:http://localhost:5173"
+  adminAppUrl: "$ADMIN_APP_URL:http://localhost:5174"
   # Architecture §7: OWASP's Argon2id parameters; at most 4 hashes at once, a 2 s wait for a slot.
   argon2:
     memoryKib: 19456
@@ -63,3 +67,6 @@ rateLimits:
       refresh: "120/60"
       link: "10/60"
       password_change: "5/900"
+    # restaurants §7, §15 Q6: invitation and reset links per restaurant.
+    staff:
+      link: "30/3600"

@@ -1,6 +1,7 @@
 package io.github.phongmanh.restaurant.core.config
 
 import io.github.phongmanh.restaurant.core.application.RateLimitPolicy
+import io.github.phongmanh.restaurant.core.auth.persistence.LinkKind
 import io.github.phongmanh.restaurant.core.http.SemVer
 import io.github.phongmanh.restaurant.support.TestKeys
 import io.ktor.server.config.MapApplicationConfig
@@ -33,6 +34,8 @@ class AppConfigTest {
             "auth.totpEncryptionKeys" to TestKeys.totpKeysJson,
             "auth.emailHmacKey" to Base64.getEncoder().encodeToString(ByteArray(32)),
             "auth.cookiePath" to "/api/v1/auth",
+            "auth.staffAppUrl" to "http://localhost:5173",
+            "auth.adminAppUrl" to "http://localhost:5174",
             "auth.argon2.memoryKib" to "19456",
             "auth.argon2.iterations" to "2",
             "auth.argon2.parallelism" to "1",
@@ -99,7 +102,34 @@ class AppConfigTest {
         val upstash = arrayOf("rateLimits.upstashUrl" to "https://x.upstash.io", "rateLimits.upstashToken" to "t")
         val e = assertFailsWith<IllegalStateException> { AppConfig.load(config("app.environment" to "production", *upstash)) }
         assertTrue("localhost" in e.message!!, e.message)
-        AppConfig.load(config("app.environment" to "production", "http.allowedOrigins" to "https://order.example.test", *upstash))
+        val apps = arrayOf("auth.staffAppUrl" to "https://staff.example.test", "auth.adminAppUrl" to "https://admin.example.test")
+        AppConfig.load(config("app.environment" to "production", "http.allowedOrigins" to "https://order.example.test", *upstash, *apps))
+    }
+
+    @Test
+    fun `production needs https app URLs for links`() {
+        val production =
+            arrayOf(
+                "app.environment" to "production",
+                "http.allowedOrigins" to "https://order.example.test",
+                "rateLimits.upstashUrl" to "https://x.upstash.io",
+                "rateLimits.upstashToken" to "t",
+            )
+        val e = assertFailsWith<IllegalStateException> { AppConfig.load(config(*production)) }
+        assertTrue("auth.staffAppUrl" in e.message!!, e.message)
+        val c =
+            AppConfig.load(
+                config(
+                    *production,
+                    "auth.staffAppUrl" to "https://staff.example.test/",
+                    "auth.adminAppUrl" to "https://admin.example.test",
+                ),
+            )
+        assertEquals("https://staff.example.test/invite#t0k", c.auth.links.of(LinkKind.INVITATION, platformAdmin = false, token = "t0k"))
+        assertEquals(
+            "https://admin.example.test/reset-password#t0k",
+            c.auth.links.of(LinkKind.PASSWORD_RESET, platformAdmin = true, token = "t0k"),
+        )
     }
 
     @Test

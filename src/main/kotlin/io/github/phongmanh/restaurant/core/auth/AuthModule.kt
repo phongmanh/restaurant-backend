@@ -8,9 +8,12 @@ import io.github.phongmanh.restaurant.core.auth.application.CredentialFailures
 import io.github.phongmanh.restaurant.core.auth.application.LinkService
 import io.github.phongmanh.restaurant.core.auth.application.MfaService
 import io.github.phongmanh.restaurant.core.auth.application.PasswordService
+import io.github.phongmanh.restaurant.core.auth.application.PlatformAdmins
 import io.github.phongmanh.restaurant.core.auth.application.RefreshService
 import io.github.phongmanh.restaurant.core.auth.application.SessionIssuer
 import io.github.phongmanh.restaurant.core.auth.application.SignInService
+import io.github.phongmanh.restaurant.core.auth.application.StaffAccounts
+import io.github.phongmanh.restaurant.core.auth.application.StaffPrivacy
 import io.github.phongmanh.restaurant.core.auth.crypto.AccessTokens
 import io.github.phongmanh.restaurant.core.auth.crypto.Argon2Hasher
 import io.github.phongmanh.restaurant.core.auth.crypto.PasswordHasher
@@ -23,7 +26,9 @@ import io.github.phongmanh.restaurant.core.auth.http.BearerAuthenticator
 import io.github.phongmanh.restaurant.core.auth.http.RefreshCookies
 import io.github.phongmanh.restaurant.core.auth.persistence.CallerRepository
 import io.github.phongmanh.restaurant.core.auth.persistence.LinkTokenRepository
+import io.github.phongmanh.restaurant.core.auth.persistence.PlatformAdminRepository
 import io.github.phongmanh.restaurant.core.auth.persistence.StaffAccountRepository
+import io.github.phongmanh.restaurant.core.auth.persistence.StaffMemberRepository
 import io.github.phongmanh.restaurant.core.auth.persistence.StaffSessionRepository
 import io.github.phongmanh.restaurant.core.auth.persistence.StaffTotpRepository
 import io.github.phongmanh.restaurant.core.http.CallAuthenticator
@@ -58,6 +63,8 @@ fun authModule(
         single { StaffTotpRepository() }
         single { StaffSessionRepository() }
         single { LinkTokenRepository() }
+        single { StaffMemberRepository() }
+        single { PlatformAdminRepository() }
         single { CallerRepository() }
 
         single { AuthAudit(get()) }
@@ -73,4 +80,10 @@ fun authModule(
         single { AuthRateLimits(get(), get()) }
         single { RefreshCookies(get(), get()) }
         single { AuthRoutes(get(), get(), get(), get(), get(), get(), get(), get()) }
+
+        // The StaffAccounts port the restaurants feature manages accounts through (§14).
+        single { auth.links }
+        single { StaffAccounts(get(), get(), get(), get(), get(), get(), get()) }
+        single { PlatformAdmins(get(), get(), get()) }
+        single { StaffPrivacy(get(), get(), get()) }
     }

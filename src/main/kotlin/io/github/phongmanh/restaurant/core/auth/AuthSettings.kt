@@ -5,6 +5,7 @@ import io.github.phongmanh.restaurant.core.auth.crypto.Argon2Settings
 import io.github.phongmanh.restaurant.core.auth.crypto.EmailHmac
 import io.github.phongmanh.restaurant.core.auth.crypto.SecretBox
 import io.github.phongmanh.restaurant.core.auth.crypto.StaffKeySet
+import io.github.phongmanh.restaurant.core.auth.persistence.LinkKind
 import kotlin.time.Duration
 
 /** Sign-in settings (core-and-auth §13). The keys are parsed at startup, so a bad one stops it. */
@@ -17,7 +18,28 @@ data class AuthSettings(
     /** The path the browser sees through the same-origin rewrite, `/api/v1/auth` (§8.3). */
     val cookiePath: String,
     val argon2: Argon2Settings,
+    val links: LinkUrls,
 )
+
+/**
+ * Where the links of §8.5 open: the staff web app, or the admin web app for a platform admin. The
+ * token goes in the URL fragment, so it never reaches a server log or a `Referer` header
+ * (architecture §7).
+ */
+data class LinkUrls(
+    val staffApp: String,
+    val adminApp: String,
+) {
+    fun of(
+        kind: LinkKind,
+        platformAdmin: Boolean,
+        token: String,
+    ): String {
+        val base = (if (platformAdmin) adminApp else staffApp).trimEnd('/')
+        val page = if (kind == LinkKind.INVITATION) "invite" else "reset-password"
+        return "$base/$page#$token"
+    }
+}
 
 /**
  * Rate-limit settings (§11, ADR-0008). Without [upstash] the limits are counted in the instance's

@@ -6,6 +6,7 @@ import io.github.phongmanh.restaurant.support.AuthFixtures
 import io.github.phongmanh.restaurant.support.MutableClock
 import io.github.phongmanh.restaurant.support.TestDatabase
 import io.github.phongmanh.restaurant.support.authApp
+import io.github.phongmanh.restaurant.support.decodeBase32
 import io.github.phongmanh.restaurant.support.field
 import io.github.phongmanh.restaurant.support.postJson
 import io.github.phongmanh.restaurant.support.signIn
@@ -181,20 +182,4 @@ class LinksTest {
             assertEquals(HttpStatusCode.NoContent, client.accept(token, password).status)
             assertEquals(HttpStatusCode.OK, client.signIn("longname@pho.example", password).status)
         }
-
-    private fun decodeBase32(text: String): ByteArray {
-        val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
-        var buffer = 0
-        var bits = 0
-        val out = mutableListOf<Byte>()
-        for (c in text) {
-            buffer = (buffer shl 5) or alphabet.indexOf(c)
-            bits += 5
-            if (bits >= 8) {
-                out += (buffer shr (bits - 8)).toByte()
-                bits -= 8
-            }
-        }
-        return out.toByteArray()
-    }
 }

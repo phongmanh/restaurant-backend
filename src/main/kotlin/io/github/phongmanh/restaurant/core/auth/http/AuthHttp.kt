@@ -136,6 +136,11 @@ class Rules {
         if (!ok) errors += FieldError(field, code)
     }
 
+    /** Errors a domain check collected itself, such as the opening hours' (restaurants §4.3). */
+    fun add(found: List<FieldError>) {
+        errors += found
+    }
+
     companion object {
         fun validate(block: Rules.() -> Unit) {
             val errors = Rules().apply(block).errors

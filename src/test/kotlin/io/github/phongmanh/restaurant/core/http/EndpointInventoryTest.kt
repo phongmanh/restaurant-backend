@@ -3,6 +3,7 @@ package io.github.phongmanh.restaurant.core.http
 import io.github.phongmanh.restaurant.Contract
 import io.github.phongmanh.restaurant.module
 import io.github.phongmanh.restaurant.support.TestDatabase
+import io.github.phongmanh.restaurant.support.notYetRouted
 import io.ktor.server.application.Application
 import io.ktor.server.application.plugin
 import io.ktor.server.routing.HttpMethodRouteSelector
@@ -22,25 +23,6 @@ import kotlin.test.assertTrue
  * contract. `/health` and `/internal/jobs/` are left out, as they aren't in the contract.
  */
 class EndpointInventoryTest {
-    /**
-     * Registry entries whose routes aren't built yet. Phase 4 removes each group, or single entries,
-     * in the change that builds them. It must be empty at G4. The test fails both when a route exists
-     * for an entry listed here and when an entry missing from here has no route.
-     */
-    private val notYetRouted: Set<Endpoint> =
-        listOf(
-            Endpoints.Restaurants,
-            Endpoints.Staff,
-            Endpoints.Audit,
-            Endpoints.Admin,
-            Endpoints.Privacy,
-            Endpoints.Menu,
-            Endpoints.Tables,
-            Endpoints.Orders,
-            Endpoints.Realtime,
-            Endpoints.Reports,
-        ).flatMap { it.entries }.toSet()
-
     private fun Endpoint.key() = "${method.value} $path"
 
     private fun Contract.Operation.key() = "$method $path"
