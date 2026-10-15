@@ -53,6 +53,8 @@ sealed class DomainError(
     val code: ErrorCode,
     val detail: String? = null,
     val errors: List<FieldError> = emptyList(),
+    /** Sent as `Retry-After`, in seconds. Every 429 and 503 sets it (core-and-auth §2). */
+    val retryAfterSeconds: Long? = null,
 ) : RuntimeException(code.value, null, false, false) {
     class MalformedRequest(
         detail: String? = null,
@@ -66,9 +68,37 @@ sealed class DomainError(
         }
     }
 
+    class IdempotencyKeyRequired : DomainError(ErrorCode.IDEMPOTENCY_KEY_REQUIRED)
+
+    /** The caller's role lacks the operation. Checked without looking at the object (§3). */
+    class Forbidden : DomainError(ErrorCode.FORBIDDEN)
+
     class NotFound : DomainError(ErrorCode.NOT_FOUND)
+
+    /** Another request with the same `Idempotency-Key` is still running (§4). */
+    class IdempotencyRequestInProgress : DomainError(ErrorCode.IDEMPOTENCY_REQUEST_IN_PROGRESS)
+
+    /** `If-Match` doesn't name the current version (§5). */
+    class PreconditionFailed : DomainError(ErrorCode.PRECONDITION_FAILED)
+
+    class PayloadTooLarge : DomainError(ErrorCode.PAYLOAD_TOO_LARGE)
 
     class UnsupportedMediaType : DomainError(ErrorCode.UNSUPPORTED_MEDIA_TYPE)
 
-    class PayloadTooLarge : DomainError(ErrorCode.PAYLOAD_TOO_LARGE)
+    /** The same `Idempotency-Key` came with a different request (§4). */
+    class IdempotencyKeyReused : DomainError(ErrorCode.IDEMPOTENCY_KEY_REUSED)
+
+    class ClientUpgradeRequired : DomainError(ErrorCode.CLIENT_UPGRADE_REQUIRED)
+
+    /** A versioned resource was changed without `If-Match` (§5). */
+    class PreconditionRequired : DomainError(ErrorCode.PRECONDITION_REQUIRED)
+
+    /** The database is unreachable or timed out (architecture §10). */
+    class ServiceUnavailable(
+        retryAfterSeconds: Long = DEFAULT_RETRY_AFTER_SECONDS,
+    ) : DomainError(ErrorCode.SERVICE_UNAVAILABLE, retryAfterSeconds = retryAfterSeconds)
+
+    companion object {
+        const val DEFAULT_RETRY_AFTER_SECONDS = 2L
+    }
 }

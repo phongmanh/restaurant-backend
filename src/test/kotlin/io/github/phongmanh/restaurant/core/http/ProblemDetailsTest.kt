@@ -3,6 +3,7 @@ package io.github.phongmanh.restaurant.core.http
 import io.github.phongmanh.restaurant.core.domain.DomainError
 import io.github.phongmanh.restaurant.core.domain.FieldError
 import io.github.phongmanh.restaurant.module
+import io.github.phongmanh.restaurant.support.TestDatabase
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -41,7 +42,7 @@ class ProblemDetailsTest {
     private fun withRoutes(block: suspend ApplicationTestBuilder.() -> Unit) =
         testApplication {
             application {
-                module()
+                module(TestDatabase.config)
                 routing {
                     get("/test/boom") { error("secret internal detail") }
                     get("/test/not-found") { throw DomainError.NotFound() }

@@ -2,6 +2,7 @@ package io.github.phongmanh.restaurant.core.http
 
 import io.github.phongmanh.restaurant.Contract
 import io.github.phongmanh.restaurant.module
+import io.github.phongmanh.restaurant.support.TestDatabase
 import io.ktor.server.application.Application
 import io.ktor.server.application.plugin
 import io.ktor.server.routing.HttpMethodRouteSelector
@@ -70,7 +71,7 @@ class EndpointInventoryTest {
         testApplication {
             lateinit var app: Application
             application {
-                module()
+                module(TestDatabase.config)
                 app = this
             }
             startApplication()

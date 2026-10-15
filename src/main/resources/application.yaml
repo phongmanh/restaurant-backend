@@ -5,3 +5,26 @@ ktor:
   application:
     modules:
       - io.github.phongmanh.restaurant.ApplicationKt.module
+
+# Read into AppConfig (core-and-auth §13). Secrets have an empty default, so AppConfig can name every
+# missing one at once instead of failing on the first.
+app:
+  # dev | preview | staging | production
+  environment: "$APP_ENV:dev"
+
+database:
+  # The `app` and `app_platform` roles through Neon's pooler, as postgresql://user:password@host/db?sslmode=require
+  url: "$DATABASE_URL:"
+  platformUrl: "$DATABASE_URL_PLATFORM:"
+  # ADR-0004: up to 10 connections per instance, a 2 s wait for one, statements stopped after 5 s.
+  maxPoolSize: "$DATABASE_MAX_POOL_SIZE:10"
+  platformMaxPoolSize: "$DATABASE_PLATFORM_MAX_POOL_SIZE:3"
+  connectionTimeoutMs: 2000
+  statementTimeoutMs: 5000
+
+http:
+  # The web apps' origins, comma-separated, e.g. https://order.example.com
+  allowedOrigins: "$ALLOWED_ORIGINS:"
+  minClientVersions:
+    customer-android: "$MIN_VERSION_CUSTOMER_ANDROID:1.0.0"
+    customer-ios: "$MIN_VERSION_CUSTOMER_IOS:1.0.0"

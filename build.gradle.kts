@@ -33,12 +33,26 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.logback.classic)
     implementation(libs.logstash.logback.encoder)
+    implementation(libs.ktor.server.cors)
+    implementation(libs.ktor.server.double.receive)
+    implementation(libs.ktor.server.body.limit)
     implementation(libs.uuid.generator)
+    implementation(libs.exposed.core)
+    implementation(libs.exposed.jdbc)
+    implementation(libs.exposed.java.time)
+    implementation(libs.postgresql)
+    implementation(libs.hikari)
+    implementation(libs.flyway.core)
+    implementation(libs.flyway.postgresql)
+    implementation(platform(libs.koin.bom))
+    implementation(libs.koin.ktor)
 
     testImplementation(kotlin("test"))
     testImplementation(platform(libs.ktor.bom))
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.snakeyaml.engine)
+    testImplementation(platform(libs.testcontainers.bom))
+    testImplementation(libs.testcontainers.postgresql)
 }
 
 tasks.test {
@@ -102,4 +116,13 @@ kover {
 
 tasks.check {
     dependsOn(detekt, tasks.named("koverVerify"))
+}
+
+// ADR-0004: migrations run from CI (or locally) over a direct connection as the migrator, never at
+// service startup. Reads DATABASE_URL_MIGRATOR_DIRECT, DATABASE_URL and DATABASE_URL_PLATFORM.
+tasks.register<JavaExec>("migrate") {
+    group = "database"
+    description = "Creates the database roles and applies the Flyway migrations."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass = "io.github.phongmanh.restaurant.core.persistence.MigrationsKt"
 }
