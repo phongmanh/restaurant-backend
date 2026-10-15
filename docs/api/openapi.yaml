@@ -1,0 +1,586 @@
+openapi: 3.1.0
+info:
+  title: Restaurant ordering API
+  version: 0.1.0-draft
+  description: |
+    Contract for the restaurant ordering service (`docs/sdlc/restaurant-ordering/`).
+    Hand-written in Phase 3 and frozen at G3 (architecture §5, ADR-0007).
+    Built up one feature design at a time; this draft holds the shared parts and
+    `/v1/auth/*` from `design/core-and-auth.md`.
+
+    Conventions (core-and-auth §2): snake_case fields; UUID v7 IDs; RFC 3339 UTC times;
+    money as `{"amount": "<whole đồng>", "currency": "VND"}`; errors as
+    `application/problem+json` with a stable `code` (catalogue in `x-error-catalogue`).
+servers:
+  - url: https://api.example.invalid
+    description: Placeholder until the environments' URLs are fixed
+
+tags:
+  - name: auth
+    description: Staff and admin sign-in, sessions, invitations and password resets
+
+paths:
+  /v1/auth/sign-in:
+    post:
+      tags: [auth]
+      operationId: signIn
+      security: []   # no token: public sign-in route
+      summary: Sign in with email and password
+      description: |
+        Staff get tokens straight away. Platform admins get an MFA challenge instead
+        (`mfa_required: true`) and finish with `POST /v1/auth/mfa`.
+        Unknown email, wrong password, locked and deactivated accounts all give the
+        same `401 invalid_credentials`.
+      parameters:
+        - $ref: '#/components/parameters/XClient'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignInRequest' }
+      responses:
+        '200':
+          description: Signed in (staff), or MFA required (admin)
+          headers:
+            Set-Cookie:
+              description: Refresh cookie, staff only (`__Secure-rt-staff`)
+              schema: { type: string }
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignInResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/InvalidCredentials' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/auth/mfa:
+    post:
+      tags: [auth]
+      operationId: completeMfa
+      security: []   # no token: public sign-in route
+      summary: Finish an admin sign-in with a TOTP code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MfaRequest' }
+      responses:
+        '200':
+          description: Signed in as admin
+          headers:
+            Set-Cookie:
+              description: Refresh cookie (`__Secure-rt-admin`)
+              schema: { type: string }
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/InvalidCredentials' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refreshTokens
+      summary: Swap the refresh cookie for a new access token and a new refresh cookie
+      description: |
+        The refresh token is single-use. Presenting one that was already used ends the
+        whole session (core-and-auth §8.3).
+      security:
+        - refreshCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AudienceRequest' }
+      responses:
+        '200':
+          description: New tokens
+          headers:
+            Set-Cookie:
+              description: The replacement refresh cookie
+              schema: { type: string }
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/sign-out:
+    post:
+      tags: [auth]
+      operationId: signOut
+      summary: End the session
+      description: Always 204, even if no session matched.
+      security:
+        - refreshCookie: []
+        - staffBearer: []
+        - adminBearer: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AudienceRequest' }
+      responses:
+        '204':
+          description: Signed out; the refresh cookie is cleared
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/links/inspect:
+    post:
+      tags: [auth]
+      operationId: inspectLink
+      security: []   # no token: public sign-in route
+      summary: Show what an invitation or reset link is for, without using it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LinkTokenRequest' }
+      responses:
+        '200':
+          description: Link details
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LinkDetails' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/LinkInvalid' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/invitations/accept:
+    post:
+      tags: [auth]
+      operationId: acceptInvitation
+      security: []   # no token: public sign-in route
+      summary: Set a password through an invitation link (and enrol TOTP for an admin)
+      description: |
+        Staff: one call → 204. Platform admin: the first call (without `totp_code`)
+        returns `totp_setup` and leaves the link valid; the second call with the same
+        token and password plus `totp_code` → 204 (core-and-auth §8.5).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AcceptInvitationRequest' }
+      responses:
+        '200':
+          description: 'Admin only: scan this secret, then call again with a code'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TotpSetupResponse' }
+        '204':
+          description: Account active; sign in next
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/LinkInvalid' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/password-resets/complete:
+    post:
+      tags: [auth]
+      operationId: completePasswordReset
+      security: []   # no token: public sign-in route
+      summary: Set a new password through a reset link
+      description: Ends all of the person's sessions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompletePasswordResetRequest' }
+      responses:
+        '204':
+          description: Password changed; sign in next
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/LinkInvalid' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/password:
+    post:
+      tags: [auth]
+      operationId: changePassword
+      summary: Change your own password
+      description: Ends all of the person's sessions, including this one.
+      security:
+        - staffBearer: []
+        - adminBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204':
+          description: Password changed; sign in again
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      summary: Who the signed-in caller is
+      security:
+        - staffBearer: []
+        - adminBearer: []
+      responses:
+        '200':
+          description: The caller
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+components:
+  securitySchemes:
+    staffBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Staff access token (ES256, `aud` = `staff`, 15 min)
+    adminBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Admin access token (ES256, `aud` = `admin`, `amr` contains `otp`, 15 min)
+    guestBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Table-session token (ADR-0006; defined in the tables design)
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: __Secure-rt-staff
+      description: |
+        Refresh token cookie. `__Secure-rt-staff` or `__Secure-rt-admin`, chosen by
+        `audience` in the body. HttpOnly; Secure; SameSite=Strict.
+
+  parameters:
+    XClient:
+      name: X-Client
+      in: header
+      required: false
+      description: '`<app>/<semver>`, e.g. `customer-android/1.0.0`. Below the minimum → 426'
+      schema: { type: string, pattern: '^[a-z0-9-]{1,32}/[0-9]+\.[0-9]+\.[0-9]+$' }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: One random value per user action, repeated on retries (core-and-auth §4)
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,64}$' }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: The `ETag` from the last read (core-and-auth §5)
+      schema: { type: string, examples: ['"3"'] }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: '`next_cursor` from the previous page'
+      schema: { type: string, maxLength: 512 }
+
+  headers:
+    XRequestID:
+      description: Request ID generated by the service; quote it to support
+      schema: { type: string }
+    RetryAfter:
+      description: Seconds to wait before retrying
+      schema: { type: integer, minimum: 0 }
+    ETag:
+      description: Current version of the resource, for `If-Match`
+      schema: { type: string }
+    IdempotentReplayed:
+      description: '`true` when this is the stored answer to an earlier request with the same key'
+      schema: { type: string, enum: ['true'] }
+
+  responses:
+    BadRequest:
+      description: 'Invalid request: `malformed_request`, `validation_failed`, `idempotency_key_required`, `password_rejected`'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: '`unauthenticated`: token missing, invalid, expired, wrong audience or its session has ended'
+      headers:
+        WWW-Authenticate:
+          schema: { type: string, examples: ['Bearer'] }
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    InvalidCredentials:
+      description: '`invalid_credentials`: the same answer for every sign-in failure'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: '`forbidden` (role lacks the operation) or `restaurant_suspended`'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: '`not_found`: also for IDs of another restaurant or session'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    LinkInvalid:
+      description: '`link_invalid`: unknown, used, replaced or expired link'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: A state conflict; `code` says which (feature-specific codes, or `idempotency_request_in_progress`)
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PreconditionFailed:
+      description: '`precondition_failed`: `If-Match` is stale; reload and retry'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PreconditionRequired:
+      description: '`precondition_required`: `If-Match` is missing'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    IdempotencyKeyReused:
+      description: '`idempotency_key_reused`: the same key was used with a different request'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooManyRequests:
+      description: '`rate_limited`'
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ServiceUnavailable:
+      description: '`service_unavailable` or `service_busy`'
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details. Switch on `code`; `title` and `detail` are for developers.
+      required: [type, title, status, code, request_id]
+      properties:
+        type: { type: string, examples: ['/problems/validation_failed'] }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code: { type: string, description: 'Stable code from `x-error-catalogue`' }
+        request_id: { type: string }
+        errors:
+          type: array
+          description: Only on `validation_failed` and `password_rejected`
+          items: { $ref: '#/components/schemas/FieldError' }
+    FieldError:
+      type: object
+      required: [field, code]
+      properties:
+        field: { type: string, description: 'JSON Pointer into the body, or `query.<name>` / `header.<name>`', examples: ['/lines/0/quantity'] }
+        code: { type: string, examples: [out_of_range, required, too_long, too_short, too_common, matches_email] }
+        message: { type: string, description: 'English, for developers' }
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { type: string, pattern: '^-?[0-9]{1,15}$', description: Whole đồng, examples: ['125000'] }
+        currency: { type: string, enum: [VND] }
+    Page:
+      type: object
+      description: Shape of every list response; `items` is typed per endpoint
+      required: [items]
+      properties:
+        items: { type: array, items: {} }
+        next_cursor: { type: string, description: Absent on the last page }
+
+    Email:
+      type: string
+      format: email
+      maxLength: 254
+    Password:
+      type: string
+      description: 8–64 characters after NFC normalisation; checked on set, not on sign-in
+      maxLength: 256
+    Audience:
+      type: string
+      enum: [staff, admin]
+    StaffRole:
+      type: string
+      enum: [manager, waiter, kitchen]
+
+    SignInRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { $ref: '#/components/schemas/Email' }
+        password: { type: string, minLength: 1, maxLength: 256 }
+    SignInResponse:
+      oneOf:
+        - $ref: '#/components/schemas/TokenResponse'
+        - $ref: '#/components/schemas/MfaRequiredResponse'
+    TokenResponse:
+      type: object
+      required: [mfa_required, access_token, token_type, expires_in, audience]
+      properties:
+        mfa_required: { type: boolean, const: false }
+        access_token: { type: string }
+        token_type: { type: string, const: Bearer }
+        expires_in: { type: integer, description: Seconds, examples: [900] }
+        audience: { $ref: '#/components/schemas/Audience' }
+    MfaRequiredResponse:
+      type: object
+      required: [mfa_required, mfa_token, expires_in]
+      properties:
+        mfa_required: { type: boolean, const: true }
+        mfa_token: { type: string, description: Single use }
+        expires_in: { type: integer, examples: [300] }
+    MfaRequest:
+      type: object
+      required: [mfa_token, code]
+      properties:
+        mfa_token: { type: string, maxLength: 128 }
+        code: { type: string, pattern: '^[0-9]{6}$' }
+    AudienceRequest:
+      type: object
+      required: [audience]
+      properties:
+        audience: { $ref: '#/components/schemas/Audience' }
+    LinkTokenRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string, maxLength: 128, description: From the link's URL fragment }
+    LinkDetails:
+      type: object
+      required: [kind, email, display_name, totp_enrolment_required]
+      properties:
+        kind: { type: string, enum: [invitation, password_reset] }
+        email: { $ref: '#/components/schemas/Email' }
+        display_name: { type: string }
+        restaurant_name: { type: string, description: Absent for platform admins }
+        role: { $ref: '#/components/schemas/StaffRole' }
+        totp_enrolment_required: { type: boolean }
+    AcceptInvitationRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token: { type: string, maxLength: 128 }
+        password: { $ref: '#/components/schemas/Password' }
+        totp_code: { type: string, pattern: '^[0-9]{6}$', description: 'Admins, second call only' }
+    TotpSetupResponse:
+      type: object
+      required: [totp_setup]
+      properties:
+        totp_setup:
+          type: object
+          required: [secret, otpauth_uri]
+          properties:
+            secret: { type: string, description: Base32 }
+            otpauth_uri: { type: string, description: For a QR code in the admin console }
+    CompletePasswordResetRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token: { type: string, maxLength: 128 }
+        password: { $ref: '#/components/schemas/Password' }
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, minLength: 1, maxLength: 256 }
+        new_password: { $ref: '#/components/schemas/Password' }
+    Me:
+      type: object
+      required: [staff_id, email, display_name, platform_admin, amr, session_expires_at]
+      properties:
+        staff_id: { type: string, format: uuid }
+        email: { $ref: '#/components/schemas/Email' }
+        display_name: { type: string }
+        role: { $ref: '#/components/schemas/StaffRole' }
+        restaurant:
+          type: object
+          required: [id, name]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+        platform_admin: { type: boolean }
+        amr: { type: array, items: { type: string, enum: [pwd, otp] } }
+        session_expires_at: { type: string, format: date-time }
+
+# Error-code catalogue (architecture §5). Feature designs add their codes here.
+x-error-catalogue:
+  - { code: malformed_request, status: 400, meaning: Body isn't valid JSON, or a field has the wrong type }
+  - { code: validation_failed, status: 400, meaning: Field rules failed; see errors }
+  - { code: idempotency_key_required, status: 400, meaning: The operation needs an Idempotency-Key }
+  - { code: password_rejected, status: 400, meaning: 'Password too short, too long, too common or equal to the email; errors[0].code says which' }
+  - { code: unauthenticated, status: 401, meaning: Token missing, invalid, expired, wrong audience, or its session has ended }
+  - { code: invalid_credentials, status: 401, meaning: Sign-in, MFA or current-password check failed (one answer for every reason) }
+  - { code: forbidden, status: 403, meaning: The caller's role lacks the operation }
+  - { code: restaurant_suspended, status: 403, meaning: The caller's restaurant is suspended }
+  - { code: not_found, status: 404, meaning: Doesn't exist, or belongs to another restaurant or session }
+  - { code: link_invalid, status: 404, meaning: Invitation or reset link unknown, used, replaced or expired }
+  - { code: idempotency_request_in_progress, status: 409, meaning: The same Idempotency-Key is still being processed; retry }
+  - { code: precondition_failed, status: 412, meaning: If-Match is stale }
+  - { code: payload_too_large, status: 413, meaning: Body over 64 KB }
+  - { code: unsupported_media_type, status: 415, meaning: Body isn't application/json }
+  - { code: idempotency_key_reused, status: 422, meaning: Same Idempotency-Key with a different request }
+  - { code: client_upgrade_required, status: 426, meaning: Mobile app below the minimum supported version }
+  - { code: precondition_required, status: 428, meaning: If-Match missing }
+  - { code: rate_limited, status: 429, meaning: Rate limit reached; see Retry-After }
+  - { code: internal_error, status: 500, meaning: Unexpected error; quote request_id }
+  - { code: service_unavailable, status: 503, meaning: Database unreachable or timed out; see Retry-After }
+  - { code: service_busy, status: 503, meaning: No password-hashing slot free; retry after 1 s }
