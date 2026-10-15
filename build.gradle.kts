@@ -46,6 +46,8 @@ dependencies {
     implementation(libs.flyway.postgresql)
     implementation(platform(libs.koin.bom))
     implementation(libs.koin.ktor)
+    implementation(libs.bouncycastle)
+    implementation(libs.java.jwt)
 
     testImplementation(kotlin("test"))
     testImplementation(platform(libs.ktor.bom))

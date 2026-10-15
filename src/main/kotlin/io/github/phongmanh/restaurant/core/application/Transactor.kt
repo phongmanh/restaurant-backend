@@ -32,6 +32,14 @@ interface Transactor {
         reason: String,
         block: suspend TxScope.() -> T,
     ): T
+
+    /**
+     * A transaction of the `app` role with no restaurant set: it sees the global tables, and no row
+     * of a tenant table (nor may it write one). For hot paths that read or write only global tables,
+     * such as the caller lookup on every staff call (§6) and a refresh (§8.3), so they don't queue
+     * for the small platform pool.
+     */
+    suspend fun <T> globalTransaction(block: suspend TxScope.() -> T): T
 }
 
 /** What the code inside a transaction can ask of it. */

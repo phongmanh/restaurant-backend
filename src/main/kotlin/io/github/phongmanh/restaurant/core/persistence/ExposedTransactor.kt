@@ -42,6 +42,8 @@ class ExposedTransactor(
         return run(restaurantId = null, platform = true, block)
     }
 
+    override suspend fun <T> globalTransaction(block: suspend TxScope.() -> T): T = run(restaurantId = null, platform = false, block)
+
     private suspend fun <T> run(
         restaurantId: RestaurantId?,
         platform: Boolean,

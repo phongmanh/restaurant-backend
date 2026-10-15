@@ -7,9 +7,11 @@ import io.github.phongmanh.restaurant.core.application.Tenant
 import io.github.phongmanh.restaurant.core.domain.DomainError
 import io.github.phongmanh.restaurant.core.domain.RestaurantId
 import io.github.phongmanh.restaurant.core.domain.UuidV7
+import io.github.phongmanh.restaurant.support.AuthFixtures
 import io.github.phongmanh.restaurant.support.TestDatabase
 import io.github.phongmanh.restaurant.support.testApp
 import io.ktor.client.HttpClient
+import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -40,7 +42,10 @@ import kotlin.test.assertTrue
  * is made up for the test; its "change" is an audit entry, so the test can count changes.
  */
 class IdempotencyTest {
-    private val restaurant = RestaurantId(UuidV7.next())
+    private var restaurant = RestaurantId(UuidV7.next())
+
+    /** Two staff members' access tokens: keys are scoped to the caller. */
+    private lateinit var tokens: List<String>
     private val endpoint = Endpoint(HttpMethod.Post, "/v1/staff/test-orders/{tableId}", true, false, false)
 
     @Serializable
@@ -55,7 +60,11 @@ class IdempotencyTest {
     )
 
     @BeforeTest
-    fun setUp() = TestDatabase.truncate()
+    fun setUp() {
+        TestDatabase.truncate()
+        restaurant = AuthFixtures.restaurant()
+        tokens = listOf("one", "two").map { AuthFixtures.accessToken(AuthFixtures.staff(restaurant, "$it@pho.example", password = null)) }
+    }
 
     private fun withOperation(block: suspend io.ktor.server.testing.ApplicationTestBuilder.() -> Unit) =
         testApp(
@@ -66,7 +75,7 @@ class IdempotencyTest {
                     // Test-only controls ride in the query, which isn't part of the fingerprint.
                     val sleepMs = call.request.queryParameters["sleepMs"]?.toLong() ?: 0
                     val reject = call.request.queryParameters["reject"] == "true"
-                    routes.respond(call, endpoint, call.request.headers["X-Test-Scope"]!!, Tenant.Restaurant(restaurant)) {
+                    routes.respond(call, endpoint, call.caller().idempotencyScope, Tenant.Restaurant(restaurant)) {
                         val order = call.receive<Order>()
                         audit.record(
                             this,
@@ -99,12 +108,12 @@ class IdempotencyTest {
         key: String?,
         note: String = "two phở",
         table: String = "t1",
-        scope: String = "staff:one",
+        caller: Int = 0,
         query: String = "",
     ): HttpResponse =
         post("/v1/staff/test-orders/$table$query") {
             key?.let { header(IDEMPOTENCY_KEY_HEADER, it) }
-            header("X-Test-Scope", scope)
+            bearerAuth(tokens[caller])
             contentType(ContentType.Application.Json)
             setBody("""{"note": "$note"}""")
         }
@@ -150,8 +159,8 @@ class IdempotencyTest {
     @Test
     fun `keys are scoped to the caller`() =
         withOperation {
-            client.place("key-1", scope = "staff:one")
-            val other = client.place("key-1", scope = "staff:two")
+            client.place("key-1", caller = 0)
+            val other = client.place("key-1", caller = 1)
             assertEquals(HttpStatusCode.Created, other.status)
             assertNull(other.headers[IDEMPOTENT_REPLAYED_HEADER])
             assertEquals(2, changes())

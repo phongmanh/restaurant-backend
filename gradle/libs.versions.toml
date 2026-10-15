@@ -17,6 +17,7 @@ hikari = "7.1.0"
 flyway = "13.10.0"
 koin = "4.2.2"
 bouncycastle = "1.86"
+javaJwt = "4.6.0"
 testcontainers = "2.0.5"
 snakeyamlEngine = "3.2"
 ktlintGradle = "14.2.0"
@@ -52,6 +53,7 @@ flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", versio
 koin-bom = { module = "io.insert-koin:koin-bom", version.ref = "koin" }
 koin-ktor = { module = "io.insert-koin:koin-ktor" }
 bouncycastle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+java-jwt = { module = "com.auth0:java-jwt", version.ref = "javaJwt" }
 testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
 detekt-cli = { module = "io.gitlab.arturbosch.detekt:detekt-cli", version.ref = "detekt" }
