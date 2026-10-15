@@ -40,6 +40,12 @@ data class Endpoint(
 ) {
     val group: RouteGroup = RouteGroup.of(path)
 
+    /** The path with its `{name}` placeholders filled in, e.g. for a `Location` header. */
+    fun pathOf(vararg values: Pair<String, Any>): String =
+        values
+            .fold(path) { p, (name, value) -> p.replace("{$name}", value.toString()) }
+            .also { check('{' !in it) { "$this has a placeholder left" } }
+
     override fun toString(): String = "${method.value} $path"
 }
 

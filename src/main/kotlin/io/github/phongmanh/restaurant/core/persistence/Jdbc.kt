@@ -14,7 +14,10 @@ import java.util.UUID
  */
 
 /** Binds [values] to the statement's `?`s in order. `null` is a typed-by-context SQL NULL. */
-internal fun PreparedStatement.bind(vararg values: Any?): PreparedStatement {
+internal fun PreparedStatement.bind(vararg values: Any?): PreparedStatement = bind(values.asList())
+
+/** [bind] for parameters collected in a list, as a query with optional filters builds them. */
+internal fun PreparedStatement.bind(values: List<Any?>): PreparedStatement {
     values.forEachIndexed { i, value ->
         val index = i + 1
         when (value) {

@@ -3,11 +3,13 @@ package io.github.phongmanh.restaurant.support
 import io.github.phongmanh.restaurant.core.application.RateLimitPolicy
 import io.github.phongmanh.restaurant.core.auth.AuthLimits
 import io.github.phongmanh.restaurant.core.auth.AuthSettings
+import io.github.phongmanh.restaurant.core.auth.LinkUrls
 import io.github.phongmanh.restaurant.core.auth.RateLimitSettings
 import io.github.phongmanh.restaurant.core.auth.crypto.Argon2Settings
 import io.github.phongmanh.restaurant.core.auth.crypto.EmailHmac
 import io.github.phongmanh.restaurant.core.auth.crypto.SecretBox
 import io.github.phongmanh.restaurant.core.auth.crypto.StaffKeySet
+import io.github.phongmanh.restaurant.restaurants.application.StaffLimits
 import java.math.BigInteger
 import java.security.KeyPair
 import java.security.KeyPairGenerator
@@ -30,6 +32,8 @@ import kotlin.time.toJavaDuration
 object TestKeys {
     const val ISSUER = "https://api.example.test"
     const val COOKIE_PATH = "/api/v1/auth"
+    const val STAFF_APP = "https://staff.example.test"
+    const val ADMIN_APP = "https://admin.example.test"
 
     fun ecKeyPair(): KeyPair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
 
@@ -71,6 +75,7 @@ object TestKeys {
             emailHmac = EmailHmac(ByteArray(32).also(SecureRandom()::nextBytes)),
             cookiePath = COOKIE_PATH,
             argon2 = argon2,
+            links = LinkUrls(STAFF_APP, ADMIN_APP),
         )
     }
 
@@ -85,6 +90,7 @@ object TestKeys {
                     RateLimitPolicy(AuthLimits.REFRESH, 120, 60.seconds),
                     RateLimitPolicy(AuthLimits.LINK, 10, 60.seconds),
                     RateLimitPolicy(AuthLimits.PASSWORD_CHANGE, 5, 900.seconds),
+                    RateLimitPolicy(StaffLimits.LINK, 30, 3600.seconds),
                 ).associateBy { it.name },
         )
 

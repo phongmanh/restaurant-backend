@@ -2,6 +2,7 @@ package io.github.phongmanh.restaurant.core.config
 
 import io.github.phongmanh.restaurant.core.application.RateLimitPolicy
 import io.github.phongmanh.restaurant.core.auth.AuthSettings
+import io.github.phongmanh.restaurant.core.auth.LinkUrls
 import io.github.phongmanh.restaurant.core.auth.RateLimitSettings
 import io.github.phongmanh.restaurant.core.auth.UpstashSettings
 import io.github.phongmanh.restaurant.core.auth.crypto.Argon2Settings
@@ -79,9 +80,10 @@ data class AppConfig(
                     .split(',')
                     .map { it.trim() }
                     .filter { it.isNotEmpty() }
-            check(environment != PRODUCTION || origins.none { "localhost" in it || "127.0.0.1" in it }) {
+            check(environment != PRODUCTION || origins.none(::isLocal)) {
                 "a production config can't allow a localhost origin"
             }
+            val links = linkUrls(config, environment)
             val minVersions =
                 config
                     .config("http.minClientVersions")
@@ -100,7 +102,7 @@ data class AppConfig(
                         statementTimeout = millis("database.statementTimeoutMs"),
                     ),
                 http = HttpSettings(allowedOrigins = origins, minClientVersions = minVersions),
-                auth = authSettings(config, jwtKeys, totpKeys, hmacKey),
+                auth = authSettings(config, jwtKeys, totpKeys, hmacKey, links),
                 rateLimits =
                     RateLimitSettings(
                         upstash = if (upstashUrl.isBlank() || upstashToken.isBlank()) null else UpstashSettings(upstashUrl, upstashToken),
@@ -120,6 +122,7 @@ data class AppConfig(
             jwtKeys: String,
             totpKeys: String,
             hmacKey: String,
+            links: LinkUrls,
         ): AuthSettings {
             fun int(path: String) = config.property(path).getString().toInt()
             return AuthSettings(
@@ -128,6 +131,7 @@ data class AppConfig(
                 totpKeys = SecretBox.parse(totpKeys),
                 emailHmac = EmailHmac(decodeKey(hmacKey)),
                 cookiePath = config.property("auth.cookiePath").getString(),
+                links = links,
                 argon2 =
                     Argon2Settings(
                         memoryKib = int("auth.argon2.memoryKib"),
@@ -143,6 +147,20 @@ data class AppConfig(
                     ),
             )
         }
+
+        /** Where links open (restaurants §5, §7); production needs https and no localhost. */
+        private fun linkUrls(
+            config: ApplicationConfig,
+            environment: String,
+        ): LinkUrls {
+            val links = LinkUrls(config.property("auth.staffAppUrl").getString(), config.property("auth.adminAppUrl").getString())
+            check(environment != PRODUCTION || listOf(links.staffApp, links.adminApp).none { isLocal(it) || !it.startsWith("https://") }) {
+                "a production config needs https app URLs for links (auth.staffAppUrl, auth.adminAppUrl)"
+            }
+            return links
+        }
+
+        private fun isLocal(url: String) = "localhost" in url || "127.0.0.1" in url
 
         private fun decodeKey(base64: String): ByteArray {
             val key = runCatching { Base64.getDecoder().decode(base64.trim()) }.getOrNull() ?: error("EMAIL_HMAC_KEY isn't base64")

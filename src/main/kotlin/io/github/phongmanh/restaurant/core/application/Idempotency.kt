@@ -95,6 +95,16 @@ interface IdempotencyStore {
     )
 }
 
+/**
+ * The first request's answer: [sent] goes to the client, [stored] is kept for replays. They differ
+ * only when the answer holds a one-time secret, such as an invitation link, which is never stored
+ * (core-and-auth §4).
+ */
+class FirstAnswer(
+    val sent: StoredResponse,
+    val stored: StoredResponse = sent,
+)
+
 sealed interface IdempotentOutcome {
     val response: StoredResponse
 
@@ -122,7 +132,7 @@ class Idempotency(
     suspend fun execute(
         tx: TxScope,
         request: IdempotencyRequest,
-        work: suspend () -> StoredResponse,
+        work: suspend () -> FirstAnswer,
     ): IdempotentOutcome {
         val existing = store.claim(tx, request)
         if (existing != null) {
@@ -130,10 +140,12 @@ class Idempotency(
             val response = existing.response ?: throw DomainError.IdempotencyRequestInProgress()
             return IdempotentOutcome.Replayed(response)
         }
-        val response = work()
-        check(response.status in SUCCESS) { "only 2xx responses are stored; a rejection throws a DomainError" }
-        store.complete(tx, request, response)
-        return IdempotentOutcome.First(response)
+        val answer = work()
+        check(answer.sent.status in SUCCESS && answer.stored.status == answer.sent.status) {
+            "only 2xx responses are stored; a rejection throws a DomainError"
+        }
+        store.complete(tx, request, answer.stored)
+        return IdempotentOutcome.First(answer.sent)
     }
 
     private companion object {

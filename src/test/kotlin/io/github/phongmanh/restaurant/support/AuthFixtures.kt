@@ -28,8 +28,8 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 /**
- * Rows the auth tests start from, written as the database superuser, since the restaurants feature
- * that creates them isn't built yet (step 4).
+ * Rows tests start from, written as the database superuser: quicker than onboarding through the
+ * API, which the restaurants tests cover on their own.
  */
 object AuthFixtures {
     const val PASSWORD = "correct horse battery staple"

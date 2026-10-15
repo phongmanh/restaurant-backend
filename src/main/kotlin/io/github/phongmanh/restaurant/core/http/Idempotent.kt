@@ -1,5 +1,6 @@
 package io.github.phongmanh.restaurant.core.http
 
+import io.github.phongmanh.restaurant.core.application.FirstAnswer
 import io.github.phongmanh.restaurant.core.application.Idempotency
 import io.github.phongmanh.restaurant.core.application.IdempotencyRequest
 import io.github.phongmanh.restaurant.core.application.IdempotentOutcome
@@ -30,6 +31,11 @@ class JsonResponse(
     val body: ByteArray,
     val location: String? = null,
     val etag: String? = null,
+    /**
+     * The body kept for replays: the same, unless the response holds a one-time secret (§4), which
+     * the stored copy leaves out. A replay of such a response is made by `reissue`.
+     */
+    val storedBody: ByteArray = body,
 ) {
     companion object {
         fun <T> of(
@@ -53,6 +59,10 @@ class JsonResponse(
  * its own transaction for the same tenant joins this one.
  *
  * [scope] is the caller's `Caller.idempotencyScope`.
+ *
+ * An operation whose answer holds a one-time secret (an invitation link) passes [reissue]: the
+ * stored copy has no secret, so a replay calls it with that copy to issue a fresh secret, which
+ * replaces the first one. The client never saw the first answer, so nothing usable is lost (§4).
  */
 class IdempotentRoutes(
     private val transactor: Transactor,
@@ -63,6 +73,7 @@ class IdempotentRoutes(
         endpoint: Endpoint,
         scope: String,
         tenant: Tenant,
+        reissue: (suspend TxScope.(StoredResponse) -> JsonResponse)? = null,
         handle: suspend TxScope.() -> JsonResponse,
     ) {
         require(endpoint.idempotencyKey) { "$endpoint takes no Idempotency-Key" }
@@ -75,15 +86,21 @@ class IdempotentRoutes(
                 // Read before the transaction opens, so no connection is held while the body arrives.
                 body = call.receive<ByteArray>(),
             )
-        val outcome =
+        val (outcome, response) =
             transactor.inTransaction(tenant) {
-                idempotency.execute(this, request) { handle().toStored() }
+                val outcome =
+                    idempotency.execute(
+                        this,
+                        request,
+                    ) { handle().let { FirstAnswer(it.toStored(it.body), it.toStored(it.storedBody)) } }
+                val replayed = (outcome as? IdempotentOutcome.Replayed)?.response
+                outcome to if (replayed != null && reissue != null) reissue(replayed).let { it.toStored(it.body) } else outcome.response
             }
         if (outcome is IdempotentOutcome.Replayed) call.response.header(IDEMPOTENT_REPLAYED_HEADER, "true")
-        call.respondStored(outcome.response)
+        call.respondStored(response)
     }
 
-    private fun JsonResponse.toStored() =
+    private fun JsonResponse.toStored(body: ByteArray) =
         StoredResponse(
             status = status.value,
             headers = listOfNotNull(location?.let { HttpHeaders.Location to it }, etag?.let { HttpHeaders.ETag to it }).toMap(),

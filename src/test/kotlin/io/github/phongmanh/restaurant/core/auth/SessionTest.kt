@@ -247,7 +247,8 @@ class SessionTest {
             assertEquals(HttpStatusCode.NoContent, completed.status)
             assertEquals(HttpStatusCode.Unauthorized, client.probe(beforeReset).status)
 
-            // Role change (the restaurants feature revokes the sessions) and deactivation (the session query checks it).
+            // Role change and deactivation, as rows: the session query is what ends access. IT-REST-06 makes
+            // the same changes through the staff management routes.
             val beforeRole = client.accessToken(email, "the reset passphrase")
             AuthFixtures.sql("UPDATE staff_accounts SET role = 'waiter' WHERE id = ?", staff.value)
             AuthFixtures.sql("UPDATE staff_sessions SET revoked_at = now(), revoke_reason = 'role_changed' WHERE staff_id = ?", staff.value)

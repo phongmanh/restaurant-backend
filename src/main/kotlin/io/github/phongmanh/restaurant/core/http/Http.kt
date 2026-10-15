@@ -140,6 +140,12 @@ fun Route.endpoint(
 /** The caller [Route.endpoint] authenticated. Only on routes of the staff, admin and guest groups. */
 fun ApplicationCall.caller(): Caller = attributes[CallerKey]
 
+/** The caller of a `/v1/staff` route: its group accepts only staff tokens. */
+fun ApplicationCall.staffCaller(): Caller.Staff = caller() as Caller.Staff
+
+/** The caller of a `/v1/admin` route: its group accepts only admin tokens. */
+fun ApplicationCall.adminCaller(): Caller.Admin = caller() as Caller.Admin
+
 /** Where the request came from, for the audit log (§12). Never for application logs. */
 fun ApplicationCall.requestMeta(): RequestMeta =
     RequestMeta(

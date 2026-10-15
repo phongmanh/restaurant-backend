@@ -8,7 +8,9 @@ import io.github.phongmanh.restaurant.core.auth.crypto.AccessTokens
 import io.github.phongmanh.restaurant.core.auth.crypto.Audience
 import io.github.phongmanh.restaurant.core.auth.crypto.StaffKeySet
 import io.github.phongmanh.restaurant.core.auth.persistence.CallerRepository
+import io.github.phongmanh.restaurant.core.auth.persistence.MemberFilter
 import io.github.phongmanh.restaurant.core.auth.persistence.StaffAccountRepository
+import io.github.phongmanh.restaurant.core.auth.persistence.StaffMemberRepository
 import io.github.phongmanh.restaurant.core.domain.StaffSessionId
 import io.github.phongmanh.restaurant.core.domain.UuidV7
 import io.github.phongmanh.restaurant.core.http.ApiJson
@@ -228,7 +230,15 @@ class TokenCasesTest {
                     assertNull(callers.me(this, inB, StaffSessionId(sessionInB), a))
                     assertNull(callers.me(this, inB, StaffSessionId(sessionInB), null), "nor as if it were an admin")
                 }
+                // Staff management (restaurants §7): a restaurant's managers reach only its accounts.
+                val members = StaffMemberRepository()
+                transactor.inTransaction(a) {
+                    assertNull(members.find(this, a, inB))
+                    assertTrue(members.list(this, a, MemberFilter(), null, 10).none { it.id == inB })
+                    assertEquals(0, members.counts(this, a).seats)
+                }
                 transactor.inTransaction(b) {
+                    assertNotNull(members.find(this, b, inB))
                     assertNotNull(accounts.findInRestaurant(this, b, inB))
                     assertEquals(StaffRole.MANAGER, callers.me(this, inB, StaffSessionId(sessionInB), b)?.role)
                     assertNull(accounts.findPlatformAdmin(this, inB), "a restaurant's staff member is never found as an admin")

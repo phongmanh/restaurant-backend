@@ -128,3 +128,12 @@ tasks.register<JavaExec>("migrate") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass = "io.github.phongmanh.restaurant.core.persistence.MigrationsKt"
 }
+
+// restaurants §5, §8: the operator's commands for the first platform admin and the last admin's lost
+// authenticator. Reads the service's environment variables; prints the link once and nowhere else.
+tasks.register<JavaExec>("operator") {
+    group = "operations"
+    description = "invite-admin <email> <display name> | reset-admin-totp <email>"
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass = "io.github.phongmanh.restaurant.restaurants.ops.OperatorKt"
+}
