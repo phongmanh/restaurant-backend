@@ -54,6 +54,7 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 - Vercel accepts only `Dockerfile.vercel` or `Containerfile.vercel` as a container entrypoint name.
 - The first deploy of a Vercel project goes to production, and its production alias is public. Remove it (`vercel alias rm`) for spikes.
 - Spike projects keep their environment variables on Production only, so a preview deploy starts without them and crashes. Redeploy spikes with `vercel deploy --prod`, then remove the alias.
+- A Vercel project linked from inside this repo can get connected to the GitHub repo, and then every push and PR builds it, and a merge to `main` deploys it to production with a public alias. Run `vercel git disconnect --yes` in each spike folder right after linking; spikes deploy from the CLI only. Found when PR #1's checks showed failed builds of `restaurant-s1-spike` and `restaurant-s4-spike`, disconnected before the merge (2026-10-15).
 - The client network drops idle TCP connections after ~40 s. Long-held requests need TCP keepalive at 10 s or less (see `spikes/s1-vercel/scripts/measure.mjs`).
 - Vercel's CDN never caches a request that carries an `Authorization` header (or a response with `set-cookie`, `private`, `no-cache` or `no-store`). Don't plan edge caching for anything a token protects (CR-004, from Vercel docs read 2026-10-15).
 - A Vercel Function's request or response body is at most 4.5 MB; larger gets Vercel's own `413 FUNCTION_PAYLOAD_TOO_LARGE` (CR-004).
