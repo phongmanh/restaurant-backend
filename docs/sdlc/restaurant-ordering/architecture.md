@@ -2,7 +2,7 @@
 
 | Version | Status | Owner | Reviewers |
 |---|---|---|---|
-| 1.3 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR); CR-004, CR-005 and CR-006 applied 2026-10-15 | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
+| 1.4 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR); CR-004, CR-005, CR-006 and CR-008 applied 2026-10-15 | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
 
 **Version history**
 
@@ -12,6 +12,7 @@
 | 1.1 | 2026-10-15 | [CR-004](cr/CR-004-menu-read-and-image-limits.md): Vercel's CDN doesn't cache requests with `Authorization`, so the guest menu is revalidated per menu version instead of cached at the edge; the image route takes up to 4 MB (4.5 MB function body cap). Changed: §1 driver 4, §8, §9 (menu-read row, cost-driver line), §11 |
 | 1.2 | 2026-10-15 | [CR-005](cr/CR-005-natural-idempotency-and-session-data.md): session open/join and waiter calls are idempotent by design and take no `Idempotency-Key` (no bearer token stored for replays); the guest token has no table claim (sessions move). Changed: §7, §10 |
 | 1.3 | 2026-10-15 | [CR-006](cr/CR-006-record-orders-decisions.md): figures from the orders design. Placing an order is ≈ 13 statements, not ≈ 6; the audit log (every staff order step, ≈ 400k rows/day) is added to the database size. Changed: §6, §9 |
+| 1.4 | 2026-10-15 | [CR-008](cr/CR-008-architecture-g3-alignment.md): aligned with the Phase 3 designs at the G3 consistency pass. The stale device-data retention step is gone (no device data is stored, CR-005); the job list names the seven jobs the designs run. Changed: §6, §10 |
 
 Baseline: [requirements.md](requirements.md) v1.6 (G1 2026-10-13; CR-002 and CR-003 2026-10-14; CR-004 to CR-007 2026-10-15). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). G2 approved by the owner on 2026-10-15 with one condition: TBD-10 (data residency, legal review) is settled before G5, by a region change or, if storage in Vietnam is required, a CR to change provider (§8, R-04). Accepted free-plan residual risks: R-11 to R-14. The cost estimate (TBD-11) was deferred on 2026-10-15 because the project stays on free plans.
 
@@ -156,7 +157,6 @@ Shared `api-contract` KMP module with the clients: **not now**. TBD-2 is decided
 - **Retention jobs** (Vercel Cron, ADR-0002):
   - event log > 7 days, idempotency keys > 24 h and outbox rows sent > 7 days are purged;
   - item notes are cleared 30 days after the session closes;
-  - device data on sessions is removed after 90 days;
   - staff are anonymised 30 days after deactivation;
   - orders and bills older than 2 years are archived nightly to object storage (compressed, write-once, one file per restaurant and month) in a region TBD-10 allows and then deleted from PostgreSQL; the archive is deleted after 10 years. Reports read `daily_sales`, which is kept;
   - staff data is erased within 72 h of a request (NFR-PRIV-01).
@@ -302,7 +302,7 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
   - processes bounded batches within the function's maximum duration;
   - holds `pg_try_advisory_xact_lock` (transaction-scoped, which is safe with transaction pooling) so only one run works at a time.
 
-  Jobs: outbox sweep (1 min), daily-sales reconciliation (nightly), retention and anonymisation (daily), event-log and idempotency purge (hourly).
+  Jobs (full list in design/core-and-auth.md §10): outbox sweep (every minute), event purge, key and token purge, session auto-close and sales rebuild (hourly; the rebuild per restaurant after its local 03:00), retention and anonymisation, and audit export (daily). Vercel Hobby runs every job at most daily, which the designs allow for (realtime §4.3, §10).
 - **Graceful degradation:**
   - Live updates down → clients poll the catch-up endpoint (interval chosen in Phase 3).
   - Redis down → WAF only.

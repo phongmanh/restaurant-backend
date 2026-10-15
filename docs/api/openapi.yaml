@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Restaurant ordering API
-  version: 0.7.0-draft
+  version: 0.7.2-draft
   description: |
     Contract for the restaurant ordering service (`docs/sdlc/restaurant-ordering/`).
     Hand-written in Phase 3 and frozen at G3 (architecture §5, ADR-0007).
@@ -46,6 +46,7 @@ paths:
     post:
       tags: [auth]
       operationId: signIn
+      x-allowed-when-suspended: true
       security: []   # no token: public sign-in route
       summary: Sign in with email and password
       description: |
@@ -80,6 +81,7 @@ paths:
     post:
       tags: [auth]
       operationId: completeMfa
+      x-allowed-when-suspended: true
       security: []   # no token: public sign-in route
       summary: Finish an admin sign-in with a TOTP code
       requestBody:
@@ -106,6 +108,7 @@ paths:
     post:
       tags: [auth]
       operationId: refreshTokens
+      x-allowed-when-suspended: true
       summary: Swap the refresh cookie for a new access token and a new refresh cookie
       description: |
         The refresh token is single-use. Presenting one that was already used ends the
@@ -136,6 +139,7 @@ paths:
     post:
       tags: [auth]
       operationId: signOut
+      x-allowed-when-suspended: true
       summary: End the session
       description: Always 204, even if no session matched.
       security:
@@ -159,6 +163,7 @@ paths:
     post:
       tags: [auth]
       operationId: inspectLink
+      x-allowed-when-suspended: true
       security: []   # no token: public sign-in route
       summary: Show what an invitation or reset link is for, without using it
       requestBody:
@@ -182,6 +187,7 @@ paths:
     post:
       tags: [auth]
       operationId: acceptInvitation
+      x-allowed-when-suspended: true
       security: []   # no token: public sign-in route
       summary: Set a password through an invitation link (and enrol TOTP for an admin)
       description: |
@@ -213,6 +219,7 @@ paths:
     post:
       tags: [auth]
       operationId: completePasswordReset
+      x-allowed-when-suspended: true
       security: []   # no token: public sign-in route
       summary: Set a new password through a reset link
       description: Ends all of the person's sessions.
@@ -234,6 +241,7 @@ paths:
     post:
       tags: [auth]
       operationId: changePassword
+      x-allowed-when-suspended: true
       summary: Change your own password
       description: Ends all of the person's sessions, including this one.
       security:
@@ -257,6 +265,7 @@ paths:
     get:
       tags: [auth]
       operationId: getMe
+      x-allowed-when-suspended: true
       summary: Who the signed-in caller is
       security:
         - staffBearer: []
@@ -548,6 +557,7 @@ paths:
     get:
       tags: [admin]
       operationId: listRestaurants
+      x-allowed-when-suspended: true
       summary: List restaurants
       security:
         - adminBearer: []
@@ -570,6 +580,7 @@ paths:
     post:
       tags: [admin]
       operationId: onboardRestaurant
+      x-allowed-when-suspended: true
       summary: Onboard a restaurant and invite its first manager
       security:
         - adminBearer: []
@@ -602,6 +613,7 @@ paths:
     get:
       tags: [admin]
       operationId: getRestaurant
+      x-allowed-when-suspended: true
       summary: Read a restaurant (admin view)
       security:
         - adminBearer: []
@@ -619,6 +631,7 @@ paths:
     patch:
       tags: [admin]
       operationId: updateRestaurant
+      x-allowed-when-suspended: true
       summary: Edit a restaurant, including the owner contact
       security:
         - adminBearer: []
@@ -650,6 +663,7 @@ paths:
     post:
       tags: [admin]
       operationId: suspendRestaurant
+      x-allowed-when-suspended: true
       summary: Suspend a restaurant (idempotent; no data is deleted)
       security:
         - adminBearer: []
@@ -676,6 +690,7 @@ paths:
     post:
       tags: [admin]
       operationId: reactivateRestaurant
+      x-allowed-when-suspended: true
       summary: Reactivate a restaurant (idempotent)
       security:
         - adminBearer: []
@@ -696,6 +711,7 @@ paths:
     get:
       tags: [staff]
       operationId: listRestaurantMembers
+      x-allowed-when-suspended: true
       summary: List staff members
       security:
         - adminBearer: []
@@ -719,6 +735,7 @@ paths:
     post:
       tags: [staff]
       operationId: inviteRestaurantMember
+      x-allowed-when-suspended: true
       summary: Invite a staff member; the response holds the one-time link
       security:
         - adminBearer: []
@@ -751,6 +768,7 @@ paths:
     get:
       tags: [staff]
       operationId: getRestaurantMember
+      x-allowed-when-suspended: true
       summary: Read a staff member
       security:
         - adminBearer: []
@@ -769,6 +787,7 @@ paths:
     patch:
       tags: [staff]
       operationId: updateRestaurantMember
+      x-allowed-when-suspended: true
       summary: Change name, phone or role (role change ends their sessions)
       security:
         - adminBearer: []
@@ -803,6 +822,7 @@ paths:
     post:
       tags: [staff]
       operationId: deactivateRestaurantMember
+      x-allowed-when-suspended: true
       summary: Deactivate (ends their sessions)
       security:
         - adminBearer: []
@@ -826,6 +846,7 @@ paths:
     post:
       tags: [staff]
       operationId: reactivateRestaurantMember
+      x-allowed-when-suspended: true
       summary: Reactivate a deactivated member who isn't anonymised yet
       security:
         - adminBearer: []
@@ -848,6 +869,7 @@ paths:
     post:
       tags: [staff]
       operationId: invitationRestaurantMember
+      x-allowed-when-suspended: true
       summary: Re-issue the invitation link; the old one stops working
       security:
         - adminBearer: []
@@ -872,6 +894,7 @@ paths:
     post:
       tags: [staff]
       operationId: passwordResetRestaurantMember
+      x-allowed-when-suspended: true
       summary: Issue a password-reset link (24 h)
       security:
         - adminBearer: []
@@ -893,6 +916,7 @@ paths:
     get:
       tags: [admin]
       operationId: listAdmins
+      x-allowed-when-suspended: true
       summary: List platform admins
       security:
         - adminBearer: []
@@ -913,6 +937,7 @@ paths:
     post:
       tags: [admin]
       operationId: inviteAdmin
+      x-allowed-when-suspended: true
       summary: Invite a platform admin (enrols TOTP on acceptance)
       security:
         - adminBearer: []
@@ -942,6 +967,7 @@ paths:
     post:
       tags: [admin]
       operationId: deactivateAdmin
+      x-allowed-when-suspended: true
       summary: Deactivate another platform admin
       security:
         - adminBearer: []
@@ -963,6 +989,7 @@ paths:
     post:
       tags: [admin]
       operationId: passwordResetAdmin
+      x-allowed-when-suspended: true
       summary: Issue a password-reset link for another admin
       security:
         - adminBearer: []
@@ -984,6 +1011,7 @@ paths:
     post:
       tags: [admin]
       operationId: totpResetAdmin
+      x-allowed-when-suspended: true
       summary: 'Reset another admin''s lost authenticator: back to invited, with a new invitation link'
       security:
         - adminBearer: []
@@ -1003,6 +1031,7 @@ paths:
     get:
       tags: [audit]
       operationId: listAuditEvents
+      x-allowed-when-suspended: true
       summary: Read any restaurant's audit log, or the platform chain (this read is audited)
       security:
         - adminBearer: []
@@ -1033,6 +1062,7 @@ paths:
     get:
       tags: [privacy]
       operationId: exportStaffData
+      x-allowed-when-suspended: true
       summary: Export a staff member's personal data (privacy request)
       security:
         - adminBearer: []
@@ -1053,6 +1083,7 @@ paths:
     post:
       tags: [privacy]
       operationId: eraseStaffData
+      x-allowed-when-suspended: true
       summary: Deactivate and anonymise a staff account now (privacy request)
       security:
         - adminBearer: []
@@ -1436,6 +1467,7 @@ paths:
     get:
       tags: [menu]
       operationId: getRestaurantMenu
+      x-allowed-when-suspended: true
       summary: 'Read any restaurant''s menu (admin, read only)'
       security:
         - adminBearer: []
@@ -3752,16 +3784,16 @@ components:
 
 # Error-code catalogue (architecture §5). Feature designs add their codes here.
 x-error-catalogue:
-  - { code: malformed_request, status: 400, meaning: Body isn't valid JSON, or a field has the wrong type }
+  - { code: malformed_request, status: 400, meaning: 'Body isn''t valid JSON, or a field has the wrong type' }
   - { code: validation_failed, status: 400, meaning: Field rules failed; see errors }
   - { code: idempotency_key_required, status: 400, meaning: The operation needs an Idempotency-Key }
   - { code: password_rejected, status: 400, meaning: 'Password too short, too long, too common or equal to the email; errors[0].code says which' }
-  - { code: unauthenticated, status: 401, meaning: Token missing, invalid, expired, wrong audience, or its session has ended }
-  - { code: invalid_credentials, status: 401, meaning: Sign-in, MFA or current-password check failed (one answer for every reason) }
+  - { code: unauthenticated, status: 401, meaning: 'Token missing, invalid, expired, wrong audience, or its session has ended' }
+  - { code: invalid_credentials, status: 401, meaning: 'Sign-in, MFA or current-password check failed (one answer for every reason)' }
   - { code: forbidden, status: 403, meaning: The caller's role lacks the operation }
   - { code: restaurant_suspended, status: 403, meaning: The caller's restaurant is suspended }
-  - { code: not_found, status: 404, meaning: Doesn't exist, or belongs to another restaurant or session }
-  - { code: link_invalid, status: 404, meaning: Invitation or reset link unknown, used, replaced or expired }
+  - { code: not_found, status: 404, meaning: 'Doesn''t exist, or belongs to another restaurant or session' }
+  - { code: link_invalid, status: 404, meaning: 'Invitation or reset link unknown, used, replaced or expired' }
   - { code: idempotency_request_in_progress, status: 409, meaning: The same Idempotency-Key is still being processed; retry }
   - { code: precondition_failed, status: 412, meaning: If-Match is stale }
   - { code: payload_too_large, status: 413, meaning: Body over 64 KB }

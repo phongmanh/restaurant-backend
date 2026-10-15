@@ -29,7 +29,7 @@
 
 | Prefix | Who | Authentication |
 |---|---|---|
-| `/v1/auth/*` | Anyone | None. A refresh cookie on refresh and sign-out |
+| `/v1/auth/*` | Anyone | None, except: a refresh cookie on refresh and sign-out; a staff or admin access token on `GET /v1/auth/me` and `POST /v1/auth/password` (§10) |
 | `/v1/guest/*` | Guest device | Table-session token (ADR-0006, `tables` design) |
 | `/v1/staff/*` | Manager, waiter, kitchen | Staff access token, `aud` = `staff` |
 | `/v1/admin/*` | Platform admin | Admin access token, `aud` = `admin`, `amr` contains `otp`, and `is_platform_admin` in the database |
@@ -373,6 +373,20 @@ The audit tables are in §12.
 | `GET /v1/auth/me` | Staff or admin token | — | 200 | 401 |
 
 The auth routes don't take an `Idempotency-Key`. A retried sign-in just signs in again, and the replay rules for the token endpoints would be worse than a second session.
+
+**Suspension** (restaurants §6): every `/v1/auth/*` route is `allowedWhenSuspended`. None shows restaurant data, and a suspended restaurant's staff must still be able to change a password or finish a reset (owner, 2026-10-15, G3 pass Q-9). The admin routes are too, because an admin has no restaurant of their own and must be able to reactivate one.
+
+**Scheduled jobs.** Every `/internal/jobs/*` route, in one place. Vercel Cron calls each with the cron secret; each is idempotent, works in bounded batches and holds `pg_try_advisory_xact_lock` (architecture §10). On the free Hobby account every job runs once a day (realtime §10).
+
+| Route | On Pro | Work | Design |
+|---|---|---|---|
+| `/internal/jobs/outbox-sweep` | Every minute | Publish outbox rows the requests didn't | realtime §4.3 |
+| `/internal/jobs/event-purge` | Hourly | Delete events and sent outbox rows older than 7 days | realtime §10 |
+| `/internal/jobs/purge` | Hourly | Idempotency keys older than 24 h; expired refresh tokens, MFA challenges and links | §4, §9 |
+| `/internal/jobs/session-auto-close` | Hourly | Close empty sessions idle for 2 h | tables §3.5 |
+| `/internal/jobs/sales-reconcile` | Hourly (each restaurant after its local 03:00) | Rebuild the last 2 days of the daily aggregates | reports §5 |
+| `/internal/jobs/retention` | Daily | Clear item and reason notes 30 days after close; delete replaced and deleted menu images after 30 days; anonymise staff 30 days after deactivation; archive orders and bills older than 2 years | orders §6, menu §6, §9, architecture §6 |
+| `/internal/jobs/audit-export` | Daily | Export the previous day's audit entries to locked object storage | §12 |
 
 ## 11. Rate limits
 A `RateLimiter` port; the adapter is Upstash with fixed windows (ADR-0008). Key `rl:<policy>:<subject>:<window start>`. Past the limit → `429 rate_limited` with `Retry-After` set to the window's remaining seconds. If Redis fails, the limit fails open and the WAF still applies. The connection opens at startup (S-1 Q10 design rule).

@@ -457,7 +457,7 @@ Field codes inside `validation_failed` (not catalogue codes): `unknown_item`, `u
 | IT-ORD-11 | Line rejection: line off the bill, totals drop, guests see it; the last active line rejects the order; a `placed` or `ready` order → `409 line_not_rejectable` | FR-015 |
 | IT-ORD-12 | Close: payment recorded, bill final, session closed, guest's next call `401 table_session_closed`; replay with the same key → same answer; total = 0 closes without payment | FR-013 |
 | IT-ORD-13 | Close with unfinished orders → `409 orders_not_finished` with their IDs; with `force` → they become `cancelled` (`closed_with_session`) and leave the bill | FR-013 |
-| IT-ORD-14 | A guest orders between the waiter's bill read and the close → `412`; `amount_received` below the total → `400 less_than_total` | FR-013 |
+| IT-ORD-14 | A guest orders between the waiter's bill read and the close → `412`; `amount_received` below the total → `400 validation_failed` with field code `less_than_total` | FR-013 |
 | IT-ORD-15 | An order racing a close: either on the bill, or `409 session_not_open`; never an order in a closed session (with IT-TBL-14) | FR-003, FR-013 |
 | IT-ORD-16 | Close updates the daily aggregates in the same transaction, on the local day of the close (a bill closed at 00:30 local counts on the new day) | FR-013, FR-050 |
 | IT-ORD-17 | Correction: manager only (waiter `403`); open bill → `409 bill_not_closed`; repeat with the old `If-Match` → `412`; counts on the day it's made; a method change as two entries | FR-013 (TBD-7) |

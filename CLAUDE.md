@@ -11,9 +11,9 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 | File | Holds |
 |---|---|
 | requirements.md | v1.6 (baselined at G1, changed by CR-002 to CR-007). Changing it needs a CR |
-| architecture.md | v1.3: approved at G2 (2026-10-15) with the TBD-10 condition, then changed by CR-004 to CR-006. Changing it needs a CR |
+| architecture.md | v1.4: approved at G2 (2026-10-15) with the TBD-10 condition, then changed by CR-004 to CR-006 and CR-008. Changing it needs a CR |
 | adr/0001–0009, 0011 | Decisions; ADR-0002 (Vercel) is Accepted with conditions (paid-plan cold-start check before G5); 0003 (live updates through Ably) is Accepted after S-3; 0004 (Neon PostgreSQL) and 0008 (rate limiting: WAF + Upstash) are Accepted; 0010 is reserved by CR-001; 0011 (built-in staff sign-in) is Accepted too |
-| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003, CR-004 (menu read and image limits) CR-005 (natural idempotency, no guest device data) and CR-006 (orders decisions: closed-bill corrections, no FR-016 in release 1) and CR-007 (no CSV export in release 1) are Approved |
+| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003, CR-004 (menu read and image limits), CR-005 (natural idempotency, no guest device data), CR-006 (orders decisions: closed-bill corrections, no FR-016 in release 1), CR-007 (no CSV export in release 1) and CR-008 (architecture aligned at the G3 pass) are Approved |
 | design/ | Phase 3 feature designs: core-and-auth (Draft 0.6), restaurants (Draft 0.2), menu (Draft 0.2), tables (Draft 0.3), orders (Draft 0.3), realtime (Draft 0.2), reports (Draft 0.2). All Phase 3 designs are drafted; G3 comes next |
 | `docs/api/openapi.yaml` (repo root) | The API contract, built up feature by feature and frozen at G3 |
 | rtm.md, test-plan.md | Traceability and test plan |
@@ -45,7 +45,7 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 - **A rule that spans several rows** (e.g. "at least one active manager") is serialised with `pg_advisory_xact_lock` on its scope. Otherwise two concurrent changes can each pass the check and break it together (restaurants §7).
 - **One lock order for every write:** table session → bill → order rows → daily sales rows → event counter → audit chain head. A transaction that skips a step keeps the order of the rest; two writes that lock in opposite orders can deadlock under load (orders §3.1, reports §4).
 - **Clients accept enum values they don't know** (shown as a neutral state), and the contract says so on the field. That keeps a new value, such as FR-016's `pending_confirmation`, additive within `/v1` (NFR-COMPAT-01; orders §2).
-- **YAML gotcha:** in OpenAPI files, quote any plain value that contains `: ` or, inside `{ }`, a `,`. Otherwise it parses into the wrong structure. Scripts that generate contract text quote every `summary` and `description`. In Python, write an apostrophe inside a double-quoted string: `'table''s'` is two adjacent literals and silently becomes `tables`. Lint passes either way, so read the parsed values back. It bit three times on 2026-10-15.
+- **YAML gotcha:** in OpenAPI files, quote any plain value that contains `: ` or, inside `{ }`, a `,`. Otherwise it parses into the wrong structure. Scripts that generate contract text quote every `summary` and `description`. In Python, write an apostrophe inside a double-quoted string: `'table''s'` is two adjacent literals and silently becomes `tables`. Lint passes either way, so read the parsed values back, and check every `x-error-catalogue` entry parses to exactly `code`, `status`, `meaning`. It bit three times on 2026-10-15, and the G3 pass found five catalogue entries that had been split at their commas since contract 0.1.0.
 
 ## Spikes: conventions and known gotchas
 - Spikes are throwaway code under `spikes/`. Results go into the spike README's Results table, then a one-line summary into the STATUS open-items row.

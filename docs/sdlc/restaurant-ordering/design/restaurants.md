@@ -146,7 +146,7 @@ In one platform transaction (core-and-auth §7):
 
 | Who | Allowed | Everything else |
 |---|---|---|
-| Staff | Sign in, refresh, sign out, `GET /v1/auth/me`, `GET /v1/staff/restaurant`, and for managers reading reports and the audit log | `403 restaurant_suspended` |
+| Staff | Every `/v1/auth/*` route (sign in, refresh, sign out, `me`, change password, inspect a link, accept an invitation, complete a reset; owner 2026-10-15, G3 pass), `GET /v1/staff/restaurant`, and for managers reading reports and the audit log | `403 restaurant_suspended` |
 | Guests | Read their session's orders and bill | Opening or joining a session, ordering, calling a waiter → `403 restaurant_suspended` (`tables` and `orders` designs) |
 | Live updates | — | No new subscription tokens; existing subscriptions run out with their token |
 

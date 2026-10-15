@@ -343,4 +343,6 @@ The owner approved CR-004 and accepted all seven recommendations. They're record
 4. ASSUMPTION-13: ≤ 10 option groups per item, ≤ 20 options per group, ≤ 5,000 options per restaurant (§3).
 5. Option prices only add (`price_delta` ≥ 0).
 6. Sold-out takes no `If-Match` and never conflicts with a manager's edit (§5.3).
+
+   The other menu writes without `If-Match`, by design: the two reorder calls replace a whole list and must name every member exactly once, so a stale list is refused with `400`; the image upload and delete are last-writer-wins (§6). Core-and-auth §5's `If-Match` rule covers edits of a versioned row's fields, which these aren't (noted at the G3 consistency pass).
 7. Deleting a category that still has items → `409 category_not_empty` (§5.1).

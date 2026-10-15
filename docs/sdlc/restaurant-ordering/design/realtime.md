@@ -172,6 +172,18 @@ The same for the whole restaurant, all roles: every event (§5), with `orders` (
 
 **Page size:** `limit` 1–200, default 100. A page of 100 events names at most 100 orders, each ≤ 50 lines, well under Vercel's 4.5 MB response cap (CR-004).
 
+### 6.4 Endpoints
+All of these go into `core/http/Endpoints.kt` and the contract (tag `realtime`).
+
+| Method and path | Who | Idempotency / If-Match | Allowed when suspended | Success |
+|---|---|---|---|---|
+| `GET /v1/guest/events` | Guest | — | Yes | 200 |
+| `POST /v1/guest/realtime-token` | Guest | — (each call issues a fresh token request) | No | 200 |
+| `GET /v1/staff/events` | Staff, all roles | — | No | 200 |
+| `POST /v1/staff/realtime-token` | Staff, all roles | — | No | 200 |
+
+The job routes (§10) are in the registry under the cron-secret group and not in the public contract. No new error codes: a bad `after` or `limit` is `400 validation_failed`.
+
 ## 7. What clients do (the contract the apps follow)
 **Start:**
 1. `GET .../events` without `after` → keep `cursor`.
