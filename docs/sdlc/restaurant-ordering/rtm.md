@@ -27,11 +27,11 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | FR-030 | Manage tables | M | architecture.md §4, §7 | `dining_tables` | | AT-030 | | |
 | FR-031 | Generate and rotate table QR codes | M | architecture.md §7; ADR-0006 | `table_qr_keys`; `TableQrRotated` | | AT-031 | | |
 | FR-032 | Table overview; open, move, close sessions | M | architecture.md §7 | `table_sessions`; `TableSessionMoved` | | AT-032 | | |
-| FR-040 | Onboard a restaurant and its first manager | M | architecture.md §7, ADR-0011 | `restaurants`, `staff_members` | | AT-040 | | |
-| FR-041 | Manage staff and roles | M | architecture.md §7, ADR-0011 | `staff_members`, `audit_events` | | AT-041 | | |
-| FR-042 | Tenant isolation on every call | M | ADR-0005; design/core-and-auth.md | all tenant tables (RLS) | | AT-042 | | |
-| FR-043 | Suspend / reactivate a restaurant | S | architecture.md §7 | `restaurants` | | | | |
-| FR-044 | Edit restaurant profile | M | architecture.md §11 | `restaurants` | | AT-044 | | |
+| FR-040 | Onboard a restaurant and its first manager | M | architecture.md §7, ADR-0011; design/restaurants.md | `restaurants`, `staff_members` | | AT-040 | | |
+| FR-041 | Manage staff and roles | M | architecture.md §7, ADR-0011; design/restaurants.md | `staff_members`, `audit_events` | | AT-041 | | |
+| FR-042 | Tenant isolation on every call | M | ADR-0005; design/core-and-auth.md; design/restaurants.md | all tenant tables (RLS) | | AT-042 | | |
+| FR-043 | Suspend / reactivate a restaurant | S | architecture.md §7; design/restaurants.md | `restaurants` | | | | |
+| FR-044 | Edit restaurant profile | M | architecture.md §11; design/restaurants.md | `restaurants` | | AT-044 | | |
 | FR-050 | Daily sales report | M | architecture.md §1, §9 (Reports); ASSUMPTION-11 (day of closing) | `daily_sales`, `daily_sales_payment`, `daily_sales_table`, `daily_sales_item` | | AT-050 | | |
 | FR-051 | CSV export of sales lines | C | architecture.md §4 | `order_lines` | | | | |
 | NFR-PERF-01 | Guest reads p95 ≤ 200 ms, p99 ≤ 500 ms at peak | M | architecture.md §1, §9 | | | | | |
@@ -46,10 +46,10 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | NFR-REL-02 | No duplicates on retry, no lost orders | M | architecture.md §10; design/core-and-auth.md | `idempotency_keys`, `outbox` | | | | |
 | NFR-REL-03 | Live updates catch up with no gaps | M | ADR-0003 | `domain_events` | | | | |
 | NFR-SEC-01 | ASVS L2 + API Top 10 | M | architecture.md §12; design/core-and-auth.md | | | | | |
-| NFR-SEC-02 | Tenant and table isolation tests | M | ADR-0005, ADR-0006; design/core-and-auth.md | | | AT-042 | | |
-| NFR-SEC-03 | Audit trail of staff actions | M | architecture.md §11; design/core-and-auth.md | `audit_events` | | AT-041 | | |
+| NFR-SEC-02 | Tenant and table isolation tests | M | ADR-0005, ADR-0006; design/core-and-auth.md; design/restaurants.md | | | AT-042 | | |
+| NFR-SEC-03 | Audit trail of staff actions | M | architecture.md §11; design/core-and-auth.md; design/restaurants.md | `audit_events` | | AT-041 | | |
 | NFR-SEC-04 | Abuse rate limits; admin MFA | M | ADR-0008, ADR-0011; design/core-and-auth.md | | | | | |
-| NFR-PRIV-01 | Minimisation, retention job, staff data erasure | M | architecture.md §6, §11; design/core-and-auth.md | | | | | |
+| NFR-PRIV-01 | Minimisation, retention job, staff data erasure | M | architecture.md §6, §11; design/core-and-auth.md; design/restaurants.md | | | | | |
 | NFR-PRIV-02 | Data residency | M | ADR-0002, ADR-0004 | | | | | |
 | NFR-COMPAT-01 | Additive changes within `/v1`; oldest client supported | M | architecture.md §5; ADR-0007; design/core-and-auth.md | | | | | |
 | NFR-OBS-01 | Request IDs, RED metrics, SLO alerts | M | architecture.md §13; ADR-0009; design/core-and-auth.md | | | | | |

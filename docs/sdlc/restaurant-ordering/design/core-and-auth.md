@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.2 Draft: the five §16 questions decided by the owner on 2026-10-15; the whole design is approved at G3 |
+| Version | 0.4 Draft: the five §16 questions decided by the owner on 2026-10-15; 0.3–0.4 add the changes from [restaurants](restaurants.md) §14 (one-time secrets, suspension check, sign-in when suspended, staff token on admin routes → 404). The whole design is approved at G3 |
 | Date | 2026-10-15 |
 | Package | `core` (shared kernel and staff/admin sign-in), per architecture §4 |
 | Requirements | FR-010, FR-042 (the shared parts), NFR-REL-02 (idempotency), NFR-SEC-01 to 04, NFR-PRIV-01 (logs, staff data), NFR-COMPAT-01, NFR-OBS-01 (request ID) |
@@ -131,6 +131,8 @@ Every error is RFC 9457 problem details, `Content-Type: application/problem+json
 
 Only successful (2xx) responses are stored. A rejection rolls back the whole transaction, key included, so a retry is checked again against the current state: if the sold-out item is back, the retry succeeds. That's the intended behaviour.
 
+**One-time secrets are never stored.** Some responses carry a secret that may be shown only once, such as an invitation link. Their stored copy leaves the secret out, and a replay **issues a fresh one** that replaces the earlier one. The client never saw the first answer, so nothing usable is lost, and no secret sits in `idempotency_keys` for 24 h. The first user is onboarding (restaurants §5).
+
 Keys are kept 24 h; the hourly purge job deletes older ones (architecture §10).
 
 ## 5. Optimistic locking
@@ -158,17 +160,18 @@ sealed interface Caller {
 ```
 
 **Staff and admin requests**, in a Ktor authentication provider per route group:
-1. Verify the access token (architecture §7): ES256 only, signature against the staff key set by `kid`, `iss`, `aud`, `exp` with 30 s leeway. Admin group: `amr` contains `otp`. Any failure → 401.
+1. Verify the access token (architecture §7): ES256 only, signature against the staff key set by `kid`, `iss`, `aud`, `exp` with 30 s leeway. Admin group: `amr` contains `otp`. Any failure → 401, with one exception: a token that verifies but has `aud` = `staff` on `/v1/admin/*` → `404 not_found`, so the admin routes look absent to restaurant staff (FR-040; owner, 2026-10-15, restaurants §15 Q1).
 2. One query, outside the tenant's transaction (the tables in §9 are global):
    ```sql
-   SELECT a.restaurant_id, a.role, a.is_platform_admin
+   SELECT a.restaurant_id, a.role, a.is_platform_admin, r.status AS restaurant_status
    FROM staff_accounts a
    JOIN staff_sessions s ON s.staff_id = a.id
+   LEFT JOIN restaurants r ON r.id = a.restaurant_id      -- NULL for platform admins
    WHERE a.id = :sub AND s.id = :sid
      AND a.status = 'active' AND s.revoked_at IS NULL AND s.expires_at > now()
    ```
    No row → 401. Staff group with `is_platform_admin` true, or admin group with it false → 401.
-3. Staff group: ask the `restaurants` feature whether the restaurant is active (a `TenantStatus` port). Suspended → `403 restaurant_suspended`, subject to the `restaurants` design.
+3. The same query also joins `restaurants` (a global table, restaurants §2; owner, 2026-10-15) to read the restaurant's `status`. If the restaurant is suspended and the endpoint's registry entry doesn't have `allowedWhenSuspended` → `403 restaurant_suspended` (FR-043, restaurants §6).
 
 Because step 2 joins the session, **sign-out, a password change, a role change and deactivation take effect on the very next call**, not up to 15 min later. That's stronger than FR-010 asks for ("at the latest when the access token expires"), at the cost of one indexed lookup per call.
 
@@ -195,7 +198,6 @@ Body `{"email", "password"}`.
 
    Tries while the account is locked aren't counted, so the lock can't be extended without end. Write the audit event in the same transaction. Answer `401 invalid_credentials`.
 5. **Success:** reset the counter. If the stored hash uses older Argon2id parameters, re-hash and save it. Then:
-   - a restaurant whose status blocks sign-in → `403 restaurant_suspended` (only after a correct password, so it doesn't reveal that the email exists);
    - platform admin → create a single-use MFA challenge (5 min) and answer `200 {"mfa_required": true, "mfa_token": "...", "expires_in": 300}`;
    - staff → create a session and its first refresh token (§8.3) and answer `200` with the token response and the refresh cookie.
 
@@ -360,7 +362,7 @@ The audit tables are in §12.
 ## 10. Endpoints
 | Method and path | Auth | Idempotency | Success | Errors |
 |---|---|---|---|---|
-| `POST /v1/auth/sign-in` | None | — | 200 token response or `mfa_required` | 400, 401 `invalid_credentials`, 403 `restaurant_suspended`, 429, 503 `service_busy` |
+| `POST /v1/auth/sign-in` | None | — | 200 token response or `mfa_required` | 400, 401 `invalid_credentials`, 429, 503 `service_busy` |
 | `POST /v1/auth/mfa` | None (MFA token in body) | — | 200 token response | 400, 401, 429 |
 | `POST /v1/auth/refresh` | Refresh cookie | — | 200 token response + new cookie | 400, 401, 429 |
 | `POST /v1/auth/sign-out` | Cookie and/or access token | — | 204 | 429 |
@@ -475,7 +477,7 @@ One Gradle module, packages by feature (ADR-0001). `<base>` is the root package 
     http/        AuthRoutes (/v1/auth/*), staff and admin authentication providers
 ```
 
-`core/http/Endpoints.kt` is the one place every path is declared (§16), for example `Endpoints.Auth.SIGN_IN = "/v1/auth/sign-in"`. Route files take their paths from it.
+`core/http/Endpoints.kt` is the one place every endpoint is declared (§16), for example `Endpoints.Auth.SIGN_IN`. Each entry holds the method, the path, the route group, whether it needs an `Idempotency-Key` or `If-Match`, and `allowedWhenSuspended` (restaurants §6), which has no default. Route files and the authentication providers read it.
 
 The crypto classes are ported from `spikes/s4-auth`, where they passed 19 of 19 token cases. They get rewritten with tests rather than copied, because spike code is throwaway.
 
@@ -488,7 +490,7 @@ These go into the integration suite (test-plan §2: `testApplication` + Testcont
 | IT-AUTH-02 | Unknown email, wrong password, deactivated, invited and locked → identical 401 body; response times within the same band (dummy hash) | FR-010 |
 | IT-AUTH-03 | 10 failures in 15 min lock the account; the right password is refused while locked; tries while locked don't extend it; it unlocks after 15 min (fake clock); success resets the count | FR-010, NFR-SEC-04 |
 | IT-AUTH-04 | A lock doesn't stop an existing refresh token | FR-010 (owner, 2026-10-15) |
-| IT-AUTH-05 | Token cases from S-4: expired, forged, `alg: none`, wrong `kid`, wrong `iss`, staff token on admin route, admin token without `otp`, admin token on staff route → 401 | FR-010, NFR-SEC-04 |
+| IT-AUTH-05 | Token cases from S-4: expired, forged, `alg: none`, wrong `kid`, wrong `iss`, admin token without `otp`, admin token on staff route → 401; a valid staff token on an admin route → 404 | FR-010, NFR-SEC-04 |
 | IT-AUTH-06 | Admin: sign-in → `mfa_required`; right code → admin token; reused code, used MFA token, expired MFA token → 401 | NFR-SEC-04 |
 | IT-AUTH-07 | Refresh rotates; the old token reused → 401 and the session revoked (the new token stops working too); audit entry | FR-010 |
 | IT-AUTH-08 | Refresh expires 12 h after its issue without use, and 24 h after sign-in even with use | FR-010 (owner, 2026-10-15) |
