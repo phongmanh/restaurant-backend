@@ -154,6 +154,7 @@ Decision is one of: Approved / Approved with conditions / Rejected / Waived.
 | 2026-10-15 | G3 pass Q-9 (1) by the owner: every `/v1/auth/*` route is allowed for a suspended restaurant's staff, including password change, link inspection, invitation acceptance and reset completion; contract 0.7.2-draft sets `x-allowed-when-suspended` on all 93 operations | [design/restaurants.md](design/restaurants.md) §6; [design/core-and-auth.md](design/core-and-auth.md) §10 |
 | 2026-10-15 | **CR-008 approved** by the owner and applied: architecture v1.4 (§6 stale device-data step removed, §10 job list) | [CR-008](cr/CR-008-architecture-g3-alignment.md) |
 | 2026-10-15 | **G3 approved** by the owner: the seven feature designs baselined as v1.0 and the contract frozen as 1.0.0; Phase 4 (implementation) starts. Changes to a design or the contract now need a CR | Gate log |
+| 2026-10-15 | Gotcha added to CLAUDE.md under the owner's standing instruction: Vercel spike projects connected to the GitHub repo build on every push and PR and would deploy to production on a merge to `main`; spikes disconnect Git right after linking. `restaurant-s1-spike` and `restaurant-s4-spike` were disconnected before PR #1 was merged | CLAUDE.md |
 
 ## Risks
 | ID | Risk ("If …, then …") | Likelihood (H/M/L) | Impact (H/M/L) | Owner | Mitigation | Status |
