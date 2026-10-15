@@ -1,0 +1,11 @@
+190 subscribers on 85 channels; ≈ 240 messages/s, ≈ 28800 in total
+190 connected and attached; publishing for 120 s
+
+#### `delay --layout realistic --subs 190 --rate 30 --seconds 120` (2026-10-14T16:56:49.959Z)
+- 190 subscribers on 85 channels, 3601 events, 7202 publishes attempted, 6213 accepted; ≈ 240 Ably messages/s
+- **Publish → receive: n 18646, p50 34 · p95 42 · p99 70 · max 223 ms**; 100.00 % within 1 s
+- Deliveries of accepted publishes: 18646 of 18646 expected, **0 lost**, 0 duplicates
+- REST publish call (the time the app's request would spend publishing): n 6213, p50 35 · p95 43 · p99 75 · max 222 ms; 989 rejected (989× 42918 Maximum account-wide instantaneous apiRequests rate exceeded; permitted rate = 5)
+- Connect + attach per subscriber: n 190, p50 217 · p95 300 · p99 311 · max 312 ms
+- Connection drops during the run: 1 (73: connected → disconnected 80003)
+

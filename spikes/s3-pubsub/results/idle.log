@@ -1,0 +1,6 @@
+connected; idle for 10 min
+
+#### `idle --minutes 10` (2026-10-14T16:54:01.177Z)
+- State after 10 min idle: **connected**; message after the idle period: received in 141 ms
+- State changes: 0 s initialized → connecting; 0 s connecting → connected
+

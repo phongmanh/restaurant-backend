@@ -1,0 +1,8 @@
+build/
+.gradle/
+.kotlin/
+.idea/
+.vercel/
+.env*
+.vercel
+results/

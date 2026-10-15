@@ -1,0 +1,3832 @@
+openapi: 3.1.0
+info:
+  title: Restaurant ordering API
+  version: 1.0.0
+  description: |
+    Contract for the restaurant ordering service (`docs/sdlc/restaurant-ordering/`).
+    Hand-written in Phase 3 and frozen at G3 on 2026-10-15 (architecture §5, ADR-0007). Changes need a CR;
+    within `/v1` they must be additive (NFR-COMPAT-01).
+    Built up one feature design at a time; it holds the shared parts and
+    `/v1/auth/*` from `design/core-and-auth.md`, and the routes of
+    `design/restaurants.md`, `design/menu.md`, `design/tables.md`, `design/orders.md`, `design/realtime.md` and `design/reports.md`. `x-allowed-when-suspended` on staff and guest
+    operations mirrors the endpoint registry (restaurants §6).
+
+    Conventions (core-and-auth §2): snake_case fields; UUID v7 IDs; RFC 3339 UTC times;
+    money as `{"amount": "<whole đồng>", "currency": "VND"}`; errors as
+    `application/problem+json` with a stable `code` (catalogue in `x-error-catalogue`).
+servers:
+  - url: https://api.example.invalid
+    description: Placeholder until the environments' URLs are fixed
+
+tags:
+  - name: auth
+    description: Staff and admin sign-in, sessions, invitations and password resets
+  - name: restaurants
+    description: The caller's own restaurant profile
+  - name: staff
+    description: Staff management in a restaurant
+  - name: audit
+    description: Reading the audit log
+  - name: admin
+    description: Platform-admin operations on restaurants and admins
+  - name: privacy
+    description: Staff data export and erasure requests
+  - name: menu
+    description: Menu reads for guests, staff and admins; menu editing, sold-out and images
+  - name: tables
+    description: Tables, QR codes, table sessions and waiter calls
+  - name: orders
+    description: Orders, their status steps, bills, closing a session with its payment, and bill corrections
+  - name: realtime
+    description: Catch-up from the event log and Ably subscription tokens
+  - name: reports
+    description: Daily sales reports for managers
+
+paths:
+  /v1/auth/sign-in:
+    post:
+      tags: [auth]
+      operationId: signIn
+      x-allowed-when-suspended: true
+      security: []   # no token: public sign-in route
+      summary: Sign in with email and password
+      description: |
+        Staff get tokens straight away. Platform admins get an MFA challenge instead
+        (`mfa_required: true`) and finish with `POST /v1/auth/mfa`.
+        Unknown email, wrong password, locked and deactivated accounts all give the
+        same `401 invalid_credentials`.
+      parameters:
+        - $ref: '#/components/parameters/XClient'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignInRequest' }
+      responses:
+        '200':
+          description: Signed in (staff), or MFA required (admin)
+          headers:
+            Set-Cookie:
+              description: Refresh cookie, staff only (`__Secure-rt-staff`)
+              schema: { type: string }
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignInResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/InvalidCredentials' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/auth/mfa:
+    post:
+      tags: [auth]
+      operationId: completeMfa
+      x-allowed-when-suspended: true
+      security: []   # no token: public sign-in route
+      summary: Finish an admin sign-in with a TOTP code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MfaRequest' }
+      responses:
+        '200':
+          description: Signed in as admin
+          headers:
+            Set-Cookie:
+              description: Refresh cookie (`__Secure-rt-admin`)
+              schema: { type: string }
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/InvalidCredentials' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refreshTokens
+      x-allowed-when-suspended: true
+      summary: Swap the refresh cookie for a new access token and a new refresh cookie
+      description: |
+        The refresh token is single-use. Presenting one that was already used ends the
+        whole session (core-and-auth §8.3).
+      security:
+        - refreshCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AudienceRequest' }
+      responses:
+        '200':
+          description: New tokens
+          headers:
+            Set-Cookie:
+              description: The replacement refresh cookie
+              schema: { type: string }
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/sign-out:
+    post:
+      tags: [auth]
+      operationId: signOut
+      x-allowed-when-suspended: true
+      summary: End the session
+      description: Always 204, even if no session matched.
+      security:
+        - refreshCookie: []
+        - staffBearer: []
+        - adminBearer: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AudienceRequest' }
+      responses:
+        '204':
+          description: Signed out; the refresh cookie is cleared
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/links/inspect:
+    post:
+      tags: [auth]
+      operationId: inspectLink
+      x-allowed-when-suspended: true
+      security: []   # no token: public sign-in route
+      summary: Show what an invitation or reset link is for, without using it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LinkTokenRequest' }
+      responses:
+        '200':
+          description: Link details
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LinkDetails' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/LinkInvalid' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/invitations/accept:
+    post:
+      tags: [auth]
+      operationId: acceptInvitation
+      x-allowed-when-suspended: true
+      security: []   # no token: public sign-in route
+      summary: Set a password through an invitation link (and enrol TOTP for an admin)
+      description: |
+        Staff: one call → 204. Platform admin: the first call (without `totp_code`)
+        returns `totp_setup` and leaves the link valid; the second call with the same
+        token and password plus `totp_code` → 204 (core-and-auth §8.5).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AcceptInvitationRequest' }
+      responses:
+        '200':
+          description: 'Admin only: scan this secret, then call again with a code'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TotpSetupResponse' }
+        '204':
+          description: Account active; sign in next
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/LinkInvalid' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/password-resets/complete:
+    post:
+      tags: [auth]
+      operationId: completePasswordReset
+      x-allowed-when-suspended: true
+      security: []   # no token: public sign-in route
+      summary: Set a new password through a reset link
+      description: Ends all of the person's sessions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompletePasswordResetRequest' }
+      responses:
+        '204':
+          description: Password changed; sign in next
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/LinkInvalid' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/password:
+    post:
+      tags: [auth]
+      operationId: changePassword
+      x-allowed-when-suspended: true
+      summary: Change your own password
+      description: Ends all of the person's sessions, including this one.
+      security:
+        - staffBearer: []
+        - adminBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204':
+          description: Password changed; sign in again
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      x-allowed-when-suspended: true
+      summary: Who the signed-in caller is
+      security:
+        - staffBearer: []
+        - adminBearer: []
+      responses:
+        '200':
+          description: The caller
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /v1/staff/restaurant:
+    get:
+      tags: [restaurants]
+      operationId: getOwnRestaurant
+      summary: Read your restaurant's profile (all roles)
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: true
+      responses:
+        '200':
+          description: The profile
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Restaurant' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    patch:
+      tags: [restaurants]
+      operationId: updateOwnRestaurant
+      summary: Edit your restaurant's profile (manager)
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestaurantUpdate' }
+      responses:
+        '200':
+          description: Updated
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Restaurant' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/members:
+    get:
+      tags: [staff]
+      operationId: listMembers
+      summary: List staff members
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/MemberStatusFilter'
+        - $ref: '#/components/parameters/MemberRoleFilter'
+      responses:
+        '200':
+          description: A page of members
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemberPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [staff]
+      operationId: inviteMember
+      summary: Invite a staff member; the response holds the one-time link
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteMemberRequest' }
+      responses:
+        '201':
+          description: Invited
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitedMember' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/members/{staffId}:
+    parameters:
+      - $ref: '#/components/parameters/StaffId'
+    get:
+      tags: [staff]
+      operationId: getMember
+      summary: Read a staff member
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: The member
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [staff]
+      operationId: updateMember
+      summary: Change name, phone or role (role change ends their sessions)
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberUpdate' }
+      responses:
+        '200':
+          description: Updated
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/members/{staffId}/deactivate:
+    parameters:
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [staff]
+      operationId: deactivateMember
+      summary: Deactivate (ends their sessions)
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: Deactivated, or already was
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/staff/members/{staffId}/reactivate:
+    parameters:
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [staff]
+      operationId: reactivateMember
+      summary: Reactivate a deactivated member who isn't anonymised yet
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: Active
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/members/{staffId}/invitation:
+    parameters:
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [staff]
+      operationId: invitationMember
+      summary: Re-issue the invitation link; the old one stops working
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '201':
+          description: New link
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssuedLink' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/members/{staffId}/password-reset:
+    parameters:
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [staff]
+      operationId: passwordResetMember
+      summary: Issue a password-reset link (24 h)
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '201':
+          description: New link
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssuedLink' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/audit-events:
+    get:
+      tags: [audit]
+      operationId: listOwnAuditEvents
+      summary: Read your restaurant's audit log (manager; no IP or user agent)
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: true
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/AuditFrom'
+        - $ref: '#/components/parameters/AuditTo'
+        - $ref: '#/components/parameters/AuditAction'
+        - $ref: '#/components/parameters/AuditActor'
+        - $ref: '#/components/parameters/AuditTarget'
+      responses:
+        '200':
+          description: Newest first
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditEventPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/admin/restaurants:
+    get:
+      tags: [admin]
+      operationId: listRestaurants
+      x-allowed-when-suspended: true
+      summary: List restaurants
+      security:
+        - adminBearer: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/RestaurantStatusFilter'
+        - $ref: '#/components/parameters/RestaurantNamePrefix'
+      responses:
+        '200':
+          description: A page of restaurants
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RestaurantPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [admin]
+      operationId: onboardRestaurant
+      x-allowed-when-suspended: true
+      summary: Onboard a restaurant and invite its first manager
+      security:
+        - adminBearer: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OnboardRestaurantRequest' }
+      responses:
+        '201':
+          description: Created. A replay with the same key returns the restaurant with a fresh link
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnboardRestaurantResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/IdempotencyKeyReused' }
+
+  /v1/admin/restaurants/{restaurantId}:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+    get:
+      tags: [admin]
+      operationId: getRestaurant
+      x-allowed-when-suspended: true
+      summary: Read a restaurant (admin view)
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: The restaurant
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminRestaurant' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [admin]
+      operationId: updateRestaurant
+      x-allowed-when-suspended: true
+      summary: Edit a restaurant, including the owner contact
+      security:
+        - adminBearer: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminRestaurantUpdate' }
+      responses:
+        '200':
+          description: Updated
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminRestaurant' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/admin/restaurants/{restaurantId}/suspend:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+    post:
+      tags: [admin]
+      operationId: suspendRestaurant
+      x-allowed-when-suspended: true
+      summary: Suspend a restaurant (idempotent; no data is deleted)
+      security:
+        - adminBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SuspendRequest' }
+      responses:
+        '200':
+          description: Suspended
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminRestaurant' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/restaurants/{restaurantId}/reactivate:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+    post:
+      tags: [admin]
+      operationId: reactivateRestaurant
+      x-allowed-when-suspended: true
+      summary: Reactivate a restaurant (idempotent)
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: Active
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminRestaurant' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/restaurants/{restaurantId}/members:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+    get:
+      tags: [staff]
+      operationId: listRestaurantMembers
+      x-allowed-when-suspended: true
+      summary: List staff members
+      security:
+        - adminBearer: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/MemberStatusFilter'
+        - $ref: '#/components/parameters/MemberRoleFilter'
+      responses:
+        '200':
+          description: A page of members
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemberPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [staff]
+      operationId: inviteRestaurantMember
+      x-allowed-when-suspended: true
+      summary: Invite a staff member; the response holds the one-time link
+      security:
+        - adminBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteMemberRequest' }
+      responses:
+        '201':
+          description: Invited
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitedMember' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/restaurants/{restaurantId}/members/{staffId}:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+      - $ref: '#/components/parameters/StaffId'
+    get:
+      tags: [staff]
+      operationId: getRestaurantMember
+      x-allowed-when-suspended: true
+      summary: Read a staff member
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: The member
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [staff]
+      operationId: updateRestaurantMember
+      x-allowed-when-suspended: true
+      summary: Change name, phone or role (role change ends their sessions)
+      security:
+        - adminBearer: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberUpdate' }
+      responses:
+        '200':
+          description: Updated
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/admin/restaurants/{restaurantId}/members/{staffId}/deactivate:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [staff]
+      operationId: deactivateRestaurantMember
+      x-allowed-when-suspended: true
+      summary: Deactivate (ends their sessions)
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: Deactivated, or already was
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/restaurants/{restaurantId}/members/{staffId}/reactivate:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [staff]
+      operationId: reactivateRestaurantMember
+      x-allowed-when-suspended: true
+      summary: Reactivate a deactivated member who isn't anonymised yet
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: Active
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/restaurants/{restaurantId}/members/{staffId}/invitation:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [staff]
+      operationId: invitationRestaurantMember
+      x-allowed-when-suspended: true
+      summary: Re-issue the invitation link; the old one stops working
+      security:
+        - adminBearer: []
+      responses:
+        '201':
+          description: New link
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssuedLink' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/restaurants/{restaurantId}/members/{staffId}/password-reset:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [staff]
+      operationId: passwordResetRestaurantMember
+      x-allowed-when-suspended: true
+      summary: Issue a password-reset link (24 h)
+      security:
+        - adminBearer: []
+      responses:
+        '201':
+          description: New link
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssuedLink' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/admin/admins:
+    get:
+      tags: [admin]
+      operationId: listAdmins
+      x-allowed-when-suspended: true
+      summary: List platform admins
+      security:
+        - adminBearer: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of admins
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminAccountPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [admin]
+      operationId: inviteAdmin
+      x-allowed-when-suspended: true
+      summary: Invite a platform admin (enrols TOTP on acceptance)
+      security:
+        - adminBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteAdminRequest' }
+      responses:
+        '201':
+          description: Invited
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitedAdmin' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/admins/{staffId}/deactivate:
+    parameters:
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [admin]
+      operationId: deactivateAdmin
+      x-allowed-when-suspended: true
+      summary: Deactivate another platform admin
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: Deactivated
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminAccount' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/admins/{staffId}/password-reset:
+    parameters:
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [admin]
+      operationId: passwordResetAdmin
+      x-allowed-when-suspended: true
+      summary: Issue a password-reset link for another admin
+      security:
+        - adminBearer: []
+      responses:
+        '201':
+          description: New link
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssuedLink' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/admins/{staffId}/totp-reset:
+    parameters:
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [admin]
+      operationId: totpResetAdmin
+      x-allowed-when-suspended: true
+      summary: 'Reset another admin''s lost authenticator: back to invited, with a new invitation link'
+      security:
+        - adminBearer: []
+      responses:
+        '201':
+          description: New invitation link
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssuedLink' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/audit-events:
+    get:
+      tags: [audit]
+      operationId: listAuditEvents
+      x-allowed-when-suspended: true
+      summary: Read any restaurant's audit log, or the platform chain (this read is audited)
+      security:
+        - adminBearer: []
+      parameters:
+        - $ref: '#/components/parameters/AuditRestaurant'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/AuditFrom'
+        - $ref: '#/components/parameters/AuditTo'
+        - $ref: '#/components/parameters/AuditAction'
+        - $ref: '#/components/parameters/AuditActor'
+        - $ref: '#/components/parameters/AuditTarget'
+      responses:
+        '200':
+          description: Newest first
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminAuditEventPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/staff-accounts/{staffId}/export:
+    parameters:
+      - $ref: '#/components/parameters/StaffId'
+    get:
+      tags: [privacy]
+      operationId: exportStaffData
+      x-allowed-when-suspended: true
+      summary: Export a staff member's personal data (privacy request)
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: The data
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffDataExport' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/staff-accounts/{staffId}/erase:
+    parameters:
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [privacy]
+      operationId: eraseStaffData
+      x-allowed-when-suspended: true
+      summary: Deactivate and anonymise a staff account now (privacy request)
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: Erased
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EraseResult' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/guest/menu:
+    get:
+      tags: [menu]
+      operationId: getGuestMenu
+      summary: 'The session''s restaurant menu; revalidate with If-None-Match'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: true
+      parameters:
+        - $ref: '#/components/parameters/MenuLang'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: 'The menu (active items only; sold-out items flagged)'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Cache-Control:
+              schema: { type: string, examples: ['private, no-cache'] }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestMenu' }
+        '304': { $ref: '#/components/responses/NotModified' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/menu:
+    get:
+      tags: [menu]
+      operationId: getStaffMenu
+      summary: 'The full menu including hidden items, both languages (all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: 'The menu'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Cache-Control:
+              schema: { type: string, examples: ['private, no-cache'] }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenu' }
+        '304': { $ref: '#/components/responses/NotModified' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/menu/categories:
+    post:
+      tags: [menu]
+      operationId: createMenuCategory
+      summary: 'Create a category (manager); it goes last'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuCategoryCreate' }
+      responses:
+        '201':
+          description: 'Created'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuCategory' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/staff/menu/categories/order:
+    put:
+      tags: [menu]
+      operationId: reorderMenuCategories
+      summary: 'Set the category order; list every category once (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryOrder' }
+      responses:
+        '204':
+          description: 'Reordered'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/menu/categories/{categoryId}:
+    parameters:
+      - $ref: '#/components/parameters/CategoryId'
+    patch:
+      tags: [menu]
+      operationId: updateMenuCategory
+      summary: 'Edit a category (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuCategoryUpdate' }
+      responses:
+        '200':
+          description: 'Updated'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuCategory' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+    delete:
+      tags: [menu]
+      operationId: deleteMenuCategory
+      summary: 'Delete an empty category (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: 'Deleted'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/menu/categories/{categoryId}/items/order:
+    parameters:
+      - $ref: '#/components/parameters/CategoryId'
+    put:
+      tags: [menu]
+      operationId: reorderMenuItems
+      summary: 'Set the order of a category''s items; list every item once (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ItemOrder' }
+      responses:
+        '204':
+          description: 'Reordered'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/menu/items:
+    post:
+      tags: [menu]
+      operationId: createMenuItem
+      summary: 'Create an item (manager); it goes last in its category'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuItemCreate' }
+      responses:
+        '201':
+          description: 'Created'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/staff/menu/items/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/ItemId'
+    get:
+      tags: [menu]
+      operationId: getMenuItem
+      summary: 'Read an item (all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The item'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuItem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [menu]
+      operationId: updateMenuItem
+      summary: 'Edit an item; option_groups, when sent, replaces the whole set (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuItemUpdate' }
+      responses:
+        '200':
+          description: 'Updated'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+    delete:
+      tags: [menu]
+      operationId: deleteMenuItem
+      summary: 'Delete an item; past orders keep their snapshot (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: 'Deleted'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/menu/items/{itemId}/sold-out:
+    parameters:
+      - $ref: '#/components/parameters/ItemId'
+    put:
+      tags: [menu]
+      operationId: setMenuItemSoldOut
+      summary: 'Mark sold out or available again; idempotent, no If-Match (kitchen, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SoldOutRequest' }
+      responses:
+        '200':
+          description: 'Current state'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SoldOutState' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/menu/items/{itemId}/image:
+    parameters:
+      - $ref: '#/components/parameters/ItemId'
+    put:
+      tags: [menu]
+      operationId: putMenuItemImage
+      summary: 'Upload or replace the item photo (manager; FR-022, Should)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        description: 'Raw image bytes, at most 4 MB; the type is checked by content'
+        content:
+          image/jpeg:
+            schema: { type: string, format: binary }
+          image/png:
+            schema: { type: string, format: binary }
+          image/webp:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: 'Stored; the item now has image URLs'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    delete:
+      tags: [menu]
+      operationId: deleteMenuItemImage
+      summary: 'Remove the item photo (manager; FR-022, Should)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '204':
+          description: 'Removed'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/restaurants/{restaurantId}/menu:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+    get:
+      tags: [menu]
+      operationId: getRestaurantMenu
+      x-allowed-when-suspended: true
+      summary: 'Read any restaurant''s menu (admin, read only)'
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: 'The menu'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenu' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/guest/sessions:
+    post:
+      tags: [tables]
+      operationId: openOrJoinSession
+      summary: 'Open or join the table session from a QR code; safe to retry (one open session per table)'
+      security: []
+      x-auth: qr
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OpenSessionRequest' }
+      responses:
+        '200':
+          description: 'Session token for this device'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestSessionGrant' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/guest/session:
+    get:
+      tags: [tables]
+      operationId: getGuestSession
+      summary: 'The guest''s session, table and open waiter calls'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: true
+      responses:
+        '200':
+          description: 'The session'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestSession' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /v1/guest/waiter-calls:
+    post:
+      tags: [tables]
+      operationId: callWaiter
+      summary: 'Call a waiter or ask for the bill; repeats within 60 s merge into one'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WaiterCallRequest' }
+      responses:
+        '201':
+          description: 'Created'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WaiterCall' }
+        '200':
+          description: 'Merged into an existing call'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WaiterCall' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/tables:
+    get:
+      tags: [tables]
+      operationId: listTables
+      summary: 'Floor view: every table, free or occupied, with session summary (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The tables'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FloorView' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [tables]
+      operationId: createTable
+      summary: 'Create a table (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TableCreate' }
+      responses:
+        '201':
+          description: 'Created'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiningTable' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/staff/tables/qr-codes:
+    get:
+      tags: [tables]
+      operationId: listQrCodes
+      summary: 'QR code URLs of every table, for printing (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The codes'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrCodeList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/tables/qr-codes/rotate-all:
+    post:
+      tags: [tables]
+      operationId: rotateAllQrCodes
+      summary: 'Rotate every table''s QR code at once; all printed codes stop working (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'New codes'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrCodeList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/tables/{tableId}:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+    get:
+      tags: [tables]
+      operationId: getTable
+      summary: 'Read a table (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The table'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiningTable' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [tables]
+      operationId: updateTable
+      summary: 'Edit or disable a table (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TableUpdate' }
+      responses:
+        '200':
+          description: 'Updated'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiningTable' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+    delete:
+      tags: [tables]
+      operationId: deleteTable
+      summary: 'Delete a table without guests; its printed codes stop working (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: 'Deleted'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/tables/{tableId}/qr-code:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+    get:
+      tags: [tables]
+      operationId: getQrCode
+      summary: 'The table''s current QR code URL (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The code'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrCode' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/tables/{tableId}/qr-code/rotate:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+    post:
+      tags: [tables]
+      operationId: rotateQrCode
+      summary: 'Rotate the table''s QR code; seated guests keep their session (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'New code'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrCode' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/tables/{tableId}/session:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+    post:
+      tags: [tables]
+      operationId: openSessionByStaff
+      summary: 'Open the table''s session without a scan, or return the open one (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '201':
+          description: 'Opened'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffTableSession' }
+        '200':
+          description: 'Already open'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffTableSession' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/staff/table-sessions/{sessionId}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [tables]
+      operationId: getTableSession
+      summary: 'A table session (all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The session'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffTableSession' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/table-sessions/{sessionId}/move:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [tables]
+      operationId: moveTableSession
+      summary: 'Move an open session to a free table; its orders and bill move with it (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MoveSessionRequest' }
+      responses:
+        '200':
+          description: 'Moved'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffTableSession' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/waiter-calls:
+    get:
+      tags: [tables]
+      operationId: listWaiterCalls
+      summary: 'Waiter calls, oldest first (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/WaiterCallStatus'
+      responses:
+        '200':
+          description: 'The calls'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WaiterCallList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/waiter-calls/{callId}/acknowledge:
+    parameters:
+      - $ref: '#/components/parameters/CallId'
+    post:
+      tags: [tables]
+      operationId: acknowledgeWaiterCall
+      summary: 'Acknowledge a call; idempotent (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'Acknowledged'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WaiterCall' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/guest/orders:
+    post:
+      tags: [orders]
+      operationId: placeGuestOrder
+      summary: 'Place an order for the session; priced by the server, all lines or none'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceOrderRequest' }
+      responses:
+        '201':
+          description: 'Placed. A replay with the same key returns the same order with `Idempotent-Replayed: true`'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/OrderConflict' }
+        '422': { $ref: '#/components/responses/IdempotencyKeyReused' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    get:
+      tags: [orders]
+      operationId: listGuestOrders
+      summary: 'The session''s orders, newest first'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: true
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: 'The orders'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /v1/guest/orders/{orderId}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [orders]
+      operationId: getGuestOrder
+      summary: 'One of the session''s orders'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: true
+      responses:
+        '200':
+          description: 'The order'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/guest/orders/{orderId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [orders]
+      operationId: cancelGuestOrder
+      summary: 'Cancel an order the kitchen has not accepted; repeating it is harmless'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'Cancelled, or already cancelled'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/guest/bill:
+    get:
+      tags: [orders]
+      operationId: getGuestBill
+      summary: 'The session''s running bill'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: true
+      responses:
+        '200':
+          description: 'The bill'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bill' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /v1/staff/table-sessions/{sessionId}/orders:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [orders]
+      operationId: placeStaffOrder
+      summary: 'Place an order on a guest''s behalf (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceOrderRequest' }
+      responses:
+        '201':
+          description: 'Placed. A replay with the same key returns the same order with `Idempotent-Replayed: true`'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/OrderConflict' }
+        '422': { $ref: '#/components/responses/IdempotencyKeyReused' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/orders:
+    get:
+      tags: [orders]
+      operationId: listStaffOrders
+      summary: 'Orders of the open sessions, oldest first; the live feed''s list fallback (all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/OrderStatusFilter'
+        - $ref: '#/components/parameters/SessionFilter'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: 'The orders'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/orders/{orderId}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [orders]
+      operationId: getStaffOrder
+      summary: 'One order (all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The order'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/orders/{orderId}/status:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [orders]
+      operationId: changeOrderStatus
+      summary: 'Move an order one step; the role decides which steps (design/orders.md §2)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderStatusChange' }
+      responses:
+        '200':
+          description: 'Changed'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/orders/{orderId}/lines/{lineId}/reject:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+      - $ref: '#/components/parameters/LineId'
+    post:
+      tags: [orders]
+      operationId: rejectOrderLine
+      summary: 'Reject one line of an accepted order; the last line rejects the order (kitchen, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RejectLineRequest' }
+      responses:
+        '200':
+          description: 'Rejected'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/table-sessions/{sessionId}/bill:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [orders]
+      operationId: getSessionBill
+      summary: 'The session''s bill, open or closed (all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The bill; its `ETag` is what the close and corrections need'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bill' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/table-sessions/{sessionId}/close:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [orders]
+      operationId: closeTableSession
+      summary: 'Close the session and record the payment taken at the counter (waiter, manager)'
+      description: |
+        `If-Match` carries the bill's `ETag`: a round ordered after the bill was read makes the
+        close fail with 412. Unfinished orders block the close (409 `orders_not_finished`) unless
+        `force` is true; they then become `cancelled` with reason `closed_with_session`.
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CloseSessionRequest' }
+      responses:
+        '200':
+          description: 'Closed; the final bill. A replay with the same key returns it with `Idempotent-Replayed: true`'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bill' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/OrderConflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '422': { $ref: '#/components/responses/IdempotencyKeyReused' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/table-sessions/{sessionId}/bill/adjustments:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [orders]
+      operationId: adjustClosedBill
+      summary: 'Correct a closed bill with a signed entry, counted on the day it is made (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BillAdjustmentRequest' }
+      responses:
+        '201':
+          description: 'Recorded; the bill with its corrections'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bill' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/bills:
+    get:
+      tags: [orders]
+      operationId: listClosedBills
+      summary: 'Bills closed on one local day, newest first (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/BusinessDate'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: 'The bills'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/guest/events:
+    get:
+      tags: [realtime]
+      operationId: guestCatchUp
+      summary: 'The session''s events after a cursor, with the current state of the orders and calls they name'
+      description: |
+        Without `after`: no events, and `cursor` is the starting point. With `reset: true` the
+        cursor is too old or ahead; reload the screen and continue from `cursor` (design/realtime.md §6–7).
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: true
+      parameters:
+        - $ref: '#/components/parameters/EventsAfter'
+        - $ref: '#/components/parameters/EventsLimit'
+      responses:
+        '200':
+          description: 'Events and snapshots'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestEventsPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/guest/realtime-token:
+    post:
+      tags: [realtime]
+      operationId: guestRealtimeToken
+      summary: 'An Ably token request that may only subscribe to the session''s channel (30 min)'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'Pass it to the Ably SDK from its authCallback'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RealtimeTokenRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/events:
+    get:
+      tags: [realtime]
+      operationId: staffCatchUp
+      summary: 'The restaurant''s events after a cursor, with the current state of the orders and calls they name (all roles)'
+      description: |
+        Same rules as the guest catch-up. Events about sessions, bills and the menu carry no
+        snapshot; the staff app re-reads the floor view, the bill or the menu (design/realtime.md §6.2).
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/EventsAfter'
+        - $ref: '#/components/parameters/EventsLimit'
+      responses:
+        '200':
+          description: 'Events and snapshots'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffEventsPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/realtime-token:
+    post:
+      tags: [realtime]
+      operationId: staffRealtimeToken
+      summary: 'An Ably token request that may only subscribe to the restaurant''s staff channel (60 min; all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'Pass it to the Ably SDK from its authCallback'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RealtimeTokenRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/reports/daily-sales:
+    get:
+      tags: [reports]
+      operationId: dailySalesReport
+      summary: 'Sales per local day for up to 93 days, with range totals (manager)'
+      description: |
+        Every day in the range is listed, with zeros where nothing sold; today shows the bills
+        closed so far. A bill counts on the local day it was closed, a correction on the day it was
+        made (design/reports.md §2, §6).
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: true
+      parameters:
+        - $ref: '#/components/parameters/ReportFrom'
+        - $ref: '#/components/parameters/ReportTo'
+      responses:
+        '200':
+          description: 'The report'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DailySalesReport' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+components:
+  securitySchemes:
+    staffBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Staff access token (ES256, `aud` = `staff`, 15 min)
+    adminBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Admin access token (ES256, `aud` = `admin`, `amr` contains `otp`, 15 min)
+    guestBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Table-session token (ADR-0006; defined in the tables design)
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: __Secure-rt-staff
+      description: |
+        Refresh token cookie. `__Secure-rt-staff` or `__Secure-rt-admin`, chosen by
+        `audience` in the body. HttpOnly; Secure; SameSite=Strict.
+
+  parameters:
+    XClient:
+      name: X-Client
+      in: header
+      required: false
+      description: '`<app>/<semver>`, e.g. `customer-android/1.0.0`. Below the minimum → 426'
+      schema: { type: string, pattern: '^[a-z0-9-]{1,32}/[0-9]+\.[0-9]+\.[0-9]+$' }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: One random value per user action, repeated on retries (core-and-auth §4)
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,64}$' }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: The `ETag` from the last read (core-and-auth §5)
+      schema: { type: string, examples: ['"3"'] }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: '`next_cursor` from the previous page'
+      schema: { type: string, maxLength: 512 }
+
+    StaffId:
+      name: staffId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RestaurantId:
+      name: restaurantId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MemberStatusFilter:
+      name: status
+      in: query
+      required: false
+      schema: { type: string, enum: [invited, active, deactivated] }
+    MemberRoleFilter:
+      name: role
+      in: query
+      required: false
+      schema: { $ref: '#/components/schemas/StaffRole' }
+    RestaurantStatusFilter:
+      name: status
+      in: query
+      required: false
+      schema: { type: string, enum: [active, suspended] }
+    RestaurantNamePrefix:
+      name: q
+      in: query
+      required: false
+      description: Name prefix, case-insensitive
+      schema: { type: string, minLength: 1, maxLength: 100 }
+    AuditFrom:
+      name: from
+      in: query
+      required: false
+      description: 'Default: 7 days ago. At most 92 days before `to`'
+      schema: { type: string, format: date-time }
+    AuditTo:
+      name: to
+      in: query
+      required: false
+      description: 'Default: now'
+      schema: { type: string, format: date-time }
+    AuditAction:
+      name: action
+      in: query
+      required: false
+      description: 'Action prefix, e.g. `staff.`'
+      schema: { type: string, maxLength: 64 }
+    AuditActor:
+      name: actor_id
+      in: query
+      required: false
+      schema: { type: string, format: uuid }
+    AuditTarget:
+      name: target_id
+      in: query
+      required: false
+      schema: { type: string, format: uuid }
+    AuditRestaurant:
+      name: restaurant_id
+      in: query
+      required: true
+      description: 'A restaurant ID, or `platform` for the platform chain'
+      schema: { type: string, maxLength: 36 }
+
+    CategoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MenuLang:
+      name: lang
+      in: query
+      required: false
+      description: 'Default: the restaurant''s first language. A language it doesn''t offer → vi'
+      schema: { $ref: '#/components/schemas/Language' }
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: The ETag of the copy the client holds; 304 if unchanged
+      schema: { type: string }
+
+    TableId:
+      name: tableId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CallId:
+      name: callId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    WaiterCallStatus:
+      name: status
+      in: query
+      required: false
+      schema: { type: string, enum: [open, acknowledged], default: open }
+
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    LineId:
+      name: lineId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    OrderStatusFilter:
+      name: status
+      in: query
+      required: false
+      description: 'Comma-separated statuses; default `placed,accepted,preparing,ready`'
+      schema: { type: string, pattern: '^[a-z_]+(,[a-z_]+)*$', examples: ['placed,accepted'] }
+    SessionFilter:
+      name: session_id
+      in: query
+      required: false
+      description: 'Only this session''s orders'
+      schema: { type: string, format: uuid }
+    BusinessDate:
+      name: date
+      in: query
+      required: true
+      description: 'Local day in the restaurant''s time zone on which the bills were closed'
+      schema: { type: string, format: date }
+
+    EventsAfter:
+      name: after
+      in: query
+      required: false
+      description: 'The `cursor` from the last answer or notification; absent = just return the current cursor'
+      schema: { type: integer, format: int64, minimum: 0 }
+    EventsLimit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+
+    ReportFrom:
+      name: from
+      in: query
+      required: true
+      description: 'First local date, in the restaurant''s time zone'
+      schema: { type: string, format: date }
+    ReportTo:
+      name: to
+      in: query
+      required: true
+      description: 'Last local date, included; at most 92 days after `from`'
+      schema: { type: string, format: date }
+
+  headers:
+    XRequestID:
+      description: Request ID generated by the service; quote it to support
+      schema: { type: string }
+    RetryAfter:
+      description: Seconds to wait before retrying
+      schema: { type: integer, minimum: 0 }
+    ETag:
+      description: Current version of the resource, for `If-Match`
+      schema: { type: string }
+    IdempotentReplayed:
+      description: '`true` when this is the stored answer to an earlier request with the same key'
+      schema: { type: string, enum: ['true'] }
+
+  responses:
+    BadRequest:
+      description: 'Invalid request: `malformed_request`, `validation_failed`, `idempotency_key_required`, `password_rejected`'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: '`unauthenticated`: token missing, invalid, expired, wrong audience or its session has ended'
+      headers:
+        WWW-Authenticate:
+          schema: { type: string, examples: ['Bearer'] }
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    InvalidCredentials:
+      description: '`invalid_credentials`: the same answer for every sign-in failure'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: '`forbidden` (role lacks the operation) or `restaurant_suspended`'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: '`not_found`: also for IDs of another restaurant or session'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    LinkInvalid:
+      description: '`link_invalid`: unknown, used, replaced or expired link'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: A state conflict; `code` says which (feature-specific codes, or `idempotency_request_in_progress`)
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PreconditionFailed:
+      description: '`precondition_failed`: `If-Match` is stale; reload and retry'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PreconditionRequired:
+      description: '`precondition_required`: `If-Match` is missing'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    IdempotencyKeyReused:
+      description: '`idempotency_key_reused`: the same key was used with a different request'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooManyRequests:
+      description: '`rate_limited`'
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ServiceUnavailable:
+      description: '`service_unavailable` or `service_busy`'
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    NotModified:
+      description: The client's copy is current (no body)
+      headers:
+        ETag: { $ref: '#/components/headers/ETag' }
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+    PayloadTooLarge:
+      description: '`payload_too_large`'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    UnsupportedMediaType:
+      description: '`unsupported_media_type`'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    OrderConflict:
+      description: 'A state conflict; `code` says which. `item_unavailable` lists `unavailable_items`; `orders_not_finished` lists `order_ids`'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/OrderProblem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details. Switch on `code`; `title` and `detail` are for developers.
+      required: [type, title, status, code, request_id]
+      properties:
+        type: { type: string, examples: ['/problems/validation_failed'] }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code: { type: string, description: 'Stable code from `x-error-catalogue`' }
+        request_id: { type: string }
+        errors:
+          type: array
+          description: Only on `validation_failed` and `password_rejected`
+          items: { $ref: '#/components/schemas/FieldError' }
+    FieldError:
+      type: object
+      required: [field, code]
+      properties:
+        field: { type: string, description: 'JSON Pointer into the body, or `query.<name>` / `header.<name>`', examples: ['/lines/0/quantity'] }
+        code: { type: string, examples: [out_of_range, required, too_long, too_short, too_common, matches_email] }
+        message: { type: string, description: 'English, for developers' }
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { type: string, pattern: '^-?[0-9]{1,15}$', description: Whole đồng, examples: ['125000'] }
+        currency: { type: string, enum: [VND] }
+    Page:
+      type: object
+      description: Shape of every list response; `items` is typed per endpoint
+      required: [items]
+      properties:
+        items: { type: array, items: {} }
+        next_cursor: { type: string, description: Absent on the last page }
+
+    Email:
+      type: string
+      format: email
+      maxLength: 254
+    Password:
+      type: string
+      description: 8–64 characters after NFC normalisation; checked on set, not on sign-in
+      maxLength: 256
+    Audience:
+      type: string
+      enum: [staff, admin]
+    StaffRole:
+      type: string
+      enum: [manager, waiter, kitchen]
+
+    SignInRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { $ref: '#/components/schemas/Email' }
+        password: { type: string, minLength: 1, maxLength: 256 }
+    SignInResponse:
+      oneOf:
+        - $ref: '#/components/schemas/TokenResponse'
+        - $ref: '#/components/schemas/MfaRequiredResponse'
+    TokenResponse:
+      type: object
+      required: [mfa_required, access_token, token_type, expires_in, audience]
+      properties:
+        mfa_required: { type: boolean, const: false }
+        access_token: { type: string }
+        token_type: { type: string, const: Bearer }
+        expires_in: { type: integer, description: Seconds, examples: [900] }
+        audience: { $ref: '#/components/schemas/Audience' }
+    MfaRequiredResponse:
+      type: object
+      required: [mfa_required, mfa_token, expires_in]
+      properties:
+        mfa_required: { type: boolean, const: true }
+        mfa_token: { type: string, description: Single use }
+        expires_in: { type: integer, examples: [300] }
+    MfaRequest:
+      type: object
+      required: [mfa_token, code]
+      properties:
+        mfa_token: { type: string, maxLength: 128 }
+        code: { type: string, pattern: '^[0-9]{6}$' }
+    AudienceRequest:
+      type: object
+      required: [audience]
+      properties:
+        audience: { $ref: '#/components/schemas/Audience' }
+    LinkTokenRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string, maxLength: 128, description: From the link's URL fragment }
+    LinkDetails:
+      type: object
+      required: [kind, email, display_name, totp_enrolment_required]
+      properties:
+        kind: { type: string, enum: [invitation, password_reset] }
+        email: { $ref: '#/components/schemas/Email' }
+        display_name: { type: string }
+        restaurant_name: { type: string, description: Absent for platform admins }
+        role: { $ref: '#/components/schemas/StaffRole' }
+        totp_enrolment_required: { type: boolean }
+    AcceptInvitationRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token: { type: string, maxLength: 128 }
+        password: { $ref: '#/components/schemas/Password' }
+        totp_code: { type: string, pattern: '^[0-9]{6}$', description: 'Admins, second call only' }
+    TotpSetupResponse:
+      type: object
+      required: [totp_setup]
+      properties:
+        totp_setup:
+          type: object
+          required: [secret, otpauth_uri]
+          properties:
+            secret: { type: string, description: Base32 }
+            otpauth_uri: { type: string, description: For a QR code in the admin console }
+    CompletePasswordResetRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token: { type: string, maxLength: 128 }
+        password: { $ref: '#/components/schemas/Password' }
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, minLength: 1, maxLength: 256 }
+        new_password: { $ref: '#/components/schemas/Password' }
+    Me:
+      type: object
+      required: [staff_id, email, display_name, platform_admin, amr, session_expires_at]
+      properties:
+        staff_id: { type: string, format: uuid }
+        email: { $ref: '#/components/schemas/Email' }
+        display_name: { type: string }
+        role: { $ref: '#/components/schemas/StaffRole' }
+        restaurant:
+          type: object
+          required: [id, name]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+        platform_admin: { type: boolean }
+        amr: { type: array, items: { type: string, enum: [pwd, otp] } }
+        session_expires_at: { type: string, format: date-time }
+
+    Language:
+      type: string
+      enum: [vi, en]
+    LocalTime:
+      type: string
+      pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+    OpeningInterval:
+      type: object
+      required: [opens, closes]
+      description: '`closes` at or before `opens` means the interval ends after midnight'
+      properties:
+        opens: { $ref: '#/components/schemas/LocalTime' }
+        closes: { $ref: '#/components/schemas/LocalTime' }
+    OpeningDay:
+      type: array
+      maxItems: 3
+      items: { $ref: '#/components/schemas/OpeningInterval' }
+    OpeningHours:
+      type: object
+      description: Local time; a missing or empty day is closed. Display only in release 1
+      additionalProperties: false
+      properties:
+        mon: { $ref: '#/components/schemas/OpeningDay' }
+        tue: { $ref: '#/components/schemas/OpeningDay' }
+        wed: { $ref: '#/components/schemas/OpeningDay' }
+        thu: { $ref: '#/components/schemas/OpeningDay' }
+        fri: { $ref: '#/components/schemas/OpeningDay' }
+        sat: { $ref: '#/components/schemas/OpeningDay' }
+        sun: { $ref: '#/components/schemas/OpeningDay' }
+    TimeZone:
+      type: string
+      description: 'IANA region ID, e.g. `Asia/Ho_Chi_Minh`; offsets like `UTC+7` are refused'
+      maxLength: 64
+    Phone:
+      type: string
+      pattern: '^\+[1-9][0-9]{6,14}$'
+      description: E.164
+    Restaurant:
+      type: object
+      required: [id, name, address, time_zone, currency, languages, opening_hours, status, version]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        address: { type: string, minLength: 1, maxLength: 300 }
+        time_zone: { $ref: '#/components/schemas/TimeZone' }
+        currency: { type: string, enum: [VND] }
+        languages: { type: array, items: { $ref: '#/components/schemas/Language' }, minItems: 1, uniqueItems: true }
+        opening_hours: { $ref: '#/components/schemas/OpeningHours' }
+        status: { type: string, enum: [active, suspended] }
+        version: { type: integer }
+    OwnerContact:
+      type: object
+      properties:
+        name: { type: string, maxLength: 100 }
+        email: { $ref: '#/components/schemas/Email' }
+        phone: { $ref: '#/components/schemas/Phone' }
+    AdminRestaurant:
+      allOf:
+        - $ref: '#/components/schemas/Restaurant'
+        - type: object
+          required: [created_at]
+          properties:
+            owner_contact: { $ref: '#/components/schemas/OwnerContact' }
+            suspended_at: { type: string, format: date-time }
+            suspension_reason: { type: string, maxLength: 500 }
+            created_at: { type: string, format: date-time }
+    RestaurantPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AdminRestaurant' } }
+        next_cursor: { type: string }
+    RestaurantUpdate:
+      type: object
+      description: Only the fields to change. `languages` must include `vi`
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        address: { type: string, minLength: 1, maxLength: 300 }
+        time_zone: { $ref: '#/components/schemas/TimeZone' }
+        languages: { type: array, items: { $ref: '#/components/schemas/Language' }, minItems: 1, uniqueItems: true }
+        opening_hours: { $ref: '#/components/schemas/OpeningHours' }
+    AdminRestaurantUpdate:
+      allOf:
+        - $ref: '#/components/schemas/RestaurantUpdate'
+        - type: object
+          properties:
+            owner_contact: { $ref: '#/components/schemas/OwnerContact' }
+    SuspendRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    OnboardRestaurantRequest:
+      type: object
+      required: [name, address, first_manager]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        address: { type: string, minLength: 1, maxLength: 300 }
+        time_zone: { $ref: '#/components/schemas/TimeZone' }
+        languages: { type: array, items: { $ref: '#/components/schemas/Language' }, minItems: 1, uniqueItems: true }
+        opening_hours: { $ref: '#/components/schemas/OpeningHours' }
+        owner_contact: { $ref: '#/components/schemas/OwnerContact' }
+        first_manager:
+          type: object
+          required: [email, display_name]
+          properties:
+            email: { $ref: '#/components/schemas/Email' }
+            display_name: { type: string, minLength: 1, maxLength: 100 }
+            phone: { $ref: '#/components/schemas/Phone' }
+    OnboardRestaurantResponse:
+      type: object
+      required: [restaurant, first_manager, invitation]
+      properties:
+        restaurant: { $ref: '#/components/schemas/AdminRestaurant' }
+        first_manager: { $ref: '#/components/schemas/Member' }
+        invitation: { $ref: '#/components/schemas/IssuedLink' }
+    IssuedLink:
+      type: object
+      required: [link, expires_at]
+      description: One-time link, shown once and never stored in plain text. Pass it on to the person
+      properties:
+        link: { type: string, examples: ['https://staff.example.invalid/invite#<token>'] }
+        expires_at: { type: string, format: date-time }
+    Member:
+      type: object
+      required: [id, email, display_name, role, status, created_at, version]
+      properties:
+        id: { type: string, format: uuid }
+        email: { $ref: '#/components/schemas/Email' }
+        display_name: { type: string, minLength: 1, maxLength: 100 }
+        phone: { $ref: '#/components/schemas/Phone' }
+        role: { $ref: '#/components/schemas/StaffRole' }
+        status: { type: string, enum: [invited, active, deactivated] }
+        created_at: { type: string, format: date-time }
+        deactivated_at: { type: string, format: date-time }
+        version: { type: integer }
+    MemberPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Member' } }
+        next_cursor: { type: string }
+    InviteMemberRequest:
+      type: object
+      required: [email, display_name, role]
+      properties:
+        email: { $ref: '#/components/schemas/Email' }
+        display_name: { type: string, minLength: 1, maxLength: 100 }
+        phone: { $ref: '#/components/schemas/Phone' }
+        role: { $ref: '#/components/schemas/StaffRole' }
+    InvitedMember:
+      type: object
+      required: [member, invitation]
+      properties:
+        member: { $ref: '#/components/schemas/Member' }
+        invitation: { $ref: '#/components/schemas/IssuedLink' }
+    MemberUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 100 }
+        phone: { $ref: '#/components/schemas/Phone' }
+        role: { $ref: '#/components/schemas/StaffRole' }
+    AdminAccount:
+      type: object
+      required: [id, email, display_name, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        email: { $ref: '#/components/schemas/Email' }
+        display_name: { type: string }
+        status: { type: string, enum: [invited, active, deactivated] }
+        created_at: { type: string, format: date-time }
+    AdminAccountPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AdminAccount' } }
+        next_cursor: { type: string }
+    InviteAdminRequest:
+      type: object
+      required: [email, display_name]
+      properties:
+        email: { $ref: '#/components/schemas/Email' }
+        display_name: { type: string, minLength: 1, maxLength: 100 }
+    InvitedAdmin:
+      type: object
+      required: [admin, invitation]
+      properties:
+        admin: { $ref: '#/components/schemas/AdminAccount' }
+        invitation: { $ref: '#/components/schemas/IssuedLink' }
+    AuditEvent:
+      type: object
+      required: [id, occurred_at, action, actor, details]
+      properties:
+        id: { type: string, format: uuid }
+        occurred_at: { type: string, format: date-time }
+        action: { type: string, examples: [staff.role_changed] }
+        actor:
+          type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [staff, admin, guest, system, anonymous] }
+            id: { type: string, format: uuid }
+            display_name: { type: string, description: '"Deleted user" once anonymised' }
+        target:
+          type: object
+          properties:
+            type: { type: string }
+            id: { type: string, format: uuid }
+        request_id: { type: string }
+        details: { type: object, additionalProperties: true }
+    AuditEventPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AuditEvent' } }
+        next_cursor: { type: string }
+    AdminAuditEvent:
+      allOf:
+        - $ref: '#/components/schemas/AuditEvent'
+        - type: object
+          properties:
+            ip: { type: string }
+            user_agent: { type: string }
+    AdminAuditEventPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AdminAuditEvent' } }
+        next_cursor: { type: string }
+    StaffDataExport:
+      type: object
+      required: [account, audit_events]
+      description: Personal fields only; never hashes, secrets or tokens
+      properties:
+        account:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            email: { $ref: '#/components/schemas/Email' }
+            display_name: { type: string }
+            phone: { $ref: '#/components/schemas/Phone' }
+            role: { $ref: '#/components/schemas/StaffRole' }
+            restaurant_id: { type: string, format: uuid }
+            status: { type: string }
+            created_at: { type: string, format: date-time }
+            deactivated_at: { type: string, format: date-time }
+        audit_events: { type: array, items: { $ref: '#/components/schemas/AdminAuditEvent' } }
+    EraseResult:
+      type: object
+      required: [staff_id, anonymised_at, last_manager_removed]
+      properties:
+        staff_id: { type: string, format: uuid }
+        anonymised_at: { type: string, format: date-time }
+        last_manager_removed: { type: boolean, description: 'True when the restaurant now has no active manager' }
+
+    MenuImage:
+      type: object
+      required: [url, thumb_url]
+      description: Public, immutable objects on the storage domain
+      properties:
+        url: { type: string, description: 800 px }
+        thumb_url: { type: string, description: 320 px }
+    GuestOption:
+      type: object
+      required: [id, name, price_delta]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        price_delta: { $ref: '#/components/schemas/Money' }
+    GuestOptionGroup:
+      type: object
+      required: [id, name, min_choices, max_choices, options]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        min_choices: { type: integer, minimum: 0, description: 0 = optional }
+        max_choices: { type: integer, minimum: 1, description: 1 = single choice }
+        options: { type: array, items: { $ref: '#/components/schemas/GuestOption' } }
+    GuestMenuItem:
+      type: object
+      required: [id, name, price, sold_out, option_groups]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, description: In the requested language; falls back to vi per field }
+        description: { type: string }
+        price: { $ref: '#/components/schemas/Money' }
+        sold_out: { type: boolean }
+        image: { $ref: '#/components/schemas/MenuImage' }
+        option_groups: { type: array, items: { $ref: '#/components/schemas/GuestOptionGroup' } }
+    GuestMenuCategory:
+      type: object
+      required: [id, name, items]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        items: { type: array, items: { $ref: '#/components/schemas/GuestMenuItem' } }
+    GuestMenu:
+      type: object
+      required: [version, lang, categories]
+      properties:
+        version: { type: integer, description: The menu version; also in the ETag }
+        lang: { $ref: '#/components/schemas/Language' }
+        categories: { type: array, items: { $ref: '#/components/schemas/GuestMenuCategory' } }
+    StaffOption:
+      type: object
+      required: [id, name_vi, price_delta, active]
+      properties:
+        id: { type: string, format: uuid }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, minLength: 1, maxLength: 100 }
+        price_delta: { $ref: '#/components/schemas/Money' }
+        active: { type: boolean }
+    StaffOptionGroup:
+      type: object
+      required: [id, name_vi, min_choices, max_choices, options]
+      properties:
+        id: { type: string, format: uuid }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, minLength: 1, maxLength: 100 }
+        min_choices: { type: integer, minimum: 0 }
+        max_choices: { type: integer, minimum: 1 }
+        options: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/StaffOption' } }
+    StaffMenuItem:
+      type: object
+      required: [id, category_id, name_vi, price, active, sold_out, option_groups, version]
+      properties:
+        id: { type: string, format: uuid }
+        category_id: { type: string, format: uuid }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, minLength: 1, maxLength: 100 }
+        description_vi: { type: string, maxLength: 500 }
+        description_en: { type: string, maxLength: 500 }
+        price: { $ref: '#/components/schemas/Money' }
+        active: { type: boolean }
+        sold_out: { type: boolean }
+        image: { $ref: '#/components/schemas/MenuImage' }
+        option_groups: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/StaffOptionGroup' } }
+        version: { type: integer, description: For If-Match; the sold-out toggle doesn't change it }
+    StaffMenuCategory:
+      type: object
+      required: [id, name_vi, active, version]
+      properties:
+        id: { type: string, format: uuid }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, minLength: 1, maxLength: 100 }
+        active: { type: boolean }
+        version: { type: integer }
+        items: { type: array, items: { $ref: '#/components/schemas/StaffMenuItem' } }
+    StaffMenu:
+      type: object
+      required: [version, categories]
+      properties:
+        version: { type: integer }
+        categories: { type: array, items: { $ref: '#/components/schemas/StaffMenuCategory' } }
+    MenuCategoryCreate:
+      type: object
+      required: [name_vi]
+      properties:
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, maxLength: 100, description: Empty string removes it }
+        active: { type: boolean, default: true }
+    MenuCategoryUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, maxLength: 100 }
+        active: { type: boolean }
+    CategoryOrder:
+      type: object
+      required: [category_ids]
+      properties:
+        category_ids: { type: array, maxItems: 50, uniqueItems: true, items: { type: string, format: uuid } }
+    ItemOrder:
+      type: object
+      required: [item_ids]
+      properties:
+        item_ids: { type: array, maxItems: 1000, uniqueItems: true, items: { type: string, format: uuid } }
+    OptionInput:
+      type: object
+      required: [name_vi]
+      properties:
+        id: { type: string, format: uuid, description: Keep and update this option; omit to create one }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, maxLength: 100 }
+        price_delta: { $ref: '#/components/schemas/Money' }
+        active: { type: boolean, default: true }
+    OptionGroupInput:
+      type: object
+      required: [name_vi, min_choices, max_choices, options]
+      properties:
+        id: { type: string, format: uuid, description: Keep and update this group; omit to create one }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, maxLength: 100 }
+        min_choices: { type: integer, minimum: 0 }
+        max_choices: { type: integer, minimum: 1 }
+        options: { type: array, minItems: 1, maxItems: 20, items: { $ref: '#/components/schemas/OptionInput' } }
+    MenuItemCreate:
+      type: object
+      required: [category_id, name_vi, price]
+      properties:
+        category_id: { type: string, format: uuid }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, maxLength: 100 }
+        description_vi: { type: string, maxLength: 500 }
+        description_en: { type: string, maxLength: 500 }
+        price: { $ref: '#/components/schemas/Money' }
+        active: { type: boolean, default: true }
+        option_groups: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/OptionGroupInput' } }
+    MenuItemUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        category_id: { type: string, format: uuid }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, maxLength: 100 }
+        description_vi: { type: string, maxLength: 500 }
+        description_en: { type: string, maxLength: 500 }
+        price: { $ref: '#/components/schemas/Money' }
+        active: { type: boolean }
+        option_groups: { type: array, maxItems: 10, description: Replaces the whole set, items: { $ref: '#/components/schemas/OptionGroupInput' } }
+    SoldOutRequest:
+      type: object
+      required: [sold_out]
+      properties:
+        sold_out: { type: boolean }
+    SoldOutState:
+      type: object
+      required: [item_id, sold_out]
+      properties:
+        item_id: { type: string, format: uuid }
+        sold_out: { type: boolean }
+
+    TableRef:
+      type: object
+      required: [id, number]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string }
+    OpenSessionRequest:
+      type: object
+      required: [qr_token, device_id]
+      properties:
+        qr_token: { type: string, maxLength: 256, description: The token from the QR code URL }
+        device_id: { type: string, format: uuid, description: 'Random, created once by the app; not stored' }
+    GuestSessionInfo:
+      type: object
+      required: [id, opened_at, table, restaurant]
+      properties:
+        id: { type: string, format: uuid }
+        opened_at: { type: string, format: date-time }
+        table: { $ref: '#/components/schemas/TableRef' }
+        restaurant:
+          type: object
+          required: [id, name, languages]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            languages: { type: array, items: { $ref: '#/components/schemas/Language' } }
+    GuestSessionGrant:
+      type: object
+      required: [session_token, token_type, expires_in, session]
+      properties:
+        session_token: { type: string }
+        token_type: { type: string, const: Bearer }
+        expires_in: { type: integer, examples: [21600] }
+        session: { $ref: '#/components/schemas/GuestSessionInfo' }
+    GuestSession:
+      allOf:
+        - $ref: '#/components/schemas/GuestSessionInfo'
+        - type: object
+          required: [open_calls]
+          properties:
+            open_calls: { type: array, items: { $ref: '#/components/schemas/WaiterCall' } }
+    WaiterCallRequest:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [call_waiter, request_bill] }
+    WaiterCall:
+      type: object
+      required: [id, kind, status, created_at, table]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [call_waiter, request_bill] }
+        status: { type: string, enum: [open, acknowledged, closed_with_session] }
+        created_at: { type: string, format: date-time }
+        acknowledged_at: { type: string, format: date-time }
+        table: { $ref: '#/components/schemas/TableRef' }
+    WaiterCallList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/WaiterCall' } }
+    DiningTable:
+      type: object
+      required: [id, number, enabled, version]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string, minLength: 1, maxLength: 20 }
+        area: { type: string, maxLength: 50 }
+        seats: { type: integer, minimum: 1, maximum: 50 }
+        enabled: { type: boolean }
+        version: { type: integer }
+    TableCreate:
+      type: object
+      required: [number]
+      properties:
+        number: { type: string, minLength: 1, maxLength: 20 }
+        area: { type: string, maxLength: 50 }
+        seats: { type: integer, minimum: 1, maximum: 50 }
+    TableUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        number: { type: string, minLength: 1, maxLength: 20 }
+        area: { type: string, maxLength: 50 }
+        seats: { type: integer, minimum: 1, maximum: 50 }
+        enabled: { type: boolean }
+    SessionSummary:
+      type: object
+      required: [id, opened_at, order_count, running_total, stale, open_calls]
+      properties:
+        id: { type: string, format: uuid }
+        opened_at: { type: string, format: date-time }
+        order_count: { type: integer }
+        running_total: { $ref: '#/components/schemas/Money' }
+        stale: { type: boolean, description: Open more than 6 h with orders; close it }
+        open_calls: { type: integer }
+    FloorTable:
+      allOf:
+        - $ref: '#/components/schemas/DiningTable'
+        - type: object
+          required: [state]
+          properties:
+            state: { type: string, enum: [free, occupied] }
+            session: { $ref: '#/components/schemas/SessionSummary' }
+    FloorView:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, maxItems: 300, items: { $ref: '#/components/schemas/FloorTable' } }
+    QrCode:
+      type: object
+      required: [table_id, number, url, key_version]
+      properties:
+        table_id: { type: string, format: uuid }
+        number: { type: string }
+        url: { type: string, description: 'https://<customer app domain>/t/<qrToken>; the staff app draws the QR image' }
+        key_version: { type: integer }
+    QrCodeList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/QrCode' } }
+    StaffTableSession:
+      type: object
+      required: [id, status, opened_at, table, version]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [open, closed] }
+        opened_at: { type: string, format: date-time }
+        closed_at: { type: string, format: date-time }
+        table: { $ref: '#/components/schemas/TableRef' }
+        version: { type: integer }
+        bill:
+          type: object
+          description: 'Bill summary from orders (design/orders.md §16)'
+          required: [order_count, total]
+          properties:
+            order_count: { type: integer }
+            total: { $ref: '#/components/schemas/Money' }
+    MoveSessionRequest:
+      type: object
+      required: [to_table_id]
+      properties:
+        to_table_id: { type: string, format: uuid }
+    OrderProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            unavailable_items:
+              type: array
+              description: 'With `item_unavailable`: the hidden or sold-out items'
+              items: { type: string, format: uuid }
+            order_ids:
+              type: array
+              description: 'With `orders_not_finished`: the orders still in progress'
+              items: { type: string, format: uuid }
+    OrderLineInput:
+      type: object
+      required: [item_id, quantity]
+      properties:
+        item_id: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1, maximum: 20 }
+        option_ids: { type: array, maxItems: 50, uniqueItems: true, items: { type: string, format: uuid } }
+        note: { type: string, maxLength: 200 }
+    PlaceOrderRequest:
+      type: object
+      required: [lines]
+      description: 'No prices: the server prices every line from the current menu'
+      properties:
+        lines: { type: array, minItems: 1, maxItems: 50, items: { $ref: '#/components/schemas/OrderLineInput' } }
+    OrderStatus:
+      type: string
+      description: 'Clients must accept values they do not know and show them as in progress (design/orders.md §2)'
+      examples: [placed, accepted, preparing, ready, served, rejected, cancelled]
+    ReasonCode:
+      type: string
+      enum: [item_unavailable, kitchen_closed, duplicate_order, not_at_table, customer_request, closed_with_session, other]
+    Reason:
+      type: object
+      required: [code]
+      properties:
+        code: { $ref: '#/components/schemas/ReasonCode' }
+        note: { type: string, maxLength: 200, description: 'Staff only; absent for guests' }
+    OrderLineOption:
+      type: object
+      required: [option_id, group_name_vi, name_vi, price_delta]
+      properties:
+        option_id: { type: string, format: uuid }
+        group_name_vi: { type: string }
+        group_name_en: { type: string }
+        name_vi: { type: string }
+        name_en: { type: string }
+        price_delta: { $ref: '#/components/schemas/Money' }
+    OrderLine:
+      type: object
+      required: [id, item_id, name_vi, options, quantity, unit_price, unit_total, line_total, status]
+      properties:
+        id: { type: string, format: uuid }
+        item_id: { type: string, format: uuid }
+        name_vi: { type: string }
+        name_en: { type: string }
+        options: { type: array, items: { $ref: '#/components/schemas/OrderLineOption' } }
+        quantity: { type: integer, minimum: 1, maximum: 20 }
+        unit_price: { $ref: '#/components/schemas/Money' }
+        unit_total: { $ref: '#/components/schemas/Money' }
+        line_total: { $ref: '#/components/schemas/Money' }
+        note: { type: string }
+        status: { type: string, enum: [active, rejected] }
+        reason: { $ref: '#/components/schemas/Reason' }
+    Order:
+      type: object
+      required: [id, status, version, placed_at, status_changed_at, placed_by, table, lines, total]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        version: { type: integer }
+        placed_at: { type: string, format: date-time }
+        status_changed_at: { type: string, format: date-time }
+        placed_by: { type: string, enum: [guest, staff] }
+        placed_by_staff_id: { type: string, format: uuid, description: 'Staff only' }
+        session_id: { type: string, format: uuid }
+        table: { $ref: '#/components/schemas/TableRef' }
+        lines: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/OrderLine' } }
+        total: { $ref: '#/components/schemas/Money' }
+        reason: { $ref: '#/components/schemas/Reason' }
+    OrderPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Order' } }
+        next_cursor: { type: string }
+    OrderStatusChange:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [accepted, preparing, ready, served, rejected, cancelled] }
+        reason: { $ref: '#/components/schemas/ReasonInput' }
+    ReasonInput:
+      type: object
+      required: [code]
+      description: 'Required when rejecting; optional when cancelling. `closed_with_session` is set by the close only'
+      properties:
+        code: { type: string, enum: [item_unavailable, kitchen_closed, duplicate_order, not_at_table, customer_request, other] }
+        note: { type: string, maxLength: 200 }
+    RejectLineRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { $ref: '#/components/schemas/ReasonInput' }
+    PaymentMethod:
+      type: string
+      enum: [cash, card, bank_transfer]
+    BillLine:
+      type: object
+      required: [order_id, line_id, name_vi, options, quantity, unit_total, line_total]
+      properties:
+        order_id: { type: string, format: uuid }
+        line_id: { type: string, format: uuid }
+        name_vi: { type: string }
+        name_en: { type: string }
+        options: { type: array, items: { $ref: '#/components/schemas/OrderLineOption' } }
+        quantity: { type: integer }
+        unit_total: { $ref: '#/components/schemas/Money' }
+        line_total: { $ref: '#/components/schemas/Money' }
+    BillPayment:
+      type: object
+      required: [method, amount_received, change]
+      properties:
+        method: { $ref: '#/components/schemas/PaymentMethod' }
+        amount_received: { $ref: '#/components/schemas/Money' }
+        change: { $ref: '#/components/schemas/Money' }
+    BillAdjustment:
+      type: object
+      required: [id, amount, payment_method, reason_code, created_at, business_date]
+      properties:
+        id: { type: string, format: uuid }
+        amount: { $ref: '#/components/schemas/Money' }
+        payment_method: { $ref: '#/components/schemas/PaymentMethod' }
+        reason_code: { type: string, enum: [wrong_item_billed, wrong_payment_method, goodwill, other] }
+        note: { type: string }
+        created_at: { type: string, format: date-time }
+        created_by: { type: string, format: uuid }
+        business_date: { type: string, format: date }
+    Bill:
+      type: object
+      required: [session_id, status, version, table, lines, order_count, total]
+      description: 'Active lines of orders that are not cancelled or rejected. Staff also get `adjustments` and `adjusted_total` on a closed bill'
+      properties:
+        session_id: { type: string, format: uuid }
+        status: { type: string, enum: [open, closed] }
+        version: { type: integer }
+        table: { $ref: '#/components/schemas/TableRef' }
+        lines: { type: array, items: { $ref: '#/components/schemas/BillLine' } }
+        order_count: { type: integer }
+        total: { $ref: '#/components/schemas/Money' }
+        closed_at: { type: string, format: date-time }
+        business_date: { type: string, format: date }
+        payment: { $ref: '#/components/schemas/BillPayment' }
+        adjustments: { type: array, items: { $ref: '#/components/schemas/BillAdjustment' } }
+        adjusted_total: { $ref: '#/components/schemas/Money' }
+    BillSummary:
+      type: object
+      required: [session_id, table, total, closed_at]
+      properties:
+        session_id: { type: string, format: uuid }
+        table: { $ref: '#/components/schemas/TableRef' }
+        total: { $ref: '#/components/schemas/Money' }
+        adjusted_total: { $ref: '#/components/schemas/Money' }
+        payment_method: { $ref: '#/components/schemas/PaymentMethod' }
+        closed_at: { type: string, format: date-time }
+    BillPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/BillSummary' } }
+        next_cursor: { type: string }
+    CloseSessionRequest:
+      type: object
+      properties:
+        payment:
+          type: object
+          required: [method, amount_received]
+          description: 'Required when the total is above 0; must be absent when it is 0'
+          properties:
+            method: { $ref: '#/components/schemas/PaymentMethod' }
+            amount_received: { $ref: '#/components/schemas/Money' }
+        force: { type: boolean, default: false, description: 'Close anyway; unfinished orders become cancelled' }
+    BillAdjustmentRequest:
+      type: object
+      required: [amount, payment_method, reason_code]
+      properties:
+        amount: { $ref: '#/components/schemas/Money' }
+        payment_method: { $ref: '#/components/schemas/PaymentMethod' }
+        reason_code: { type: string, enum: [wrong_item_billed, wrong_payment_method, goodwill, other] }
+        note: { type: string, maxLength: 200 }
+    DomainEvent:
+      type: object
+      required: [seq, type, aggregate, occurred_at]
+      properties:
+        seq: { type: integer, format: int64, description: 'Per restaurant, gap-free in commit order' }
+        type:
+          type: string
+          description: 'Clients ignore types they do not know but still move their cursor (design/realtime.md §5)'
+          examples: [OrderPlaced, OrderStatusChanged, OrderLineRejected, TableSessionMoved, TableSessionClosed, WaiterCallAcknowledged]
+        aggregate:
+          type: object
+          required: [type, id]
+          properties:
+            type: { type: string, examples: [order, bill, table_session, waiter_call, menu] }
+            id: { type: string, format: uuid }
+            version: { type: integer }
+        session_id: { type: string, format: uuid }
+        occurred_at: { type: string, format: date-time }
+    GuestEventsPage:
+      type: object
+      required: [events, orders, waiter_calls, cursor, has_more]
+      properties:
+        events: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/DomainEvent' } }
+        orders: { type: array, description: 'Current state of each order the events name', items: { $ref: '#/components/schemas/Order' } }
+        waiter_calls: { type: array, items: { $ref: '#/components/schemas/WaiterCall' } }
+        cursor: { type: integer, format: int64, description: 'Send back as `after`' }
+        has_more: { type: boolean }
+        reset: { type: boolean, description: 'The cursor was too old or ahead; reload the screen and continue from `cursor`' }
+    StaffEventsPage:
+      allOf:
+        - $ref: '#/components/schemas/GuestEventsPage'
+    RealtimeTokenRequest:
+      type: object
+      description: 'An Ably TokenRequest, signed by the server; the client SDK exchanges it with Ably. Capability: subscribe on one channel. Fields keep Ably''s camelCase names, the one exception to snake_case'
+      required: [keyName, ttl, capability, timestamp, nonce, mac]
+      properties:
+        keyName: { type: string }
+        ttl: { type: integer, description: Milliseconds }
+        capability: { type: string, description: 'JSON, e.g. {"session.<id>":["subscribe"]}' }
+        timestamp: { type: integer, format: int64 }
+        nonce: { type: string }
+        mac: { type: string }
+    PaymentSales:
+      type: object
+      required: [method, sessions, amount, corrections]
+      properties:
+        method: { $ref: '#/components/schemas/PaymentMethod' }
+        sessions: { type: integer }
+        amount: { $ref: '#/components/schemas/Money' }
+        corrections: { $ref: '#/components/schemas/Money' }
+    TableSales:
+      type: object
+      required: [table_id, number, sessions, gross]
+      properties:
+        table_id: { type: string, format: uuid }
+        number: { type: string, description: 'The table number as it was that day' }
+        sessions: { type: integer }
+        gross: { $ref: '#/components/schemas/Money' }
+    ItemSales:
+      type: object
+      required: [item_id, name_vi, quantity, revenue]
+      properties:
+        item_id: { type: string, format: uuid }
+        name_vi: { type: string }
+        name_en: { type: string }
+        quantity: { type: integer }
+        revenue: { $ref: '#/components/schemas/Money' }
+    SalesTotals:
+      type: object
+      required: [sessions, orders, gross, corrections, net, payments]
+      properties:
+        sessions: { type: integer, description: 'Bills closed with a payment' }
+        orders: { type: integer }
+        gross: { $ref: '#/components/schemas/Money' }
+        corrections: { $ref: '#/components/schemas/Money' }
+        net: { $ref: '#/components/schemas/Money' }
+        payments: { type: array, items: { $ref: '#/components/schemas/PaymentSales' } }
+    SalesDay:
+      allOf:
+        - $ref: '#/components/schemas/SalesTotals'
+        - type: object
+          required: [date, correction_count, tables, top_items_by_quantity, top_items_by_revenue]
+          properties:
+            date: { type: string, format: date }
+            correction_count: { type: integer }
+            tables: { type: array, items: { $ref: '#/components/schemas/TableSales' } }
+            top_items_by_quantity: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/ItemSales' } }
+            top_items_by_revenue: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/ItemSales' } }
+    DailySalesReport:
+      type: object
+      required: [from, to, time_zone, totals, days]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        time_zone: { $ref: '#/components/schemas/TimeZone' }
+        totals: { $ref: '#/components/schemas/SalesTotals' }
+        days: { type: array, maxItems: 93, items: { $ref: '#/components/schemas/SalesDay' } }
+
+# Error-code catalogue (architecture §5). Feature designs add their codes here.
+x-error-catalogue:
+  - { code: malformed_request, status: 400, meaning: 'Body isn''t valid JSON, or a field has the wrong type' }
+  - { code: validation_failed, status: 400, meaning: Field rules failed; see errors }
+  - { code: idempotency_key_required, status: 400, meaning: The operation needs an Idempotency-Key }
+  - { code: password_rejected, status: 400, meaning: 'Password too short, too long, too common or equal to the email; errors[0].code says which' }
+  - { code: unauthenticated, status: 401, meaning: 'Token missing, invalid, expired, wrong audience, or its session has ended' }
+  - { code: invalid_credentials, status: 401, meaning: 'Sign-in, MFA or current-password check failed (one answer for every reason)' }
+  - { code: forbidden, status: 403, meaning: The caller's role lacks the operation }
+  - { code: restaurant_suspended, status: 403, meaning: The caller's restaurant is suspended }
+  - { code: not_found, status: 404, meaning: 'Doesn''t exist, or belongs to another restaurant or session' }
+  - { code: link_invalid, status: 404, meaning: 'Invitation or reset link unknown, used, replaced or expired' }
+  - { code: idempotency_request_in_progress, status: 409, meaning: The same Idempotency-Key is still being processed; retry }
+  - { code: precondition_failed, status: 412, meaning: If-Match is stale }
+  - { code: payload_too_large, status: 413, meaning: Body over 64 KB }
+  - { code: unsupported_media_type, status: 415, meaning: Body isn't application/json }
+  - { code: idempotency_key_reused, status: 422, meaning: Same Idempotency-Key with a different request }
+  - { code: client_upgrade_required, status: 426, meaning: Mobile app below the minimum supported version }
+  - { code: precondition_required, status: 428, meaning: If-Match missing }
+  - { code: rate_limited, status: 429, meaning: Rate limit reached; see Retry-After }
+  - { code: internal_error, status: 500, meaning: Unexpected error; quote request_id }
+  - { code: service_unavailable, status: 503, meaning: Database unreachable or timed out; see Retry-After }
+  - { code: service_busy, status: 503, meaning: No password-hashing slot free; retry after 1 s }
+  - { code: email_in_use, status: 409, meaning: An account with that email exists }
+  - { code: last_manager, status: 409, meaning: The change would leave the restaurant without an active manager }
+  - { code: last_admin, status: 409, meaning: The change would leave no active platform admin }
+  - { code: self_action_not_allowed, status: 409, meaning: An admin deactivating or resetting themselves }
+  - { code: member_state_conflict, status: 409, meaning: 'Invitation re-issue for a non-invited member, or a reset for a non-active one' }
+  - { code: member_limit_reached, status: 409, meaning: The restaurant has 100 invited and active accounts }
+  - { code: image_invalid, status: 400, meaning: 'Image not decodable, or over 40 megapixels' }
+  - { code: duplicate_name, status: 409, meaning: A category or item name already used in the same scope }
+  - { code: category_not_empty, status: 409, meaning: Deleting a category that still has items }
+  - { code: menu_limit_reached, status: 409, meaning: A menu size limit would be passed }
+  - { code: image_storage_unavailable, status: 503, meaning: Image storage unreachable or timed out }
+  - { code: qr_token_invalid, status: 400, meaning: 'Malformed, forged or rotated QR code, or a deleted table' }
+  - { code: table_session_closed, status: 401, meaning: The guest's session has been closed; scan the code again }
+  - { code: table_unavailable, status: 409, meaning: The table is disabled or deleted }
+  - { code: table_occupied, status: 409, meaning: Moving a session onto a table that has one }
+  - { code: table_has_open_session, status: 409, meaning: Disabling or deleting a table with guests }
+  - { code: session_not_open, status: 409, meaning: The table session is closed }
+  - { code: table_limit_reached, status: 409, meaning: The restaurant has 300 tables }
+  - { code: item_unavailable, status: 409, meaning: 'An ordered item is hidden or sold out; unavailable_items lists them' }
+  - { code: order_not_cancellable, status: 409, meaning: 'The kitchen has accepted the order, or it has finished; ask staff' }
+  - { code: invalid_transition, status: 409, meaning: The status step is not allowed from the order's current status }
+  - { code: line_not_rejectable, status: 409, meaning: 'The line is already rejected, or the order is not accepted or preparing' }
+  - { code: orders_not_finished, status: 409, meaning: 'Closing with unfinished orders without force; order_ids lists them' }
+  - { code: bill_not_closed, status: 409, meaning: Correcting a bill that is still open }

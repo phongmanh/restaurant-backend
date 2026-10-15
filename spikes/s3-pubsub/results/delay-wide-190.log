@@ -1,0 +1,11 @@
+190 subscribers on 1 channels; ≈ 191 messages/s, ≈ 22920 in total
+190 connected and attached; publishing for 120 s
+
+#### `delay --layout wide --subs 190 --rate 1 --seconds 120` (2026-10-14T16:53:48.775Z)
+- 190 subscribers on 1 channels, 120 events, 120 publishes; ≈ 191 Ably messages/s
+- **Publish → receive: n 22800, p50 62 · p95 97 · p99 119 · max 271 ms**; 100.00 % within 1 s
+- Deliveries: 22800 of 22800 expected, **0 lost**, 0 duplicates
+- REST publish call (the time the app's request would spend publishing): n 120, p50 72 · p95 108 · p99 121 · max 127 ms; 0 errors
+- Connect + attach per subscriber: n 190, p50 216 · p95 346 · p99 418 · max 1670 ms
+- Connection drops during the run: 0
+
