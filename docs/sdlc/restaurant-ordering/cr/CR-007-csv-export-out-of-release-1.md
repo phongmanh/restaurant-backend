@@ -2,7 +2,7 @@
 
 | ID | Status | Raised | Raised by | Decides | Baseline affected |
 |---|---|---|---|---|---|
-| CR-007 | Proposed | 2026-10-15 | Manh Nguyen (product owner), from the reports design §13 Q3 (Q-8) | Manh Nguyen (product owner) | requirements.md v1.5 |
+| CR-007 | Approved | 2026-10-15 | Manh Nguyen (product owner), from the reports design §13 Q3 (Q-8) | Manh Nguyen (product owner) | requirements.md v1.5 |
 
 ## Summary
 On 2026-10-15 the owner accepted the reports design's recommendation that the CSV export of sales lines (FR-051, a Could) isn't built in release 1. This CR writes that into the requirements, as CR-006 did for FR-016. No other requirement changes.
@@ -39,4 +39,4 @@ Managers who want line-level data for an accountant get daily totals only in rel
 ## Decision
 | Date | Decision (Approved / Rejected / Deferred) | By | Notes |
 |---|---|---|---|
-| | | | |
+| 2026-10-15 | Approved | Manh Nguyen (product owner) | Applied the same day: requirements v1.6, RTM, STATUS |

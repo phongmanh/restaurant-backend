@@ -4,7 +4,7 @@
 |---|---|
 | Version | 0.2 Draft: the four §13 questions decided by the owner on 2026-10-15; the whole design is approved at G3 |
 | Owner decisions | §13, all four accepted 2026-10-15 |
-| Change request | [CR-007](../cr/CR-007-csv-export-out-of-release-1.md), Proposed 2026-10-15: FR-051 Won't in release 1 |
+| Change request | [CR-007](../cr/CR-007-csv-export-out-of-release-1.md), approved 2026-10-15: FR-051 Won't in release 1 |
 | Date | 2026-10-15 |
 | Package | `reports` (architecture §4) |
 | Requirements | FR-050 daily sales report, FR-051 CSV export (Could; §13 Q3); NFR-PERF-04 (31 days ≤ 3 s p95), FR-042, NFR-SEC-02; ASSUMPTION-11 (a bill counts on the local day it closed) |
@@ -198,7 +198,7 @@ The job route `/internal/jobs/sales-reconcile` is in the endpoint registry with 
 The RTM's design column for FR-050, FR-051 and NFR-PERF-04 points here; FR-042 and NFR-SEC-02 add this design.
 
 ## 13. Owner decisions (2026-10-15)
-The owner accepted all four recommendations. They're recorded in STATUS.md (Decisions; Q-8 resolved). CR-007 (Proposed) writes 3 into the requirements.
+The owner accepted all four recommendations. They're recorded in STATUS.md (Decisions; Q-8 resolved). CR-007 (approved 2026-10-15) wrote 3 into requirements v1.6.
 
 1. **Corrections are shown, not hidden:** each day and each payment method shows `gross` (bills closed that day), `corrections` (made that day) and `net`. Tables and items show bills only.
 2. **A "session" in the report is a bill closed with a payment.** Visits that ordered nothing, or whose orders were all cancelled, aren't sales and aren't counted.

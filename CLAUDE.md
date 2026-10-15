@@ -10,10 +10,10 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 ## Document map (`docs/sdlc/restaurant-ordering/`)
 | File | Holds |
 |---|---|
-| requirements.md | v1.5 (baselined at G1, changed by CR-002 to CR-006). Changing it needs a CR |
+| requirements.md | v1.6 (baselined at G1, changed by CR-002 to CR-007). Changing it needs a CR |
 | architecture.md | v1.3: approved at G2 (2026-10-15) with the TBD-10 condition, then changed by CR-004 to CR-006. Changing it needs a CR |
 | adr/0001–0009, 0011 | Decisions; ADR-0002 (Vercel) is Accepted with conditions (paid-plan cold-start check before G5); 0003 (live updates through Ably) is Accepted after S-3; 0004 (Neon PostgreSQL) and 0008 (rate limiting: WAF + Upstash) are Accepted; 0010 is reserved by CR-001; 0011 (built-in staff sign-in) is Accepted too |
-| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003, CR-004 (menu read and image limits) CR-005 (natural idempotency, no guest device data) and CR-006 (orders decisions: closed-bill corrections, no FR-016 in release 1) are Approved; CR-007 (no CSV export in release 1) is Proposed |
+| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003, CR-004 (menu read and image limits) CR-005 (natural idempotency, no guest device data) and CR-006 (orders decisions: closed-bill corrections, no FR-016 in release 1) and CR-007 (no CSV export in release 1) are Approved |
 | design/ | Phase 3 feature designs: core-and-auth (Draft 0.6), restaurants (Draft 0.2), menu (Draft 0.2), tables (Draft 0.3), orders (Draft 0.3), realtime (Draft 0.2), reports (Draft 0.2). All Phase 3 designs are drafted; G3 comes next |
 | `docs/api/openapi.yaml` (repo root) | The API contract, built up feature by feature and frozen at G3 |
 | rtm.md, test-plan.md | Traceability and test plan |

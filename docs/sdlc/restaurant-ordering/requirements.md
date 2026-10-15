@@ -2,7 +2,7 @@
 
 | Version | Status | Owner | Approvers |
 |---|---|---|---|
-| 1.5 | Approved (G1 2026-10-13; CR-002 2026-10-14; CR-003 2026-10-14; CR-004, CR-005 and CR-006 2026-10-15) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
+| 1.6 | Approved (G1 2026-10-13; CR-002 2026-10-14; CR-003 2026-10-14; CR-004 to CR-007 2026-10-15) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
 
 **Version history**
 
@@ -14,6 +14,7 @@
 | 1.3 | 2026-10-15 | [CR-004](cr/CR-004-menu-read-and-image-limits.md): FR-022 images ≤ 4 MB (Vercel caps a function body at 4.5 MB), shrunk by the staff app before upload; FR-022 is a Should (TBD-5 resolved). Changed: FR-022, §9 |
 | 1.4 | 2026-10-15 | [CR-005](cr/CR-005-natural-idempotency-and-session-data.md): no guest device data is stored with table sessions. Changed: §5 table-session row |
 | 1.5 | 2026-10-15 | [CR-006](cr/CR-006-record-orders-decisions.md): the owner's orders decisions written in. A closed bill is corrected by a manager's correcting entries, counted on the day they're made (TBD-7 resolved); FR-016 isn't built in release 1 (TBD-8 resolved). Changed: FR-013, FR-016 (C → W), FR-050, §3.7, §9 |
+| 1.6 | 2026-10-15 | [CR-007](cr/CR-007-csv-export-out-of-release-1.md): FR-051 CSV export isn't built in release 1 (a 93-day export exceeds the 4.5 MB response cap and needs object storage, TBD-13). Changed: FR-051 (C → W), §3.7 |
 
 ## 1. Brief
 - **Problem:** In a busy restaurant, guests wait for a waiter to take their order and to bring the bill. Orders taken by hand get lost or misread on the way to the kitchen. Restaurant owners have no simple, shared view of what was ordered and sold. Small and mid-sized restaurants can't run their own ordering system, so they need one they can rent.
@@ -116,10 +117,10 @@ Priorities are MoSCoW (M Must, S Should, C Could, W Won't this release). "Anothe
 | ID | Story | Priority | Acceptance criteria (Given / When / Then) |
 |---|---|---|---|
 | FR-050 | As a manager, I want daily sales reports, so that I know how the restaurant is doing | M | Given closed bills, when a manager asks for a date range (≤ 93 days), then they get, per day in the restaurant's time zone: number of sessions, orders, gross sales, sales per payment method, top items by quantity and revenue, and sales per table.<br>Only closed, non-cancelled lines are counted.<br>A bill counts on the restaurant's local day on which it was closed, even if the guests sat down the day before.<br>Corrections to closed bills count on the local day they were made.<br>Range > 93 days or end before start → 400. Waiter or kitchen role → 403.<br>Reports finish within NFR-PERF-04. |
-| FR-051 | As a manager, I want to export sales lines as CSV, so that I can give them to my accountant | C | A date range ≤ 93 days, produced asynchronously if large. |
+| FR-051 | As a manager, I want to export sales lines as CSV, so that I can give them to my accountant | W | Not built in release 1 (owner, 2026-10-15). If built later: a date range ≤ 93 days, produced asynchronously into object storage (TBD-13), because a 93-day export exceeds the 4.5 MB response limit. |
 
 ### 3.7 Won't have in release 1
-Online payment and payment gateways · guest accounts, order history across visits, loyalty · reservations · delivery and take-away · inventory · kitchen printers · chains with several branches per tenant · invoices issued to the tax authority (e-invoice) · FR-016 waiter confirmation of guest orders (TBD-8). Each needs its own requirements change (CR) later.
+Online payment and payment gateways · guest accounts, order history across visits, loyalty · reservations · delivery and take-away · inventory · kitchen printers · chains with several branches per tenant · invoices issued to the tax authority (e-invoice) · FR-016 waiter confirmation of guest orders (TBD-8) · FR-051 CSV export of sales lines. Each needs its own requirements change (CR) later.
 
 ## 4. Non-functional requirements
 The product owner confirmed these numbers at G1 (2026-10-13). "Peak" is the dinner peak load profile in the test plan (≈ 300 req/s and 15,000 concurrent guest devices).

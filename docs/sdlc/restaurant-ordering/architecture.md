@@ -13,7 +13,7 @@
 | 1.2 | 2026-10-15 | [CR-005](cr/CR-005-natural-idempotency-and-session-data.md): session open/join and waiter calls are idempotent by design and take no `Idempotency-Key` (no bearer token stored for replays); the guest token has no table claim (sessions move). Changed: §7, §10 |
 | 1.3 | 2026-10-15 | [CR-006](cr/CR-006-record-orders-decisions.md): figures from the orders design. Placing an order is ≈ 13 statements, not ≈ 6; the audit log (every staff order step, ≈ 400k rows/day) is added to the database size. Changed: §6, §9 |
 
-Baseline: [requirements.md](requirements.md) v1.5 (G1 2026-10-13; CR-002 and CR-003 2026-10-14; CR-004, CR-005 and CR-006 2026-10-15). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). G2 approved by the owner on 2026-10-15 with one condition: TBD-10 (data residency, legal review) is settled before G5, by a region change or, if storage in Vietnam is required, a CR to change provider (§8, R-04). Accepted free-plan residual risks: R-11 to R-14. The cost estimate (TBD-11) was deferred on 2026-10-15 because the project stays on free plans.
+Baseline: [requirements.md](requirements.md) v1.6 (G1 2026-10-13; CR-002 and CR-003 2026-10-14; CR-004 to CR-007 2026-10-15). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). G2 approved by the owner on 2026-10-15 with one condition: TBD-10 (data residency, legal review) is settled before G5, by a region change or, if storage in Vietnam is required, a CR to change provider (§8, R-04). Accepted free-plan residual risks: R-11 to R-14. The cost estimate (TBD-11) was deferred on 2026-10-15 because the project stays on free plans.
 
 ## 1. Drivers
 Quality goals, ranked (ASSUMPTION-8, confirmed by the owner 2026-10-14):

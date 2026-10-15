@@ -33,7 +33,7 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | FR-043 | Suspend / reactivate a restaurant | S | architecture.md §7; design/restaurants.md | `restaurants` | | | | |
 | FR-044 | Edit restaurant profile | M | architecture.md §11; design/restaurants.md | `restaurants` | | AT-044 | | |
 | FR-050 | Daily sales report | M | architecture.md §1, §9 (Reports); ASSUMPTION-11 (day of closing); design/reports.md | `daily_sales`, `daily_sales_payment`, `daily_sales_table`, `daily_sales_item`, `sales_reconciliation`; `GET /v1/staff/reports/daily-sales` | | AT-050 | | |
-| FR-051 | CSV export of sales lines | C | architecture.md §4; design/reports.md §13 Q3 (owner 2026-10-15: not in release 1; CR-007 proposed) | `order_lines` | | | | |
+| FR-051 | CSV export of sales lines | W (release 1; CR-007) | architecture.md §4; design/reports.md §13 Q3 (owner 2026-10-15: not in release 1; CR-007) | `order_lines` | | | | |
 | NFR-PERF-01 | Guest reads p95 ≤ 200 ms, p99 ≤ 500 ms at peak | M | architecture.md §1, §9; design/menu.md | | | | | |
 | NFR-PERF-02 | Writes p95 ≤ 300 ms, p99 ≤ 800 ms at peak | M | architecture.md §9; ADR-0004 | | | | | |
 | NFR-PERF-03 | Live-update delay ≤ 2 s p95 | M | ADR-0003; design/realtime.md | `domain_events`, `outbox`, `event_counters` | | | | |
