@@ -51,6 +51,7 @@ suspend fun ApplicationCall.respondProblem(
     retryAfterSeconds: Long? = null,
 ) {
     retryAfterSeconds?.let { response.header(HttpHeaders.RetryAfter, it.toString()) }
+    if (code == ErrorCode.UNAUTHENTICATED) response.header(HttpHeaders.WWWAuthenticate, "Bearer")
     val problem =
         Problem(
             type = "/problems/${code.value}",

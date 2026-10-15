@@ -29,7 +29,6 @@ class EndpointInventoryTest {
      */
     private val notYetRouted: Set<Endpoint> =
         listOf(
-            Endpoints.Auth,
             Endpoints.Restaurants,
             Endpoints.Staff,
             Endpoints.Audit,

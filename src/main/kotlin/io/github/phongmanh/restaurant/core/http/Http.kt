@@ -1,5 +1,6 @@
 package io.github.phongmanh.restaurant.core.http
 
+import io.github.phongmanh.restaurant.core.application.Caller
 import io.github.phongmanh.restaurant.core.application.RequestMeta
 import io.github.phongmanh.restaurant.core.domain.UuidV7
 import io.ktor.http.HttpHeaders
@@ -23,8 +24,11 @@ import io.ktor.server.request.path
 import io.ktor.server.response.header
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingHandler
+import io.ktor.server.routing.application
 import io.ktor.server.routing.route
+import io.ktor.util.AttributeKey
 import kotlinx.serialization.json.Json
+import org.koin.ktor.ext.get
 import org.slf4j.event.Level
 
 /**
@@ -99,11 +103,42 @@ private val NoStore =
         }
     }
 
-/** Declares the route of a registry [endpoint]. Feature route files use this, never path literals. */
+/**
+ * Who the caller is, from the request's credentials (core-and-auth §6). The auth feature provides
+ * it; [Route.endpoint] calls it for every route of a group that needs a token.
+ */
+fun interface CallAuthenticator {
+    /** The caller, or a `DomainError` (401, 403 `restaurant_suspended`, or 404 for staff on admin routes). */
+    suspend fun authenticate(
+        call: ApplicationCall,
+        endpoint: Endpoint,
+    ): Caller
+}
+
+private val CallerKey = AttributeKey<Caller>("caller")
+
+/**
+ * Declares the route of a registry [endpoint]. Feature route files use this, never path literals.
+ *
+ * The path prefix decides the authentication (§2): a route of the staff, admin or guest group runs
+ * only after [CallAuthenticator] has found its caller, so no route of those groups can forget it.
+ * The handler reads the caller with [caller]. `/v1/auth` routes authenticate themselves where needed.
+ */
 fun Route.endpoint(
     endpoint: Endpoint,
     body: RoutingHandler,
-): Route = route(endpoint.path, endpoint.method) { handle(body) }
+): Route {
+    val authenticator = if (endpoint.group == RouteGroup.AUTH) null else application.get<CallAuthenticator>()
+    return route(endpoint.path, endpoint.method) {
+        handle {
+            authenticator?.let { call.attributes.put(CallerKey, it.authenticate(call, endpoint)) }
+            body()
+        }
+    }
+}
+
+/** The caller [Route.endpoint] authenticated. Only on routes of the staff, admin and guest groups. */
+fun ApplicationCall.caller(): Caller = attributes[CallerKey]
 
 /** Where the request came from, for the audit log (§12). Never for application logs. */
 fun ApplicationCall.requestMeta(): RequestMeta =

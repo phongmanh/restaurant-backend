@@ -70,6 +70,32 @@ sealed class DomainError(
 
     class IdempotencyKeyRequired : DomainError(ErrorCode.IDEMPOTENCY_KEY_REQUIRED)
 
+    /** A new password breaks a rule of §8.6; [reason] is `errors[0].code`. */
+    class PasswordRejected(
+        field: String,
+        reason: String,
+    ) : DomainError(ErrorCode.PASSWORD_REJECTED, errors = listOf(FieldError(field, reason)))
+
+    /** The token is missing, invalid or expired, or its session has ended (§6). */
+    class Unauthenticated : DomainError(ErrorCode.UNAUTHENTICATED)
+
+    /** Every sign-in, MFA or current-password failure, with one body so none reveals more (§8.1). */
+    class InvalidCredentials : DomainError(ErrorCode.INVALID_CREDENTIALS)
+
+    /** The caller's restaurant is suspended and the endpoint isn't allowed then (restaurants §6). */
+    class RestaurantSuspended : DomainError(ErrorCode.RESTAURANT_SUSPENDED)
+
+    /** An invitation or reset link that is unknown, used, replaced or expired: one code for all (§8.5). */
+    class LinkInvalid : DomainError(ErrorCode.LINK_INVALID)
+
+    /** Over a rate limit (§11). */
+    class RateLimited(
+        retryAfterSeconds: Long,
+    ) : DomainError(ErrorCode.RATE_LIMITED, retryAfterSeconds = retryAfterSeconds)
+
+    /** No password-hashing slot came free in time (§8.1). */
+    class ServiceBusy : DomainError(ErrorCode.SERVICE_BUSY, retryAfterSeconds = 1)
+
     /** The caller's role lacks the operation. Checked without looking at the object (§3). */
     class Forbidden : DomainError(ErrorCode.FORBIDDEN)
 

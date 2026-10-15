@@ -67,6 +67,8 @@ object TestDatabase {
                     allowedOrigins = listOf("https://order.example.test"),
                     minClientVersions = mapOf("customer-android" to SemVer(1, 0, 0)),
                 ),
+            auth = TestKeys.auth,
+            rateLimits = TestKeys.rateLimits,
         )
     }
 
@@ -80,11 +82,16 @@ object TestDatabase {
         return DriverManager.getConnection(url, container.username, container.password)
     }
 
-    /** Empties the core tables between tests. */
+    /** Empties the core and auth tables between tests. */
     fun truncate() {
         migrated
         superuser().use { conn ->
-            conn.createStatement().use { it.execute("TRUNCATE idempotency_keys, audit_events, audit_chain_heads") }
+            conn.createStatement().use {
+                it.execute(
+                    "TRUNCATE idempotency_keys, audit_events, audit_chain_heads, staff_link_tokens, staff_mfa_challenges, " +
+                        "staff_refresh_tokens, staff_sessions, staff_accounts, restaurants",
+                )
+            }
         }
     }
 }

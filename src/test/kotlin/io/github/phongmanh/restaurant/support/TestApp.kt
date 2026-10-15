@@ -7,18 +7,21 @@ import io.ktor.server.routing.Routing
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import org.koin.core.module.Module
 
 /**
  * The whole service on the test database, plus [routes] that exist only in the test (under
- * `/test/`, or a made-up registry entry). [block] sends the requests.
+ * `/test/`, or a made-up registry entry), with components replaced by [overrides] (a clock the test
+ * moves). [block] sends the requests.
  */
 fun testApp(
     config: AppConfig = TestDatabase.config,
+    overrides: List<Module> = emptyList(),
     routes: Routing.(Application) -> Unit = {},
     block: suspend ApplicationTestBuilder.() -> Unit,
 ) = testApplication {
     application {
-        module(config)
+        module(config, overrides)
         routing { routes(this@application) }
     }
     block()

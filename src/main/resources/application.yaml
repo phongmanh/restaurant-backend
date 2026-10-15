@@ -28,3 +28,38 @@ http:
   minClientVersions:
     customer-android: "$MIN_VERSION_CUSTOMER_ANDROID:1.0.0"
     customer-ios: "$MIN_VERSION_CUSTOMER_IOS:1.0.0"
+
+# Staff and admin sign-in (core-and-auth §8, §13).
+auth:
+  # The API's public URL, the tokens' `iss`.
+  issuer: "$AUTH_ISSUER:http://localhost:8080"
+  # Secrets. A JWK set of EC P-256 keys: the current key with its private part `d`, the previous one public only.
+  staffJwtKeys: "$STAFF_JWT_KEYS:"
+  # {"current": "<id>", "keys": {"<id>": "<base64 of 32 random bytes>"}}
+  totpEncryptionKeys: "$TOTP_ENCRYPTION_KEYS:"
+  # Base64 of at least 32 random bytes.
+  emailHmacKey: "$EMAIL_HMAC_KEY:"
+  # The refresh cookie's path as the browser sees it through the web apps' /api rewrite (§8.3).
+  cookiePath: "$AUTH_COOKIE_PATH:/api/v1/auth"
+  # Architecture §7: OWASP's Argon2id parameters; at most 4 hashes at once, a 2 s wait for a slot.
+  argon2:
+    memoryKib: 19456
+    iterations: 2
+    parallelism: 1
+    maxConcurrent: 4
+    slotWaitMs: 2000
+
+# ADR-0008. Upstash is required outside dev and test; without it, limits count in memory.
+rateLimits:
+  upstashUrl: "$UPSTASH_REDIS_REST_URL:"
+  upstashToken: "$UPSTASH_REDIS_REST_TOKEN:"
+  # S-1 Q12: a check that takes longer fails open.
+  timeoutMs: 200
+  # <limit>/<window seconds>, starting values accepted by the owner (core-and-auth §11).
+  policies:
+    auth:
+      sign_in: "30/60"
+      mfa: "10/60"
+      refresh: "120/60"
+      link: "10/60"
+      password_change: "5/900"

@@ -6,3 +6,10 @@ style:
   MaxLineLength:
     # The same limit as ktlint's ktlint_official style, so the two tools agree.
     maxLineLength: 140
+complexity:
+  LongParameterList:
+    # Koin-built services take their collaborators in the constructor, and row classes one field
+    # per column; up to 11 is clearer than bundling them into holder objects.
+    constructorThreshold: 12
+    # A defaulted parameter isn't one every caller has to pass.
+    ignoreDefaultParameters: true
