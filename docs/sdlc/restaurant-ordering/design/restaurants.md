@@ -6,7 +6,7 @@
 | Date | 2026-10-15 |
 | Package | `restaurants` (architecture §4) |
 | Requirements | FR-040 onboard, FR-041 staff, FR-043 suspend, FR-044 profile; FR-042 and NFR-SEC-02 (isolation of these endpoints); NFR-SEC-03 (audit read); NFR-PRIV-01 (staff data export and erasure) |
-| Builds on | architecture.md v1.1 §4, §7 (authorisation matrix), §11; ADR-0005, ADR-0011; [core-and-auth](core-and-auth.md) 0.2 (conventions, `staff_accounts`, links, audit) |
+| Builds on | architecture.md v1.2 §4, §7 (authorisation matrix), §11; ADR-0005, ADR-0011; [core-and-auth](core-and-auth.md) 0.2 (conventions, `staff_accounts`, links, audit) |
 | Contract | `docs/api/openapi.yaml`: `/v1/staff/restaurant`, `/v1/staff/members`, `/v1/staff/audit-events`, `/v1/admin/*` |
 | Owner decisions | §15, all eight recommendations accepted 2026-10-15 |
 

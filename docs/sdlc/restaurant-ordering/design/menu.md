@@ -6,7 +6,7 @@
 | Date | 2026-10-15 |
 | Package | `menu` (architecture §4) |
 | Requirements | FR-002 guest menu, FR-020 edit, FR-021 sold out, FR-022 images (Should; TBD-5 decided 2026-10-15), FR-023 options (Should), FR-024 vi/en (Should); NFR-PERF-01 (guest reads), FR-042 |
-| Builds on | architecture.md v1.1 §1 (driver 4), §4, §7, §9, §10; [core-and-auth](core-and-auth.md) 0.4; [restaurants](restaurants.md) 0.2 |
+| Builds on | architecture.md v1.2 §1 (driver 4), §4, §7, §9, §10; [core-and-auth](core-and-auth.md) 0.4; [restaurants](restaurants.md) 0.2 |
 | Platform facts checked 2026-10-15 | Vercel's CDN doesn't cache a request that carries an `Authorization` header ([CDN cache docs](https://vercel.com/docs/caching/cdn-cache), "Cacheable response criteria"). A function's request or response body is at most 4.5 MB ([function limits](https://vercel.com/docs/functions/limitations), "Request body size") |
 | Change request | [CR-004](../cr/CR-004-menu-read-and-image-limits.md), approved 2026-10-15: architecture v1.1, requirements v1.3 |
 | Owner decisions | §14, all seven accepted 2026-10-15 |

@@ -10,11 +10,11 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 ## Document map (`docs/sdlc/restaurant-ordering/`)
 | File | Holds |
 |---|---|
-| requirements.md | v1.3 (baselined at G1, changed by CR-002, CR-003 and CR-004). Changing it needs a CR |
-| architecture.md | v1.1: approved at G2 (2026-10-15) with the TBD-10 condition, then changed by CR-004. Changing it needs a CR |
+| requirements.md | v1.4 (baselined at G1, changed by CR-002 to CR-005). Changing it needs a CR |
+| architecture.md | v1.2: approved at G2 (2026-10-15) with the TBD-10 condition, then changed by CR-004 and CR-005. Changing it needs a CR |
 | adr/0001–0009, 0011 | Decisions; ADR-0002 (Vercel) is Accepted with conditions (paid-plan cold-start check before G5); 0003 (live updates through Ably) is Accepted after S-3; 0004 (Neon PostgreSQL) and 0008 (rate limiting: WAF + Upstash) are Accepted; 0010 is reserved by CR-001; 0011 (built-in staff sign-in) is Accepted too |
-| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003 and CR-004 (menu read and image limits) are Approved |
-| design/ | Phase 3 feature designs: core-and-auth (Draft 0.5), restaurants (Draft 0.2), menu (Draft 0.2); tables, orders, realtime and reports come next |
+| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003, CR-004 (menu read and image limits) and CR-005 (natural idempotency, no guest device data) are Approved |
+| design/ | Phase 3 feature designs: core-and-auth (Draft 0.6), restaurants (Draft 0.2), menu (Draft 0.2), tables (Draft 0.2); orders, realtime and reports come next |
 | `docs/api/openapi.yaml` (repo root) | The API contract, built up feature by feature and frozen at G3 |
 | rtm.md, test-plan.md | Traceability and test plan |
 | cost-estimate.md | Monthly cost (TBD-11), v0.2 for the owner's review; S-3 confirmed the Ably line |
@@ -35,14 +35,15 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 - **Who the caller is comes from the token plus the database,** never from the request body. Role checks live in services, not routes (core-and-auth §6).
 - **Errors** are a `DomainError` → problem+json with a stable `code`. Every new code goes into `x-error-catalogue` in the contract. Never send stack traces or internals to clients (core-and-auth §3).
 - **Retries and concurrent edits.** Operations listed in architecture §10 require `Idempotency-Key`, stored in the same transaction as the change. Versioned resources require `If-Match`: missing → 428, stale → 412 (core-and-auth §4–5).
+- **Idempotent by design beats a stored key.** When a database constraint already makes a retry harmless (one open session per table, merged waiter calls), the operation takes no `Idempotency-Key` (CR-005).
 - **Audit and outbox rows are written in the same transaction as the change** they record (NFR-SEC-03, ADR-0003).
 - **No personal data, secrets or tokens in logs:** no emails, names, phones, notes, IPs, passwords or tokens (architecture §11).
 - **No custom cryptography.** Argon2id with Bouncy Castle, ES256 JWTs, AES-256-GCM, secure random tokens stored as SHA-256 hashes (core-and-auth §8).
 - **Wire formats:** money is a string of whole đồng (`BIGINT` in the database); times are UTC RFC 3339; IDs are UUID v7; JSON fields are `snake_case`.
-- **One-time secrets** (invitation and reset links, tokens) are shown once. They are never stored in an idempotent response or written to a log; a replay issues a fresh one, which replaces the old one (core-and-auth §4).
+- **Secrets are never stored in an idempotent response or written to a log.** That covers one-time secrets (invitation and reset links) and bearer tokens (session and access tokens). A replay issues a fresh one; for links, the fresh one replaces the old (core-and-auth §4, tables §3.1).
 - **Every endpoint registry entry sets `allowedWhenSuspended` explicitly;** there's no default, and the contract mirrors it as `x-allowed-when-suspended` (restaurants §6).
 - **A rule that spans several rows** (e.g. "at least one active manager") is serialised with `pg_advisory_xact_lock` on its scope. Otherwise two concurrent changes can each pass the check and break it together (restaurants §7).
-- **YAML gotcha:** in OpenAPI files, quote any plain value that contains `: ` or, inside `{ }`, a `,`. Otherwise it parses into the wrong structure. Scripts that generate contract text quote every `summary` and `description`. It bit twice on 2026-10-15.
+- **YAML gotcha:** in OpenAPI files, quote any plain value that contains `: ` or, inside `{ }`, a `,`. Otherwise it parses into the wrong structure. Scripts that generate contract text quote every `summary` and `description`. In Python, write an apostrophe inside a double-quoted string: `'table''s'` is two adjacent literals and silently becomes `tables`. Lint passes either way, so read the parsed values back. It bit three times on 2026-10-15.
 
 ## Spikes: conventions and known gotchas
 - Spikes are throwaway code under `spikes/`. Results go into the spike README's Results table, then a one-line summary into the STATUS open-items row.

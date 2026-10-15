@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.5 Draft (0.5: menu reads and the image route as exceptions in §2, CR-004): the five §16 questions decided by the owner on 2026-10-15; 0.3–0.4 add the changes from [restaurants](restaurants.md) §14 (one-time secrets, suspension check, sign-in when suspended, staff token on admin routes → 404). The whole design is approved at G3 |
+| Version | 0.6 Draft (0.6: §4 key list per CR-005; 0.5: menu reads and the image route as exceptions in §2, CR-004): the five §16 questions decided by the owner on 2026-10-15; 0.3–0.4 add the changes from [restaurants](restaurants.md) §14 (one-time secrets, suspension check, sign-in when suspended, staff token on admin routes → 404). The whole design is approved at G3 |
 | Date | 2026-10-15 |
 | Package | `core` (shared kernel and staff/admin sign-in), per architecture §4 |
 | Requirements | FR-010, FR-042 (the shared parts), NFR-REL-02 (idempotency), NFR-SEC-01 to 04, NFR-PRIV-01 (logs, staff data), NFR-COMPAT-01, NFR-OBS-01 (request ID) |
-| Builds on | architecture.md v1.1 §5, §7, §10, §11, §12; ADR-0005, 0006, 0007, 0008, 0011; S-2 and S-4 results |
+| Builds on | architecture.md v1.2 §5, §7, §10, §11, §12; ADR-0005, 0006, 0007, 0008, 0011; S-2 and S-4 results |
 | Contract | `docs/api/openapi.yaml`: shared components, error catalogue and `/v1/auth/*` |
 | Owner decisions | §16, all five recommendations accepted 2026-10-15 |
 
@@ -116,7 +116,7 @@ Every error is RFC 9457 problem details, `Content-Type: application/problem+json
 ## 4. Idempotency
 **In plain words:** a phone on a bad network sends "place order", the answer gets lost, and the app sends it again. The `Idempotency-Key` header is a random ID the app picks once per user action and repeats on each retry. The service remembers the key with its answer, so the second request gets the first answer back instead of creating a second order.
 
-- **Where it's required** (architecture §10): order placement (guest and staff), session open/join, waiter calls, session close and restaurant onboarding. The feature designs mark these operations in the contract. Missing key → `400 idempotency_key_required`. Other `POST`s ignore the header.
+- **Where it's required** (architecture §10, CR-005): order placement (guest and staff), session close and restaurant onboarding. Operations that a database constraint already makes safe to retry (session open/join, waiter calls) take no key. The feature designs mark these operations in the contract. Missing key → `400 idempotency_key_required`. Other `POST`s ignore the header.
 - **Format:** 1–64 characters of `[A-Za-z0-9_-]`; a UUID is recommended.
 - **Scope:** the key is unique per caller and operation: `(scope, operation, key)`, where scope is `guest:<device id>`, `staff:<id>` or `admin:<id>`, and operation is the route template, e.g. `POST /v1/guest/orders`. Two devices can't collide, and one device can't replay another's answer.
 - **Request fingerprint:** SHA-256 over the operation, the path parameters and the raw body bytes. The same key with a different fingerprint → `422 idempotency_key_reused`.

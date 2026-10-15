@@ -1,13 +1,13 @@
 openapi: 3.1.0
 info:
   title: Restaurant ordering API
-  version: 0.3.0-draft
+  version: 0.4.0-draft
   description: |
     Contract for the restaurant ordering service (`docs/sdlc/restaurant-ordering/`).
     Hand-written in Phase 3 and frozen at G3 (architecture §5, ADR-0007).
     Built up one feature design at a time; this draft holds the shared parts and
     `/v1/auth/*` from `design/core-and-auth.md`, and the routes of
-    `design/restaurants.md` and `design/menu.md`. `x-allowed-when-suspended` on staff and guest
+    `design/restaurants.md`, `design/menu.md` and `design/tables.md`. `x-allowed-when-suspended` on staff and guest
     operations mirrors the endpoint registry (restaurants §6).
 
     Conventions (core-and-auth §2): snake_case fields; UUID v7 IDs; RFC 3339 UTC times;
@@ -32,6 +32,8 @@ tags:
     description: Staff data export and erasure requests
   - name: menu
     description: Menu reads for guests, staff and admins; menu editing, sold-out and images
+  - name: tables
+    description: Tables, QR codes, table sessions and waiter calls
 
 paths:
   /v1/auth/sign-in:
@@ -1442,6 +1444,416 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/guest/sessions:
+    post:
+      tags: [tables]
+      operationId: openOrJoinSession
+      summary: 'Open or join the table session from a QR code; safe to retry (one open session per table)'
+      security: []
+      x-auth: qr
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OpenSessionRequest' }
+      responses:
+        '200':
+          description: 'Session token for this device'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestSessionGrant' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/guest/session:
+    get:
+      tags: [tables]
+      operationId: getGuestSession
+      summary: 'The guest''s session, table and open waiter calls'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: true
+      responses:
+        '200':
+          description: 'The session'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestSession' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /v1/guest/waiter-calls:
+    post:
+      tags: [tables]
+      operationId: callWaiter
+      summary: 'Call a waiter or ask for the bill; repeats within 60 s merge into one'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WaiterCallRequest' }
+      responses:
+        '201':
+          description: 'Created'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WaiterCall' }
+        '200':
+          description: 'Merged into an existing call'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WaiterCall' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/tables:
+    get:
+      tags: [tables]
+      operationId: listTables
+      summary: 'Floor view: every table, free or occupied, with session summary (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The tables'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FloorView' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [tables]
+      operationId: createTable
+      summary: 'Create a table (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TableCreate' }
+      responses:
+        '201':
+          description: 'Created'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiningTable' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/staff/tables/qr-codes:
+    get:
+      tags: [tables]
+      operationId: listQrCodes
+      summary: 'QR code URLs of every table, for printing (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The codes'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrCodeList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/tables/qr-codes/rotate-all:
+    post:
+      tags: [tables]
+      operationId: rotateAllQrCodes
+      summary: 'Rotate every table''s QR code at once; all printed codes stop working (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'New codes'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrCodeList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/tables/{tableId}:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+    get:
+      tags: [tables]
+      operationId: getTable
+      summary: 'Read a table (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The table'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiningTable' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [tables]
+      operationId: updateTable
+      summary: 'Edit or disable a table (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TableUpdate' }
+      responses:
+        '200':
+          description: 'Updated'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiningTable' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+    delete:
+      tags: [tables]
+      operationId: deleteTable
+      summary: 'Delete a table without guests; its printed codes stop working (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: 'Deleted'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/tables/{tableId}/qr-code:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+    get:
+      tags: [tables]
+      operationId: getQrCode
+      summary: 'The table''s current QR code URL (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The code'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrCode' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/tables/{tableId}/qr-code/rotate:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+    post:
+      tags: [tables]
+      operationId: rotateQrCode
+      summary: 'Rotate the table''s QR code; seated guests keep their session (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'New code'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrCode' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/tables/{tableId}/session:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+    post:
+      tags: [tables]
+      operationId: openSessionByStaff
+      summary: 'Open the table''s session without a scan, or return the open one (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '201':
+          description: 'Opened'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffTableSession' }
+        '200':
+          description: 'Already open'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffTableSession' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/staff/table-sessions/{sessionId}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [tables]
+      operationId: getTableSession
+      summary: 'A table session (all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The session'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffTableSession' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/table-sessions/{sessionId}/move:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [tables]
+      operationId: moveTableSession
+      summary: 'Move an open session to a free table; its orders and bill move with it (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MoveSessionRequest' }
+      responses:
+        '200':
+          description: 'Moved'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffTableSession' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/waiter-calls:
+    get:
+      tags: [tables]
+      operationId: listWaiterCalls
+      summary: 'Waiter calls, oldest first (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/WaiterCallStatus'
+      responses:
+        '200':
+          description: 'The calls'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WaiterCallList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/waiter-calls/{callId}/acknowledge:
+    parameters:
+      - $ref: '#/components/parameters/CallId'
+    post:
+      tags: [tables]
+      operationId: acknowledgeWaiterCall
+      summary: 'Acknowledge a call; idempotent (waiter, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'Acknowledged'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WaiterCall' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     staffBearer:
@@ -1586,6 +1998,27 @@ components:
       required: false
       description: The ETag of the copy the client holds; 304 if unchanged
       schema: { type: string }
+
+    TableId:
+      name: tableId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CallId:
+      name: callId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    WaiterCallStatus:
+      name: status
+      in: query
+      required: false
+      schema: { type: string, enum: [open, acknowledged], default: open }
 
   headers:
     XRequestID:
@@ -2297,6 +2730,144 @@ components:
         item_id: { type: string, format: uuid }
         sold_out: { type: boolean }
 
+    TableRef:
+      type: object
+      required: [id, number]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string }
+    OpenSessionRequest:
+      type: object
+      required: [qr_token, device_id]
+      properties:
+        qr_token: { type: string, maxLength: 256, description: The token from the QR code URL }
+        device_id: { type: string, format: uuid, description: 'Random, created once by the app; not stored' }
+    GuestSessionInfo:
+      type: object
+      required: [id, opened_at, table, restaurant]
+      properties:
+        id: { type: string, format: uuid }
+        opened_at: { type: string, format: date-time }
+        table: { $ref: '#/components/schemas/TableRef' }
+        restaurant:
+          type: object
+          required: [id, name, languages]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            languages: { type: array, items: { $ref: '#/components/schemas/Language' } }
+    GuestSessionGrant:
+      type: object
+      required: [session_token, token_type, expires_in, session]
+      properties:
+        session_token: { type: string }
+        token_type: { type: string, const: Bearer }
+        expires_in: { type: integer, examples: [21600] }
+        session: { $ref: '#/components/schemas/GuestSessionInfo' }
+    GuestSession:
+      allOf:
+        - $ref: '#/components/schemas/GuestSessionInfo'
+        - type: object
+          required: [open_calls]
+          properties:
+            open_calls: { type: array, items: { $ref: '#/components/schemas/WaiterCall' } }
+    WaiterCallRequest:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [call_waiter, request_bill] }
+    WaiterCall:
+      type: object
+      required: [id, kind, status, created_at, table]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [call_waiter, request_bill] }
+        status: { type: string, enum: [open, acknowledged, closed_with_session] }
+        created_at: { type: string, format: date-time }
+        acknowledged_at: { type: string, format: date-time }
+        table: { $ref: '#/components/schemas/TableRef' }
+    WaiterCallList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/WaiterCall' } }
+    DiningTable:
+      type: object
+      required: [id, number, enabled, version]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string, minLength: 1, maxLength: 20 }
+        area: { type: string, maxLength: 50 }
+        seats: { type: integer, minimum: 1, maximum: 50 }
+        enabled: { type: boolean }
+        version: { type: integer }
+    TableCreate:
+      type: object
+      required: [number]
+      properties:
+        number: { type: string, minLength: 1, maxLength: 20 }
+        area: { type: string, maxLength: 50 }
+        seats: { type: integer, minimum: 1, maximum: 50 }
+    TableUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        number: { type: string, minLength: 1, maxLength: 20 }
+        area: { type: string, maxLength: 50 }
+        seats: { type: integer, minimum: 1, maximum: 50 }
+        enabled: { type: boolean }
+    SessionSummary:
+      type: object
+      required: [id, opened_at, order_count, running_total, stale, open_calls]
+      properties:
+        id: { type: string, format: uuid }
+        opened_at: { type: string, format: date-time }
+        order_count: { type: integer }
+        running_total: { $ref: '#/components/schemas/Money' }
+        stale: { type: boolean, description: Open more than 6 h with orders; close it }
+        open_calls: { type: integer }
+    FloorTable:
+      allOf:
+        - $ref: '#/components/schemas/DiningTable'
+        - type: object
+          required: [state]
+          properties:
+            state: { type: string, enum: [free, occupied] }
+            session: { $ref: '#/components/schemas/SessionSummary' }
+    FloorView:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, maxItems: 300, items: { $ref: '#/components/schemas/FloorTable' } }
+    QrCode:
+      type: object
+      required: [table_id, number, url, key_version]
+      properties:
+        table_id: { type: string, format: uuid }
+        number: { type: string }
+        url: { type: string, description: 'https://<customer app domain>/t/<qrToken>; the staff app draws the QR image' }
+        key_version: { type: integer }
+    QrCodeList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/QrCode' } }
+    StaffTableSession:
+      type: object
+      required: [id, status, opened_at, table, version]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [open, closed] }
+        opened_at: { type: string, format: date-time }
+        closed_at: { type: string, format: date-time }
+        table: { $ref: '#/components/schemas/TableRef' }
+        version: { type: integer }
+    MoveSessionRequest:
+      type: object
+      required: [to_table_id]
+      properties:
+        to_table_id: { type: string, format: uuid }
+
 # Error-code catalogue (architecture §5). Feature designs add their codes here.
 x-error-catalogue:
   - { code: malformed_request, status: 400, meaning: Body isn't valid JSON, or a field has the wrong type }
@@ -2331,3 +2902,10 @@ x-error-catalogue:
   - { code: category_not_empty, status: 409, meaning: Deleting a category that still has items }
   - { code: menu_limit_reached, status: 409, meaning: A menu size limit would be passed }
   - { code: image_storage_unavailable, status: 503, meaning: Image storage unreachable or timed out }
+  - { code: qr_token_invalid, status: 400, meaning: 'Malformed, forged or rotated QR code, or a deleted table' }
+  - { code: table_session_closed, status: 401, meaning: The guest's session has been closed; scan the code again }
+  - { code: table_unavailable, status: 409, meaning: The table is disabled or deleted }
+  - { code: table_occupied, status: 409, meaning: Moving a session onto a table that has one }
+  - { code: table_has_open_session, status: 409, meaning: Disabling or deleting a table with guests }
+  - { code: session_not_open, status: 409, meaning: The table session is closed }
+  - { code: table_limit_reached, status: 409, meaning: The restaurant has 300 tables }

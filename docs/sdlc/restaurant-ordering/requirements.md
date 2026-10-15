@@ -2,7 +2,7 @@
 
 | Version | Status | Owner | Approvers |
 |---|---|---|---|
-| 1.3 | Approved (G1 2026-10-13; CR-002 2026-10-14; CR-003 2026-10-14; CR-004 2026-10-15) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
+| 1.4 | Approved (G1 2026-10-13; CR-002 2026-10-14; CR-003 2026-10-14; CR-004 and CR-005 2026-10-15) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
 
 **Version history**
 
@@ -12,6 +12,7 @@
 | 1.1 | 2026-10-14 | [CR-002](cr/CR-002-built-in-staff-accounts.md): staff and admins sign in with accounts built into the service (email and password; TOTP for admins) instead of an external identity provider. Changed: §2 staff app and admin console, FR-010, FR-040, FR-041, §5 staff account, §6 identity-provider row removed, TBD-1 resolved |
 | 1.2 | 2026-10-14 | [CR-003](cr/CR-003-record-resolved-items.md): the owner's resolved decisions written in, and the decree citation corrected. Changed: §2 customer mobile app and staff app, FR-050 (a bill counts on the day it was closed), NFR-COMPAT-01, §7 (Decree 356/2025), §9 (TBD-2 and TBD-3 resolved, ASSUMPTION-11 added) |
 | 1.3 | 2026-10-15 | [CR-004](cr/CR-004-menu-read-and-image-limits.md): FR-022 images ≤ 4 MB (Vercel caps a function body at 4.5 MB), shrunk by the staff app before upload; FR-022 is a Should (TBD-5 resolved). Changed: FR-022, §9 |
+| 1.4 | 2026-10-15 | [CR-005](cr/CR-005-natural-idempotency-and-session-data.md): no guest device data is stored with table sessions. Changed: §5 table-session row |
 
 ## 1. Brief
 - **Problem:** In a busy restaurant, guests wait for a waiter to take their order and to bring the bill. Orders taken by hand get lost or misread on the way to the kitchen. Restaurant owners have no simple, shared view of what was ordered and sold. Small and mid-sized restaurants can't run their own ordering system, so they need one they can rent.
@@ -156,7 +157,7 @@ Retention values are proposals (TBD-4) pending the legal review.
 | Restaurant profile: name, address, time zone, opening hours; owner contact name, email, phone | Internal; owner contact is personal | Operating the tenant, billing contact | Service database | — | While the tenant exists + 90 days | Contract |
 | Menu: categories, items, prices, options, translations, images | Public | Shown to guests | Database; images in object storage | Guests | While the tenant exists | Contract |
 | Tables and QR tokens | Internal (tokens are secrets) | Linking guests to a table | Database (store only a hash or a key ID of the signing secret, decided in Phase 2) | Printed on the table | While the table exists | Contract |
-| Table session: session ID, device token, open/close times, table | Personal (pseudonymous, linkable to a device) | Grouping a visit's orders and bill | Database | — | 90 days, then device data removed (session kept with the bill) | Legitimate interest / performance of the service (TBD-10) |
+| Table session: session ID, open/close times, table (no device data is stored) | Internal | Grouping a visit's orders and bill | Database | — | Kept with the bill it belongs to (orders and bills retention, TBD-4) | Legitimate interest / performance of the service (TBD-10) |
 | Orders and bill lines: items, quantities, price snapshot, status history, staff IDs, payment method and amount | Internal (financial records) | Kitchen flow, bill, reports, accounting | Database | The restaurant's manager | TBD-4: accounting retention under Vietnamese law (possibly 5–10 years) | Legal obligation (accounting) |
 | Free-text item notes | Possibly personal (guests may type names, allergies) | Kitchen instructions | Database | Kitchen staff | Cleared 30 days after the session closes | Performance of the service |
 | Access and application logs: IP address, user agent, request ID | Personal | Operations, security | Logging platform | Platform provider (processor) | 30 days | Legitimate interest (security) |

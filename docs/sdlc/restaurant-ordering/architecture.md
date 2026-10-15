@@ -2,7 +2,7 @@
 
 | Version | Status | Owner | Reviewers |
 |---|---|---|---|
-| 1.1 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR); CR-004 applied 2026-10-15 | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
+| 1.2 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR); CR-004 and CR-005 applied 2026-10-15 | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
 
 **Version history**
 
@@ -10,8 +10,9 @@
 |---|---|---|
 | 1.0 | 2026-10-15 | Baselined at G2 |
 | 1.1 | 2026-10-15 | [CR-004](cr/CR-004-menu-read-and-image-limits.md): Vercel's CDN doesn't cache requests with `Authorization`, so the guest menu is revalidated per menu version instead of cached at the edge; the image route takes up to 4 MB (4.5 MB function body cap). Changed: §1 driver 4, §8, §9 (menu-read row, cost-driver line), §11 |
+| 1.2 | 2026-10-15 | [CR-005](cr/CR-005-natural-idempotency-and-session-data.md): session open/join and waiter calls are idempotent by design and take no `Idempotency-Key` (no bearer token stored for replays); the guest token has no table claim (sessions move). Changed: §7, §10 |
 
-Baseline: [requirements.md](requirements.md) v1.3 (G1 2026-10-13; CR-002 and CR-003 2026-10-14; CR-004 2026-10-15). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). G2 approved by the owner on 2026-10-15 with one condition: TBD-10 (data residency, legal review) is settled before G5, by a region change or, if storage in Vietnam is required, a CR to change provider (§8, R-04). Accepted free-plan residual risks: R-11 to R-14. The cost estimate (TBD-11) was deferred on 2026-10-15 because the project stays on free plans.
+Baseline: [requirements.md](requirements.md) v1.4 (G1 2026-10-13; CR-002 and CR-003 2026-10-14; CR-004 and CR-005 2026-10-15). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). G2 approved by the owner on 2026-10-15 with one condition: TBD-10 (data residency, legal review) is settled before G5, by a region change or, if storage in Vietnam is required, a CR to change provider (§8, R-04). Accepted free-plan residual risks: R-11 to R-14. The cost estimate (TBD-11) was deferred on 2026-10-15 because the project stays on free plans.
 
 ## 1. Drivers
 Quality goals, ranked (ASSUMPTION-8, confirmed by the owner 2026-10-14):
@@ -184,7 +185,7 @@ Shared `api-contract` KMP module with the clients: **not now**. TBD-2 is decided
 
 **Guests** (ADR-0006).
 - **QR code.** The QR encodes `https://<app-domain>/t/<qrToken>`. The `qrToken` is a signed, compact token: restaurant ID, table ID, key ID, ES256 signature over a per-table key version. Rotation bumps the table's key version, so old codes fail at once.
-- **Table session.** Presenting a valid QR token opens or joins the table's open session. The response is a **table-session token**: ES256 JWT, `sub` = device ID, claims for session, table and restaurant, lifetime 6 h. Every guest call also checks in the database that the session is still open, so closing a session revokes all its tokens at once.
+- **Table session.** Presenting a valid QR token opens or joins the table's open session. The response is a **table-session token**: ES256 JWT, `sub` = device ID, claims for session and restaurant (the table is read from the database on each call, because a session can move), lifetime 6 h. Every guest call also checks in the database that the session is still open, so closing a session revokes all its tokens at once.
 - **Web app.** The customer web app keeps the session token in memory and `sessionStorage` (low value, scoped to one visit), with a strict CSP. The staff web app's token handling is described under staff and admins above.
 
 **Service-to-service.**
@@ -289,7 +290,7 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
 | Pub/sub publish | 1 s | 2 with backoff (idempotent: event ID) | Yes | Event stays in the outbox; cron sweep republishes; clients still catch up by polling (NFR-REL-03) |
 | Object storage | 5 s upload | None (client retries with `Idempotency-Key`) | — | Upload 503; menus show without images |
 
-- **Idempotency:** `Idempotency-Key` required on order placement, session open/join, waiter calls, staff-placed orders, session close and restaurant onboarding. Stored 24 h, in the same transaction as the change.
+- **Idempotency:** `Idempotency-Key` required on order placement, staff-placed orders, session close and restaurant onboarding. Session open/join and waiter calls are idempotent by design (one open session per table; repeats within 60 s merge) and take no key, so no bearer token is ever stored for a replay. Stored 24 h, in the same transaction as the change.
 - **Optimistic locking:** `version` column, `ETag`/`If-Match` on orders, menu items, tables, sessions and restaurant profile.
 - **Event log and outbox** (ADR-0003):
   - Each state change writes a `domain_events` row in the same transaction.
