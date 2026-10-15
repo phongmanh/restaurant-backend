@@ -2,7 +2,7 @@
 
 | Version | Status | Owner | Approvers |
 |---|---|---|---|
-| 1.2 | Approved (G1 2026-10-13; CR-002 2026-10-14; CR-003 2026-10-14) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
+| 1.3 | Approved (G1 2026-10-13; CR-002 2026-10-14; CR-003 2026-10-14; CR-004 2026-10-15) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
 
 **Version history**
 
@@ -11,6 +11,7 @@
 | 1.0 | 2026-10-13 | Baselined at G1 |
 | 1.1 | 2026-10-14 | [CR-002](cr/CR-002-built-in-staff-accounts.md): staff and admins sign in with accounts built into the service (email and password; TOTP for admins) instead of an external identity provider. Changed: §2 staff app and admin console, FR-010, FR-040, FR-041, §5 staff account, §6 identity-provider row removed, TBD-1 resolved |
 | 1.2 | 2026-10-14 | [CR-003](cr/CR-003-record-resolved-items.md): the owner's resolved decisions written in, and the decree citation corrected. Changed: §2 customer mobile app and staff app, FR-050 (a bill counts on the day it was closed), NFR-COMPAT-01, §7 (Decree 356/2025), §9 (TBD-2 and TBD-3 resolved, ASSUMPTION-11 added) |
+| 1.3 | 2026-10-15 | [CR-004](cr/CR-004-menu-read-and-image-limits.md): FR-022 images ≤ 4 MB (Vercel caps a function body at 4.5 MB), shrunk by the staff app before upload; FR-022 is a Should (TBD-5 resolved). Changed: FR-022, §9 |
 
 ## 1. Brief
 - **Problem:** In a busy restaurant, guests wait for a waiter to take their order and to bring the bill. Orders taken by hand get lost or misread on the way to the kitchen. Restaurant owners have no simple, shared view of what was ordered and sold. Small and mid-sized restaurants can't run their own ordering system, so they need one they can rent.
@@ -89,7 +90,7 @@ Priorities are MoSCoW (M Must, S Should, C Could, W Won't this release). "Anothe
 |---|---|---|---|
 | FR-020 | As a manager, I want to create, edit, reorder, hide and delete menu categories and items, so that the menu matches what we sell | M | Given a manager, when they create or edit an item (name ≤ 100 chars, description ≤ 500 chars, price in whole VND from 0 to 100,000,000, category, display order, active flag), then guests see the change on their next menu load.<br>Invalid input → 400 with per-field errors. Duplicate item name within a category → 409.<br>Concurrent edits → the stale update gets 412.<br>Deleting an item already ordered keeps its name and price on past orders and bills (snapshot); it is hidden from the menu.<br>Waiter or kitchen role → 403. Another restaurant's item → 404.<br>Limits: ≤ 50 categories and ≤ 1,000 items per restaurant (ASSUMPTION-4). |
 | FR-021 | As kitchen staff or a manager, I want to mark an item sold out or available again with one action, so that guests can't order what we've run out of | M | Given an item, when kitchen or manager staff toggle "sold out", then new orders containing it are rejected (FR-003) and guests see it as sold out on their next menu load. Repeating the same toggle is harmless. |
-| FR-022 | As a manager, I want to add a photo to a menu item, so that guests can see the dish | S | Given an image (JPEG, PNG or WebP, ≤ 5 MB, checked by content, not by extension), when the manager uploads it, then guests see it with the item. Other file types or larger files → 415 or 413. Images are stored outside the database. Must or Should: TBD-5. |
+| FR-022 | As a manager, I want to add a photo to a menu item, so that guests can see the dish | S | Given an image (JPEG, PNG or WebP, ≤ 4 MB, checked by content, not by extension; the staff app shrinks photos before upload), when the manager uploads it, then guests see it with the item. Other file types or larger files → 415 or 413. Images are stored outside the database. Should (TBD-5, decided 2026-10-15). |
 | FR-023 | As a manager, I want items to have options (e.g. size, spice level, extra toppings) with price adjustments, so that guests can customise dishes | S | Given an item with option groups (single or multiple choice, required or optional), when a guest orders it, then the chosen options are validated and priced by the server and shown to the kitchen. A missing required option or an unknown option → 400. |
 | FR-024 | As a manager, I want menu item names and descriptions in Vietnamese and English, so that foreign guests can order | S | A guest's client asks for `vi` or `en`. A missing translation falls back to Vietnamese. |
 
@@ -193,7 +194,7 @@ One `AT-` scenario per Must FR, in [test-plan.md](test-plan.md) §5.
 - ~~TBD-2~~: Resolved by CR-003 (owner's decision 2026-10-14): customer mobile app on Android and iOS; staff app web only in release 1.
 - ~~TBD-3~~: Resolved by CR-003 (owner's decision 2026-10-14): old customer mobile app versions are supported for 12 months.
 - TBD-4: Retention periods (accounting records, audit log, staff data) and the erasure deadline. Legal review.
-- TBD-5: FR-022 menu images: Must or Should.
+- TBD-5: FR-022 menu images: Must or Should. Resolved 2026-10-15: Should (CR-004).
 - ~~TBD-6~~: Resolved at G1: menu prices include VAT; no separate VAT line.
 - TBD-7: How a manager corrects a closed bill (void and reissue, or an adjustment line).
 - TBD-8: FR-016 waiter confirmation: build in release 1 or not.

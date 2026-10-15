@@ -2,9 +2,16 @@
 
 | Version | Status | Owner | Reviewers |
 |---|---|---|---|
-| 1.0 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR) | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
+| 1.1 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR); CR-004 applied 2026-10-15 | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
 
-Baseline: [requirements.md](requirements.md) v1.2 (G1 2026-10-13; CR-002 and CR-003 2026-10-14). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). G2 approved by the owner on 2026-10-15 with one condition: TBD-10 (data residency, legal review) is settled before G5, by a region change or, if storage in Vietnam is required, a CR to change provider (§8, R-04). Accepted free-plan residual risks: R-11 to R-14. The cost estimate (TBD-11) was deferred on 2026-10-15 because the project stays on free plans.
+**Version history**
+
+| Version | Date | Change |
+|---|---|---|
+| 1.0 | 2026-10-15 | Baselined at G2 |
+| 1.1 | 2026-10-15 | [CR-004](cr/CR-004-menu-read-and-image-limits.md): Vercel's CDN doesn't cache requests with `Authorization`, so the guest menu is revalidated per menu version instead of cached at the edge; the image route takes up to 4 MB (4.5 MB function body cap). Changed: §1 driver 4, §8, §9 (menu-read row, cost-driver line), §11 |
+
+Baseline: [requirements.md](requirements.md) v1.3 (G1 2026-10-13; CR-002 and CR-003 2026-10-14; CR-004 2026-10-15). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). G2 approved by the owner on 2026-10-15 with one condition: TBD-10 (data residency, legal review) is settled before G5, by a region change or, if storage in Vietnam is required, a CR to change provider (§8, R-04). Accepted free-plan residual risks: R-11 to R-14. The cost estimate (TBD-11) was deferred on 2026-10-15 because the project stays on free plans.
 
 ## 1. Drivers
 Quality goals, ranked (ASSUMPTION-8, confirmed by the owner 2026-10-14):
@@ -25,7 +32,7 @@ Quality goals, ranked (ASSUMPTION-8, confirmed by the owner 2026-10-14):
 | 3. Availability | Dinner peak at 300 req/s with one instance crashing | Stateless functions on Vercel scale out per request; no in-memory state; database behind a pooler (ADR-0002, ADR-0004) | NFR-AVAIL-01/02, NFR-SCAL-01 |
 | 3. Availability | One restaurant (or a prankster with its QR) floods the API. Other restaurants are unaffected. | Edge rate limits (Vercel WAF) per IP; application limits per session, staff user and restaurant in a shared store (ADR-0008) | NFR-SCAL-02, NFR-SEC-04 |
 | 4. Latency | Order placed → kitchen screen at peak in ≤ 2 s p95 | After commit, publish a thin event to managed pub/sub; the client fetches the change from the event log (ADR-0003) | NFR-PERF-03 |
-| 4. Latency | 5,000 guests open menus at 19:00 | Menu read is cacheable at the edge per restaurant and revalidated with `ETag` (short `s-maxage`); sold-out is enforced again at order time | NFR-PERF-01, FR-002 |
+| 4. Latency | 5,000 guests open menus at 19:00 | Menu read is behind the session and revalidated per menu version: `ETag` = menu version, `304` when unchanged, built menus cached per instance by version (Vercel's CDN doesn't cache requests with `Authorization`); sold-out is enforced again at order time | NFR-PERF-01, FR-002 |
 | 4. Latency | A manager opens a 31-day report | Daily aggregates per restaurant, written when a session closes and reconciled nightly | NFR-PERF-04, FR-050 |
 | 5. Operability | A bad release at 18:55 | Vercel instant rollback to the previous deployment; expand-only migrations | NFR-OPS-01 |
 
@@ -229,7 +236,7 @@ Shared `api-contract` KMP module with the clients: **not now**. TBD-2 is decided
 - **Edge:**
   - TLS terminated by Vercel, HSTS on;
   - Vercel WAF with managed rules and rate-limit rules per IP and path (ADR-0008);
-  - CDN caching only for the public menu read and images;
+  - CDN caching only for menu images (on the storage's CDN);
   - `X-Forwarded-For` trusted only as set by Vercel (S-1 confirms the header).
 - **Health:** `/health/live` and `/health/ready` for the smoke tests and the uptime monitor. Vercel has no liveness probes; failed instances are replaced per request.
 - **Rollout:**
@@ -243,7 +250,7 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
 
 | Endpoint group | Peak req/s | Origin req/s (after CDN) | Queries per request | Notes |
 |---|---|---|---|---|
-| Menu read (guest) | 70 | ≤ 15 | 3 | Public per restaurant, `s-maxage` ≈ 30 s + `ETag` |
+| Menu read (guest) | 70 | ≤ 15 | 3 | Private; `ETag` per menu version, `304` when unchanged; in-instance cache by version |
 | Session, orders, bill (guest) | 70 | 70 | 2–3 | Indexed by `session_id` |
 | Event catch-up (guest + staff) | 75 | 75 | 1 | `restaurant_id, seq` index; tiny pages |
 | QR open/join session | 15 | 15 | 3 (1 write) | Rate-limited |
@@ -271,7 +278,7 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
 - **Cost estimate:** TBD-11 (deferred 2026-10-15: free plans only for now), draft in [cost-estimate.md](cost-estimate.md): ≈ $1,540–1,740 a month at launch without menu images (≈ $3–3.50 per restaurant), ≈ $3,700–4,350 at 3×. S-3 confirmed the pub/sub figure (Ably Pro). The cost drivers, largest first:
   - pub/sub connections and messages (≈ 55–60%);
   - Vercel per-request charges: CDN requests, invocations, origin transfer;
-  - menu images, if FR-022 is a Must (TBD-5);
+  - menu images, if FR-022 (a Should, TBD-5) is built;
   - database compute and storage.
 
 ## 10. Reliability
@@ -310,7 +317,7 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
 | Feature flags | Per-restaurant settings in the database (e.g. FR-016 waiter confirmation). Global kill switches in a `feature_flags` table, cached ≤ 30 s per instance |
 | Time, IDs, money | UTC `Instant` on the wire and in the database; reports by the restaurant's IANA time zone. UUID v7 IDs. Money as `BIGINT` VND, wire `{"amount","currency"}` |
 | i18n | Error `code`s localised by clients; menu translations vi/en (FR-024); no server-rendered text except CSV export headers |
-| HTTP hardening | RequestBodyLimit (64 KB JSON; images go via a direct upload URL), DefaultHeaders, HSTS, `Cache-Control: no-store` on guest/staff data, CORS allow-list for the two web apps' origins, Compression, ConditionalHeaders |
+| HTTP hardening | RequestBodyLimit (64 KB JSON; 4 MB on the image upload route, under Vercel's 4.5 MB function body cap), DefaultHeaders, HSTS, `Cache-Control: no-store` on guest/staff data, CORS allow-list for the two web apps' origins, Compression, ConditionalHeaders |
 
 ## 12. Security
 Level: ASVS 5.0 L2. Assets:

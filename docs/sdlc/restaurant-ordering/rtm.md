@@ -5,7 +5,7 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | Req ID | Summary | Priority | Design (architecture § / feature design) | Endpoints, tables, events | Code (module / package, PRs) | Tests (IDs) | Result | Release |
 |---|---|---|---|---|---|---|---|---|
 | FR-001 | Start or join a table session from the QR | M | architecture.md §7; ADR-0006 | `table_sessions`, `table_qr_keys`; `TableSessionOpened` | | AT-001 | | |
-| FR-002 | Browse the menu | M | architecture.md §1, §9 | `menu_categories`, `menu_items` | | AT-002 | | |
+| FR-002 | Browse the menu | M | architecture.md §1, §9; design/menu.md | `menu_categories`, `menu_items`; `menu_state`; `GET /v1/guest/menu` (ETag per menu version) | | AT-002 | | |
 | FR-003 | Place an order (idempotent, server-priced) | M | architecture.md §1, §10 | `orders`, `order_lines`, `idempotency_keys`; `OrderPlaced` | | AT-003 | | |
 | FR-004 | Order more rounds in the same session | M | architecture.md §4 | `orders` | | AT-004 | | |
 | FR-005 | Live order status for guests | M | ADR-0003 | `domain_events`, `outbox` | | AT-005 | | |
@@ -19,22 +19,22 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | FR-014 | Waiter orders on a guest's behalf | S | architecture.md §7 | `orders` | | | | |
 | FR-015 | Kitchen rejects a single item | S | architecture.md §4 | `order_lines`; `OrderLineRejected` | | | | |
 | FR-016 | Waiter confirmation of guest orders | C | architecture.md §11 | `restaurants` settings | | | | |
-| FR-020 | Manage menu categories and items | M | architecture.md §4 | `menu_categories`, `menu_items` | | AT-020 | | |
-| FR-021 | Toggle item sold out | M | architecture.md §4 | `menu_items` | | AT-021 | | |
-| FR-022 | Menu item images | S (TBD-5) | architecture.md §6, §12 | object storage | | | | |
-| FR-023 | Item options and modifiers | S | architecture.md §4 | `menu_item_options` | | | | |
-| FR-024 | Menu translations vi/en | S | architecture.md §11 | `menu_items` | | | | |
+| FR-020 | Manage menu categories and items | M | architecture.md §4; design/menu.md | `menu_categories`, `menu_items` | | AT-020 | | |
+| FR-021 | Toggle item sold out | M | architecture.md §4; design/menu.md | `menu_items`; `menu_items.sold_out`; `PUT /v1/staff/menu/items/{id}/sold-out` | | AT-021 | | |
+| FR-022 | Menu item images | S (TBD-5) | architecture.md §6, §12; design/menu.md | object storage; `menu_items.image_key`; `PUT /v1/staff/menu/items/{id}/image`; ImageStore (TBD-13) | | | | |
+| FR-023 | Item options and modifiers | S | architecture.md §4; design/menu.md | `menu_item_options`; `menu_option_groups`, `menu_options`; MenuCatalog | | | | |
+| FR-024 | Menu translations vi/en | S | architecture.md §11; design/menu.md | `menu_items`; `*_vi`, `*_en` columns; `?lang=` | | | | |
 | FR-030 | Manage tables | M | architecture.md §4, §7 | `dining_tables` | | AT-030 | | |
 | FR-031 | Generate and rotate table QR codes | M | architecture.md §7; ADR-0006 | `table_qr_keys`; `TableQrRotated` | | AT-031 | | |
 | FR-032 | Table overview; open, move, close sessions | M | architecture.md §7 | `table_sessions`; `TableSessionMoved` | | AT-032 | | |
 | FR-040 | Onboard a restaurant and its first manager | M | architecture.md §7, ADR-0011; design/restaurants.md | `restaurants`, `staff_members` | | AT-040 | | |
 | FR-041 | Manage staff and roles | M | architecture.md §7, ADR-0011; design/restaurants.md | `staff_members`, `audit_events` | | AT-041 | | |
-| FR-042 | Tenant isolation on every call | M | ADR-0005; design/core-and-auth.md; design/restaurants.md | all tenant tables (RLS) | | AT-042 | | |
+| FR-042 | Tenant isolation on every call | M | ADR-0005; design/core-and-auth.md; design/restaurants.md; design/menu.md | all tenant tables (RLS) | | AT-042 | | |
 | FR-043 | Suspend / reactivate a restaurant | S | architecture.md §7; design/restaurants.md | `restaurants` | | | | |
 | FR-044 | Edit restaurant profile | M | architecture.md §11; design/restaurants.md | `restaurants` | | AT-044 | | |
 | FR-050 | Daily sales report | M | architecture.md §1, §9 (Reports); ASSUMPTION-11 (day of closing) | `daily_sales`, `daily_sales_payment`, `daily_sales_table`, `daily_sales_item` | | AT-050 | | |
 | FR-051 | CSV export of sales lines | C | architecture.md §4 | `order_lines` | | | | |
-| NFR-PERF-01 | Guest reads p95 ≤ 200 ms, p99 ≤ 500 ms at peak | M | architecture.md §1, §9 | | | | | |
+| NFR-PERF-01 | Guest reads p95 ≤ 200 ms, p99 ≤ 500 ms at peak | M | architecture.md §1, §9; design/menu.md | | | | | |
 | NFR-PERF-02 | Writes p95 ≤ 300 ms, p99 ≤ 800 ms at peak | M | architecture.md §9; ADR-0004 | | | | | |
 | NFR-PERF-03 | Live-update delay ≤ 2 s p95 | M | ADR-0003 | `domain_events`, `outbox` | | | | |
 | NFR-PERF-04 | 31-day report ≤ 3 s p95 | M | architecture.md §1, §9 (Reports), §17 S-5 (met: p95 10.4 ms) | `daily_sales`, `daily_sales_payment`, `daily_sales_table`, `daily_sales_item` | | | | |

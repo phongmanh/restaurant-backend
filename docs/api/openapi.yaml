@@ -1,13 +1,13 @@
 openapi: 3.1.0
 info:
   title: Restaurant ordering API
-  version: 0.2.0-draft
+  version: 0.3.0-draft
   description: |
     Contract for the restaurant ordering service (`docs/sdlc/restaurant-ordering/`).
     Hand-written in Phase 3 and frozen at G3 (architecture §5, ADR-0007).
     Built up one feature design at a time; this draft holds the shared parts and
     `/v1/auth/*` from `design/core-and-auth.md`, and the routes of
-    `design/restaurants.md`. `x-allowed-when-suspended` on staff and guest
+    `design/restaurants.md` and `design/menu.md`. `x-allowed-when-suspended` on staff and guest
     operations mirrors the endpoint registry (restaurants §6).
 
     Conventions (core-and-auth §2): snake_case fields; UUID v7 IDs; RFC 3339 UTC times;
@@ -30,6 +30,8 @@ tags:
     description: Platform-admin operations on restaurants and admins
   - name: privacy
     description: Staff data export and erasure requests
+  - name: menu
+    description: Menu reads for guests, staff and admins; menu editing, sold-out and images
 
 paths:
   /v1/auth/sign-in:
@@ -1057,6 +1059,389 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/guest/menu:
+    get:
+      tags: [menu]
+      operationId: getGuestMenu
+      summary: 'The session''s restaurant menu; revalidate with If-None-Match'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: true
+      parameters:
+        - $ref: '#/components/parameters/MenuLang'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: 'The menu (active items only; sold-out items flagged)'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Cache-Control:
+              schema: { type: string, examples: ['private, no-cache'] }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestMenu' }
+        '304': { $ref: '#/components/responses/NotModified' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/menu:
+    get:
+      tags: [menu]
+      operationId: getStaffMenu
+      summary: 'The full menu including hidden items, both languages (all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: 'The menu'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Cache-Control:
+              schema: { type: string, examples: ['private, no-cache'] }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenu' }
+        '304': { $ref: '#/components/responses/NotModified' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/menu/categories:
+    post:
+      tags: [menu]
+      operationId: createMenuCategory
+      summary: 'Create a category (manager); it goes last'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuCategoryCreate' }
+      responses:
+        '201':
+          description: 'Created'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuCategory' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/staff/menu/categories/order:
+    put:
+      tags: [menu]
+      operationId: reorderMenuCategories
+      summary: 'Set the category order; list every category once (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryOrder' }
+      responses:
+        '204':
+          description: 'Reordered'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/staff/menu/categories/{categoryId}:
+    parameters:
+      - $ref: '#/components/parameters/CategoryId'
+    patch:
+      tags: [menu]
+      operationId: updateMenuCategory
+      summary: 'Edit a category (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuCategoryUpdate' }
+      responses:
+        '200':
+          description: 'Updated'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuCategory' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+    delete:
+      tags: [menu]
+      operationId: deleteMenuCategory
+      summary: 'Delete an empty category (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: 'Deleted'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/menu/categories/{categoryId}/items/order:
+    parameters:
+      - $ref: '#/components/parameters/CategoryId'
+    put:
+      tags: [menu]
+      operationId: reorderMenuItems
+      summary: 'Set the order of a category''s items; list every item once (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ItemOrder' }
+      responses:
+        '204':
+          description: 'Reordered'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/menu/items:
+    post:
+      tags: [menu]
+      operationId: createMenuItem
+      summary: 'Create an item (manager); it goes last in its category'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuItemCreate' }
+      responses:
+        '201':
+          description: 'Created'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/staff/menu/items/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/ItemId'
+    get:
+      tags: [menu]
+      operationId: getMenuItem
+      summary: 'Read an item (all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'The item'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuItem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [menu]
+      operationId: updateMenuItem
+      summary: 'Edit an item; option_groups, when sent, replaces the whole set (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuItemUpdate' }
+      responses:
+        '200':
+          description: 'Updated'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+    delete:
+      tags: [menu]
+      operationId: deleteMenuItem
+      summary: 'Delete an item; past orders keep their snapshot (manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: 'Deleted'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/menu/items/{itemId}/sold-out:
+    parameters:
+      - $ref: '#/components/parameters/ItemId'
+    put:
+      tags: [menu]
+      operationId: setMenuItemSoldOut
+      summary: 'Mark sold out or available again; idempotent, no If-Match (kitchen, manager)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SoldOutRequest' }
+      responses:
+        '200':
+          description: 'Current state'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SoldOutState' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/staff/menu/items/{itemId}/image:
+    parameters:
+      - $ref: '#/components/parameters/ItemId'
+    put:
+      tags: [menu]
+      operationId: putMenuItemImage
+      summary: 'Upload or replace the item photo (manager; FR-022, Should)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      requestBody:
+        required: true
+        description: 'Raw image bytes, at most 4 MB; the type is checked by content'
+        content:
+          image/jpeg:
+            schema: { type: string, format: binary }
+          image/png:
+            schema: { type: string, format: binary }
+          image/webp:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: 'Stored; the item now has image URLs'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    delete:
+      tags: [menu]
+      operationId: deleteMenuItemImage
+      summary: 'Remove the item photo (manager; FR-022, Should)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '204':
+          description: 'Removed'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/restaurants/{restaurantId}/menu:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+    get:
+      tags: [menu]
+      operationId: getRestaurantMenu
+      summary: 'Read any restaurant''s menu (admin, read only)'
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: 'The menu'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenu' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     staffBearer:
@@ -1179,6 +1564,29 @@ components:
       description: 'A restaurant ID, or `platform` for the platform chain'
       schema: { type: string, maxLength: 36 }
 
+    CategoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MenuLang:
+      name: lang
+      in: query
+      required: false
+      description: 'Default: the restaurant''s first language. A language it doesn''t offer → vi'
+      schema: { $ref: '#/components/schemas/Language' }
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: The ETag of the copy the client holds; 304 if unchanged
+      schema: { type: string }
+
   headers:
     XRequestID:
       description: Request ID generated by the service; quote it to support
@@ -1278,6 +1686,26 @@ components:
       description: '`service_unavailable` or `service_busy`'
       headers:
         Retry-After: { $ref: '#/components/headers/RetryAfter' }
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    NotModified:
+      description: The client's copy is current (no body)
+      headers:
+        ETag: { $ref: '#/components/headers/ETag' }
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+    PayloadTooLarge:
+      description: '`payload_too_large`'
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    UnsupportedMediaType:
+      description: '`unsupported_media_type`'
+      headers:
         X-Request-ID: { $ref: '#/components/headers/XRequestID' }
       content:
         application/problem+json:
@@ -1691,6 +2119,184 @@ components:
         anonymised_at: { type: string, format: date-time }
         last_manager_removed: { type: boolean, description: 'True when the restaurant now has no active manager' }
 
+    MenuImage:
+      type: object
+      required: [url, thumb_url]
+      description: Public, immutable objects on the storage domain
+      properties:
+        url: { type: string, description: 800 px }
+        thumb_url: { type: string, description: 320 px }
+    GuestOption:
+      type: object
+      required: [id, name, price_delta]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        price_delta: { $ref: '#/components/schemas/Money' }
+    GuestOptionGroup:
+      type: object
+      required: [id, name, min_choices, max_choices, options]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        min_choices: { type: integer, minimum: 0, description: 0 = optional }
+        max_choices: { type: integer, minimum: 1, description: 1 = single choice }
+        options: { type: array, items: { $ref: '#/components/schemas/GuestOption' } }
+    GuestMenuItem:
+      type: object
+      required: [id, name, price, sold_out, option_groups]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, description: In the requested language; falls back to vi per field }
+        description: { type: string }
+        price: { $ref: '#/components/schemas/Money' }
+        sold_out: { type: boolean }
+        image: { $ref: '#/components/schemas/MenuImage' }
+        option_groups: { type: array, items: { $ref: '#/components/schemas/GuestOptionGroup' } }
+    GuestMenuCategory:
+      type: object
+      required: [id, name, items]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        items: { type: array, items: { $ref: '#/components/schemas/GuestMenuItem' } }
+    GuestMenu:
+      type: object
+      required: [version, lang, categories]
+      properties:
+        version: { type: integer, description: The menu version; also in the ETag }
+        lang: { $ref: '#/components/schemas/Language' }
+        categories: { type: array, items: { $ref: '#/components/schemas/GuestMenuCategory' } }
+    StaffOption:
+      type: object
+      required: [id, name_vi, price_delta, active]
+      properties:
+        id: { type: string, format: uuid }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, minLength: 1, maxLength: 100 }
+        price_delta: { $ref: '#/components/schemas/Money' }
+        active: { type: boolean }
+    StaffOptionGroup:
+      type: object
+      required: [id, name_vi, min_choices, max_choices, options]
+      properties:
+        id: { type: string, format: uuid }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, minLength: 1, maxLength: 100 }
+        min_choices: { type: integer, minimum: 0 }
+        max_choices: { type: integer, minimum: 1 }
+        options: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/StaffOption' } }
+    StaffMenuItem:
+      type: object
+      required: [id, category_id, name_vi, price, active, sold_out, option_groups, version]
+      properties:
+        id: { type: string, format: uuid }
+        category_id: { type: string, format: uuid }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, minLength: 1, maxLength: 100 }
+        description_vi: { type: string, maxLength: 500 }
+        description_en: { type: string, maxLength: 500 }
+        price: { $ref: '#/components/schemas/Money' }
+        active: { type: boolean }
+        sold_out: { type: boolean }
+        image: { $ref: '#/components/schemas/MenuImage' }
+        option_groups: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/StaffOptionGroup' } }
+        version: { type: integer, description: For If-Match; the sold-out toggle doesn't change it }
+    StaffMenuCategory:
+      type: object
+      required: [id, name_vi, active, version]
+      properties:
+        id: { type: string, format: uuid }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, minLength: 1, maxLength: 100 }
+        active: { type: boolean }
+        version: { type: integer }
+        items: { type: array, items: { $ref: '#/components/schemas/StaffMenuItem' } }
+    StaffMenu:
+      type: object
+      required: [version, categories]
+      properties:
+        version: { type: integer }
+        categories: { type: array, items: { $ref: '#/components/schemas/StaffMenuCategory' } }
+    MenuCategoryCreate:
+      type: object
+      required: [name_vi]
+      properties:
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, maxLength: 100, description: Empty string removes it }
+        active: { type: boolean, default: true }
+    MenuCategoryUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, maxLength: 100 }
+        active: { type: boolean }
+    CategoryOrder:
+      type: object
+      required: [category_ids]
+      properties:
+        category_ids: { type: array, maxItems: 50, uniqueItems: true, items: { type: string, format: uuid } }
+    ItemOrder:
+      type: object
+      required: [item_ids]
+      properties:
+        item_ids: { type: array, maxItems: 1000, uniqueItems: true, items: { type: string, format: uuid } }
+    OptionInput:
+      type: object
+      required: [name_vi]
+      properties:
+        id: { type: string, format: uuid, description: Keep and update this option; omit to create one }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, maxLength: 100 }
+        price_delta: { $ref: '#/components/schemas/Money' }
+        active: { type: boolean, default: true }
+    OptionGroupInput:
+      type: object
+      required: [name_vi, min_choices, max_choices, options]
+      properties:
+        id: { type: string, format: uuid, description: Keep and update this group; omit to create one }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, maxLength: 100 }
+        min_choices: { type: integer, minimum: 0 }
+        max_choices: { type: integer, minimum: 1 }
+        options: { type: array, minItems: 1, maxItems: 20, items: { $ref: '#/components/schemas/OptionInput' } }
+    MenuItemCreate:
+      type: object
+      required: [category_id, name_vi, price]
+      properties:
+        category_id: { type: string, format: uuid }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, maxLength: 100 }
+        description_vi: { type: string, maxLength: 500 }
+        description_en: { type: string, maxLength: 500 }
+        price: { $ref: '#/components/schemas/Money' }
+        active: { type: boolean, default: true }
+        option_groups: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/OptionGroupInput' } }
+    MenuItemUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        category_id: { type: string, format: uuid }
+        name_vi: { type: string, minLength: 1, maxLength: 100 }
+        name_en: { type: string, maxLength: 100 }
+        description_vi: { type: string, maxLength: 500 }
+        description_en: { type: string, maxLength: 500 }
+        price: { $ref: '#/components/schemas/Money' }
+        active: { type: boolean }
+        option_groups: { type: array, maxItems: 10, description: Replaces the whole set, items: { $ref: '#/components/schemas/OptionGroupInput' } }
+    SoldOutRequest:
+      type: object
+      required: [sold_out]
+      properties:
+        sold_out: { type: boolean }
+    SoldOutState:
+      type: object
+      required: [item_id, sold_out]
+      properties:
+        item_id: { type: string, format: uuid }
+        sold_out: { type: boolean }
+
 # Error-code catalogue (architecture §5). Feature designs add their codes here.
 x-error-catalogue:
   - { code: malformed_request, status: 400, meaning: Body isn't valid JSON, or a field has the wrong type }
@@ -1720,3 +2326,8 @@ x-error-catalogue:
   - { code: self_action_not_allowed, status: 409, meaning: An admin deactivating or resetting themselves }
   - { code: member_state_conflict, status: 409, meaning: 'Invitation re-issue for a non-invited member, or a reset for a non-active one' }
   - { code: member_limit_reached, status: 409, meaning: The restaurant has 100 invited and active accounts }
+  - { code: image_invalid, status: 400, meaning: 'Image not decodable, or over 40 megapixels' }
+  - { code: duplicate_name, status: 409, meaning: A category or item name already used in the same scope }
+  - { code: category_not_empty, status: 409, meaning: Deleting a category that still has items }
+  - { code: menu_limit_reached, status: 409, meaning: A menu size limit would be passed }
+  - { code: image_storage_unavailable, status: 503, meaning: Image storage unreachable or timed out }

@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.4 Draft: the five §16 questions decided by the owner on 2026-10-15; 0.3–0.4 add the changes from [restaurants](restaurants.md) §14 (one-time secrets, suspension check, sign-in when suspended, staff token on admin routes → 404). The whole design is approved at G3 |
+| Version | 0.5 Draft (0.5: menu reads and the image route as exceptions in §2, CR-004): the five §16 questions decided by the owner on 2026-10-15; 0.3–0.4 add the changes from [restaurants](restaurants.md) §14 (one-time secrets, suspension check, sign-in when suspended, staff token on admin routes → 404). The whole design is approved at G3 |
 | Date | 2026-10-15 |
 | Package | `core` (shared kernel and staff/admin sign-in), per architecture §4 |
 | Requirements | FR-010, FR-042 (the shared parts), NFR-REL-02 (idempotency), NFR-SEC-01 to 04, NFR-PRIV-01 (logs, staff data), NFR-COMPAT-01, NFR-OBS-01 (request ID) |
-| Builds on | architecture.md v1.0 §5, §7, §10, §11, §12; ADR-0005, 0006, 0007, 0008, 0011; S-2 and S-4 results |
+| Builds on | architecture.md v1.1 §5, §7, §10, §11, §12; ADR-0005, 0006, 0007, 0008, 0011; S-2 and S-4 results |
 | Contract | `docs/api/openapi.yaml`: shared components, error catalogue and `/v1/auth/*` |
 | Owner decisions | §16, all five recommendations accepted 2026-10-15 |
 
@@ -44,7 +44,7 @@ Staff paths carry no restaurant ID: the restaurant always comes from the caller 
 - IDs are UUID v7 strings.
 - Times are RFC 3339 in UTC with `Z` and millisecond precision, e.g. `2026-10-15T09:30:00.123Z`.
 - Money is `{"amount": "125000", "currency": "VND"}`: the amount is a string of whole đồng, so no client rounds it through a float.
-- Requests are `Content-Type: application/json`, at most 64 KB (larger → `413 payload_too_large`).
+- Requests are `Content-Type: application/json`, at most 64 KB (larger → `413 payload_too_large`). The one exception is the menu image upload: a raw image body of up to 4 MB (menu §6, CR-004).
 
 **Lists.** Cursor pagination: `?limit=` (default 50, at most 200) and `?cursor=`. The response is `{"items": [...], "next_cursor": "..."}`, and `next_cursor` is absent on the last page. The cursor is opaque base64url (the sort key of the last item); a bad cursor → `400 validation_failed`.
 
@@ -57,7 +57,7 @@ Staff paths carry no restaurant ID: the restaurant always comes from the caller 
 | `Idempotency-Key` | Request | §4 |
 | `ETag`, `If-Match` | Both | §5 |
 | `Retry-After` | Response | On every 429 and 503, in seconds |
-| `Cache-Control: no-store` | Response | On every `/v1/guest`, `/v1/staff`, `/v1/admin` and `/v1/auth` response |
+| `Cache-Control: no-store` | Response | On every `/v1/guest`, `/v1/staff`, `/v1/admin` and `/v1/auth` response, except the guest and staff menu reads, which send `private, no-cache` with an `ETag` (menu §2, CR-004) |
 
 **CORS.** An allow-list of the web apps' origins, from config. Allowed request headers: `Authorization`, `Content-Type`, `Idempotency-Key`, `If-Match`, `X-Client`. Exposed response headers: `ETag`, `Location`, `Retry-After`, `X-Request-ID`, `Idempotent-Replayed`. Credentials are never allowed cross-origin: the staff and admin web apps call the API through a same-origin rewrite (§8.3), so CORS only serves the customer web app, which sends a bearer token and no cookies.
 

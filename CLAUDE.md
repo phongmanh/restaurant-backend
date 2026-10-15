@@ -10,11 +10,11 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 ## Document map (`docs/sdlc/restaurant-ordering/`)
 | File | Holds |
 |---|---|
-| requirements.md | v1.1 (baselined at G1, changed by CR-002). Changing it needs a CR |
-| architecture.md | v1.0, approved at G2 (2026-10-15) with the TBD-10 condition; changing it needs a CR |
+| requirements.md | v1.3 (baselined at G1, changed by CR-002, CR-003 and CR-004). Changing it needs a CR |
+| architecture.md | v1.1: approved at G2 (2026-10-15) with the TBD-10 condition, then changed by CR-004. Changing it needs a CR |
 | adr/0001–0009, 0011 | Decisions; ADR-0002 (Vercel) is Accepted with conditions (paid-plan cold-start check before G5); 0003 (live updates through Ably) is Accepted after S-3; 0004 (Neon PostgreSQL) and 0008 (rate limiting: WAF + Upstash) are Accepted; 0010 is reserved by CR-001; 0011 (built-in staff sign-in) is Accepted too |
-| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts) is Approved |
-| design/ | Phase 3 feature designs: core-and-auth (Draft 0.4), restaurants (Draft 0.2); menu, tables, orders, realtime and reports come next |
+| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003 and CR-004 (menu read and image limits) are Approved |
+| design/ | Phase 3 feature designs: core-and-auth (Draft 0.5), restaurants (Draft 0.2), menu (Draft 0.2); tables, orders, realtime and reports come next |
 | `docs/api/openapi.yaml` (repo root) | The API contract, built up feature by feature and frozen at G3 |
 | rtm.md, test-plan.md | Traceability and test plan |
 | cost-estimate.md | Monthly cost (TBD-11), v0.2 for the owner's review; S-3 confirmed the Ably line |
@@ -52,6 +52,8 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 - The first deploy of a Vercel project goes to production, and its production alias is public. Remove it (`vercel alias rm`) for spikes.
 - Spike projects keep their environment variables on Production only, so a preview deploy starts without them and crashes. Redeploy spikes with `vercel deploy --prod`, then remove the alias.
 - The client network drops idle TCP connections after ~40 s. Long-held requests need TCP keepalive at 10 s or less (see `spikes/s1-vercel/scripts/measure.mjs`).
+- Vercel's CDN never caches a request that carries an `Authorization` header (or a response with `set-cookie`, `private`, `no-cache` or `no-store`). Don't plan edge caching for anything a token protects (CR-004, from Vercel docs read 2026-10-15).
+- A Vercel Function's request or response body is at most 4.5 MB; larger gets Vercel's own `413 FUNCTION_PAYLOAD_TOO_LARGE` (CR-004).
 - The auto-mode classifier blocks production deploys, reading secrets from APIs, and writing secrets to a secret store (`vercel env add`, even piped from `.env.spike`). Ask the owner to do those steps.
 
 ## Saving context (automated in `.claude/settings.json`)
