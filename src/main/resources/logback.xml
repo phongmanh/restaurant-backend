@@ -9,4 +9,8 @@
         <appender-ref ref="STDOUT"/>
     </root>
     <logger name="io.netty" level="WARN"/>
+    <!-- Exposed logs a failed statement at WARN with its parameter values ("Transaction attempt
+         #N failed … Statement(s): …"), which can hold personal data. The transactor reports
+         failures itself. -->
+    <logger name="Exposed" level="ERROR"/>
 </configuration>

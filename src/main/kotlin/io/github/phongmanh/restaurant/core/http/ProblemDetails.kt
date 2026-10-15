@@ -4,6 +4,7 @@ import io.github.phongmanh.restaurant.core.domain.DomainError
 import io.github.phongmanh.restaurant.core.domain.ErrorCode
 import io.github.phongmanh.restaurant.core.domain.FieldError
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
@@ -14,6 +15,7 @@ import io.ktor.server.plugins.PayloadTooLargeException
 import io.ktor.server.plugins.UnsupportedMediaTypeException
 import io.ktor.server.plugins.callid.callId
 import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.response.header
 import io.ktor.server.response.respondText
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -46,7 +48,9 @@ suspend fun ApplicationCall.respondProblem(
     code: ErrorCode,
     detail: String? = null,
     errors: List<FieldError> = emptyList(),
+    retryAfterSeconds: Long? = null,
 ) {
+    retryAfterSeconds?.let { response.header(HttpHeaders.RetryAfter, it.toString()) }
     val problem =
         Problem(
             type = "/problems/${code.value}",
@@ -68,7 +72,7 @@ suspend fun ApplicationCall.respondProblem(
 fun Application.installProblemDetails() {
     install(StatusPages) {
         exception<DomainError> { call, error ->
-            call.respondProblem(error.code, error.detail, error.errors)
+            call.respondProblem(error.code, error.detail, error.errors, error.retryAfterSeconds)
         }
         // Ktor's own request failures. Their messages can echo the input, so none reaches the client.
         exception<BadRequestException> { call, _ -> call.respondProblem(ErrorCode.MALFORMED_REQUEST) }
