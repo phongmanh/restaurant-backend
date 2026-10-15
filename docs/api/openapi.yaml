@@ -1,13 +1,13 @@
 openapi: 3.1.0
 info:
   title: Restaurant ordering API
-  version: 0.5.0-draft
+  version: 0.6.0-draft
   description: |
     Contract for the restaurant ordering service (`docs/sdlc/restaurant-ordering/`).
     Hand-written in Phase 3 and frozen at G3 (architecture §5, ADR-0007).
     Built up one feature design at a time; this draft holds the shared parts and
     `/v1/auth/*` from `design/core-and-auth.md`, and the routes of
-    `design/restaurants.md`, `design/menu.md`, `design/tables.md` and `design/orders.md`. `x-allowed-when-suspended` on staff and guest
+    `design/restaurants.md`, `design/menu.md`, `design/tables.md`, `design/orders.md` and `design/realtime.md`. `x-allowed-when-suspended` on staff and guest
     operations mirrors the endpoint registry (restaurants §6).
 
     Conventions (core-and-auth §2): snake_case fields; UUID v7 IDs; RFC 3339 UTC times;
@@ -36,6 +36,8 @@ tags:
     description: Tables, QR codes, table sessions and waiter calls
   - name: orders
     description: Orders, their status steps, bills, closing a session with its payment, and bill corrections
+  - name: realtime
+    description: Catch-up from the event log and Ably subscription tokens
 
 paths:
   /v1/auth/sign-in:
@@ -2253,6 +2255,99 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /v1/guest/events:
+    get:
+      tags: [realtime]
+      operationId: guestCatchUp
+      summary: 'The session''s events after a cursor, with the current state of the orders and calls they name'
+      description: |
+        Without `after`: no events, and `cursor` is the starting point. With `reset: true` the
+        cursor is too old or ahead; reload the screen and continue from `cursor` (design/realtime.md §6–7).
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: true
+      parameters:
+        - $ref: '#/components/parameters/EventsAfter'
+        - $ref: '#/components/parameters/EventsLimit'
+      responses:
+        '200':
+          description: 'Events and snapshots'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestEventsPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/guest/realtime-token:
+    post:
+      tags: [realtime]
+      operationId: guestRealtimeToken
+      summary: 'An Ably token request that may only subscribe to the session''s channel (30 min)'
+      security:
+        - guestBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'Pass it to the Ably SDK from its authCallback'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RealtimeTokenRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/events:
+    get:
+      tags: [realtime]
+      operationId: staffCatchUp
+      summary: 'The restaurant''s events after a cursor, with the current state of the orders and calls they name (all roles)'
+      description: |
+        Same rules as the guest catch-up. Events about sessions, bills and the menu carry no
+        snapshot; the staff app re-reads the floor view, the bill or the menu (design/realtime.md §6.2).
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/EventsAfter'
+        - $ref: '#/components/parameters/EventsLimit'
+      responses:
+        '200':
+          description: 'Events and snapshots'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffEventsPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/staff/realtime-token:
+    post:
+      tags: [realtime]
+      operationId: staffRealtimeToken
+      summary: 'An Ably token request that may only subscribe to the restaurant''s staff channel (60 min; all roles)'
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      responses:
+        '200':
+          description: 'Pass it to the Ably SDK from its authCallback'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RealtimeTokenRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
 components:
   securitySchemes:
     staffBearer:
@@ -2447,6 +2542,18 @@ components:
       required: true
       description: 'Local day in the restaurant''s time zone on which the bills were closed'
       schema: { type: string, format: date }
+
+    EventsAfter:
+      name: after
+      in: query
+      required: false
+      description: 'The `cursor` from the last answer or notification; absent = just return the current cursor'
+      schema: { type: integer, format: int64, minimum: 0 }
+    EventsLimit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
 
   headers:
     XRequestID:
@@ -3502,6 +3609,48 @@ components:
         payment_method: { $ref: '#/components/schemas/PaymentMethod' }
         reason_code: { type: string, enum: [wrong_item_billed, wrong_payment_method, goodwill, other] }
         note: { type: string, maxLength: 200 }
+    DomainEvent:
+      type: object
+      required: [seq, type, aggregate, occurred_at]
+      properties:
+        seq: { type: integer, format: int64, description: 'Per restaurant, gap-free in commit order' }
+        type:
+          type: string
+          description: 'Clients ignore types they do not know but still move their cursor (design/realtime.md §5)'
+          examples: [OrderPlaced, OrderStatusChanged, OrderLineRejected, TableSessionMoved, TableSessionClosed, WaiterCallAcknowledged]
+        aggregate:
+          type: object
+          required: [type, id]
+          properties:
+            type: { type: string, examples: [order, bill, table_session, waiter_call, menu] }
+            id: { type: string, format: uuid }
+            version: { type: integer }
+        session_id: { type: string, format: uuid }
+        occurred_at: { type: string, format: date-time }
+    GuestEventsPage:
+      type: object
+      required: [events, orders, waiter_calls, cursor, has_more]
+      properties:
+        events: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/DomainEvent' } }
+        orders: { type: array, description: 'Current state of each order the events name', items: { $ref: '#/components/schemas/Order' } }
+        waiter_calls: { type: array, items: { $ref: '#/components/schemas/WaiterCall' } }
+        cursor: { type: integer, format: int64, description: 'Send back as `after`' }
+        has_more: { type: boolean }
+        reset: { type: boolean, description: 'The cursor was too old or ahead; reload the screen and continue from `cursor`' }
+    StaffEventsPage:
+      allOf:
+        - $ref: '#/components/schemas/GuestEventsPage'
+    RealtimeTokenRequest:
+      type: object
+      description: 'An Ably TokenRequest, signed by the server; the client SDK exchanges it with Ably. Capability: subscribe on one channel. Fields keep Ably''s camelCase names, the one exception to snake_case'
+      required: [keyName, ttl, capability, timestamp, nonce, mac]
+      properties:
+        keyName: { type: string }
+        ttl: { type: integer, description: Milliseconds }
+        capability: { type: string, description: 'JSON, e.g. {"session.<id>":["subscribe"]}' }
+        timestamp: { type: integer, format: int64 }
+        nonce: { type: string }
+        mac: { type: string }
 
 # Error-code catalogue (architecture §5). Feature designs add their codes here.
 x-error-catalogue:

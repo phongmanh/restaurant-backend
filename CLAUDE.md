@@ -14,7 +14,7 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 | architecture.md | v1.3: approved at G2 (2026-10-15) with the TBD-10 condition, then changed by CR-004 to CR-006. Changing it needs a CR |
 | adr/0001–0009, 0011 | Decisions; ADR-0002 (Vercel) is Accepted with conditions (paid-plan cold-start check before G5); 0003 (live updates through Ably) is Accepted after S-3; 0004 (Neon PostgreSQL) and 0008 (rate limiting: WAF + Upstash) are Accepted; 0010 is reserved by CR-001; 0011 (built-in staff sign-in) is Accepted too |
 | cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003, CR-004 (menu read and image limits) CR-005 (natural idempotency, no guest device data) and CR-006 (orders decisions: closed-bill corrections, no FR-016 in release 1) are Approved |
-| design/ | Phase 3 feature designs: core-and-auth (Draft 0.6), restaurants (Draft 0.2), menu (Draft 0.2), tables (Draft 0.3), orders (Draft 0.2); realtime and reports come next |
+| design/ | Phase 3 feature designs: core-and-auth (Draft 0.6), restaurants (Draft 0.2), menu (Draft 0.2), tables (Draft 0.3), orders (Draft 0.2), realtime (Draft 0.2); reports comes next |
 | `docs/api/openapi.yaml` (repo root) | The API contract, built up feature by feature and frozen at G3 |
 | rtm.md, test-plan.md | Traceability and test plan |
 | cost-estimate.md | Monthly cost (TBD-11), v0.2 for the owner's review; S-3 confirmed the Ably line |
@@ -57,6 +57,7 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 - The client network drops idle TCP connections after ~40 s. Long-held requests need TCP keepalive at 10 s or less (see `spikes/s1-vercel/scripts/measure.mjs`).
 - Vercel's CDN never caches a request that carries an `Authorization` header (or a response with `set-cookie`, `private`, `no-cache` or `no-store`). Don't plan edge caching for anything a token protects (CR-004, from Vercel docs read 2026-10-15).
 - A Vercel Function's request or response body is at most 4.5 MB; larger gets Vercel's own `413 FUNCTION_PAYLOAD_TOO_LARGE` (CR-004).
+- Vercel Hobby runs a cron job at most **once a day** (±59 min); a more frequent schedule fails the deployment. Set schedules per environment; on Hobby, jobs that should run every minute or hour run daily (Vercel docs read 2026-10-15; realtime §10).
 - The auto-mode classifier blocks production deploys, reading secrets from APIs, and writing secrets to a secret store (`vercel env add`, even piped from `.env.spike`). Ask the owner to do those steps.
 
 ## Saving context (automated in `.claude/settings.json`)

@@ -8,12 +8,12 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | FR-002 | Browse the menu | M | architecture.md §1, §9; design/menu.md | `menu_categories`, `menu_items`; `menu_state`; `GET /v1/guest/menu` (ETag per menu version) | | AT-002 | | |
 | FR-003 | Place an order (idempotent, server-priced) | M | architecture.md §1, §10; design/orders.md | `orders`, `order_lines`, `bills`, `idempotency_keys`; `POST /v1/guest/orders`; `OrderPlaced` | | AT-003 | | |
 | FR-004 | Order more rounds in the same session | M | architecture.md §4; design/orders.md | `orders`, `bills` | | AT-004 | | |
-| FR-005 | Live order status for guests | M | ADR-0003; design/orders.md (reads, events) | `domain_events`, `outbox`; `GET /v1/guest/orders`, `/v1/guest/orders/{id}` | | AT-005 | | |
+| FR-005 | Live order status for guests | M | ADR-0003; design/orders.md (reads, events); design/realtime.md | `domain_events`, `outbox`; `GET /v1/guest/orders`, `/v1/guest/orders/{id}`, `GET /v1/guest/events`, `POST /v1/guest/realtime-token` | | AT-005 | | |
 | FR-006 | Guest cancels a `placed` order | M | architecture.md §10; design/orders.md | `orders`; `POST /v1/guest/orders/{id}/cancel`; `OrderStatusChanged` | | AT-006 | | |
 | FR-007 | Running bill with price snapshot (VAT-inclusive prices) | M | architecture.md §5; design/orders.md | `order_lines`, `bills`; `GET /v1/guest/bill` | | AT-007 | | |
 | FR-008 | Call waiter / request bill | S | ADR-0003; design/tables.md | `waiter_calls`; `/v1/guest/waiter-calls`, `/v1/staff/waiter-calls/*` | | | | |
 | FR-010 | Staff sign-in and roles | M | architecture.md §7, ADR-0011; design/core-and-auth.md | `staff_accounts`, `staff_sessions`, `staff_refresh_tokens`, `staff_mfa_challenges`, `staff_link_tokens`; `/v1/auth/*` | | AT-010 | | |
-| FR-011 | Live order feed for staff | M | ADR-0003; design/orders.md (list fallback, events) | `domain_events`, `outbox`; `GET /v1/staff/orders` | | AT-011 | | |
+| FR-011 | Live order feed for staff | M | ADR-0003; design/orders.md (list fallback, events); design/realtime.md | `domain_events`, `outbox`; `GET /v1/staff/orders`, `GET /v1/staff/events`, `POST /v1/staff/realtime-token` | | AT-011 | | |
 | FR-012 | Order state machine with optimistic concurrency | M | architecture.md §7, §10; design/orders.md | `orders`; `POST /v1/staff/orders/{id}/status`; `OrderStatusChanged` | | AT-012 | | |
 | FR-013 | Close session, record payment at the counter | M | architecture.md §7; ADR-0006; design/orders.md | `table_sessions`, `bills`, `bill_adjustments`; `/v1/staff/table-sessions/{id}/close`, `.../bill`, `.../bill/adjustments`; `BillClosed`, `TableSessionClosed` | | AT-013 | | |
 | FR-014 | Waiter orders on a guest's behalf | S | architecture.md §7; design/orders.md | `orders`; `POST /v1/staff/table-sessions/{id}/orders` | | | | |
@@ -36,7 +36,7 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | FR-051 | CSV export of sales lines | C | architecture.md §4 | `order_lines` | | | | |
 | NFR-PERF-01 | Guest reads p95 ≤ 200 ms, p99 ≤ 500 ms at peak | M | architecture.md §1, §9; design/menu.md | | | | | |
 | NFR-PERF-02 | Writes p95 ≤ 300 ms, p99 ≤ 800 ms at peak | M | architecture.md §9; ADR-0004 | | | | | |
-| NFR-PERF-03 | Live-update delay ≤ 2 s p95 | M | ADR-0003 | `domain_events`, `outbox` | | | | |
+| NFR-PERF-03 | Live-update delay ≤ 2 s p95 | M | ADR-0003; design/realtime.md | `domain_events`, `outbox`, `event_counters` | | | | |
 | NFR-PERF-04 | 31-day report ≤ 3 s p95 | M | architecture.md §1, §9 (Reports), §17 S-5 (met: p95 10.4 ms) | `daily_sales`, `daily_sales_payment`, `daily_sales_table`, `daily_sales_item` | | | | |
 | NFR-SCAL-01 | 300 req/s + 17,500 live clients; 3× in 12 months | M | architecture.md §9; ADR-0002 | | | | | |
 | NFR-SCAL-02 | Fairness between restaurants | M | ADR-0008 | | | | | |
@@ -44,7 +44,7 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | NFR-AVAIL-02 | Order flow SLO 99.9% | M | architecture.md §13 | | | | | |
 | NFR-REL-01 | RPO ≤ 5 min, RTO ≤ 1 h | M | architecture.md §6, §13 | | | | | |
 | NFR-REL-02 | No duplicates on retry, no lost orders | M | architecture.md §10; design/core-and-auth.md | `idempotency_keys`, `outbox` | | | | |
-| NFR-REL-03 | Live updates catch up with no gaps | M | ADR-0003 | `domain_events` | | | | |
+| NFR-REL-03 | Live updates catch up with no gaps | M | ADR-0003; design/realtime.md | `domain_events`; `GET /v1/guest/events`, `GET /v1/staff/events` | | | | |
 | NFR-SEC-01 | ASVS L2 + API Top 10 | M | architecture.md §12; design/core-and-auth.md | | | | | |
 | NFR-SEC-02 | Tenant and table isolation tests | M | ADR-0005, ADR-0006; design/core-and-auth.md; design/restaurants.md; design/tables.md | | | AT-042 | | |
 | NFR-SEC-03 | Audit trail of staff actions | M | architecture.md §11; design/core-and-auth.md; design/restaurants.md | `audit_events` | | AT-041 | | |
