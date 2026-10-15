@@ -2,7 +2,7 @@
 
 | Version | Status | Owner | Approvers |
 |---|---|---|---|
-| 1.4 | Approved (G1 2026-10-13; CR-002 2026-10-14; CR-003 2026-10-14; CR-004 and CR-005 2026-10-15) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
+| 1.5 | Approved (G1 2026-10-13; CR-002 2026-10-14; CR-003 2026-10-14; CR-004, CR-005 and CR-006 2026-10-15) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
 
 **Version history**
 
@@ -13,6 +13,7 @@
 | 1.2 | 2026-10-14 | [CR-003](cr/CR-003-record-resolved-items.md): the owner's resolved decisions written in, and the decree citation corrected. Changed: §2 customer mobile app and staff app, FR-050 (a bill counts on the day it was closed), NFR-COMPAT-01, §7 (Decree 356/2025), §9 (TBD-2 and TBD-3 resolved, ASSUMPTION-11 added) |
 | 1.3 | 2026-10-15 | [CR-004](cr/CR-004-menu-read-and-image-limits.md): FR-022 images ≤ 4 MB (Vercel caps a function body at 4.5 MB), shrunk by the staff app before upload; FR-022 is a Should (TBD-5 resolved). Changed: FR-022, §9 |
 | 1.4 | 2026-10-15 | [CR-005](cr/CR-005-natural-idempotency-and-session-data.md): no guest device data is stored with table sessions. Changed: §5 table-session row |
+| 1.5 | 2026-10-15 | [CR-006](cr/CR-006-record-orders-decisions.md): the owner's orders decisions written in. A closed bill is corrected by a manager's correcting entries, counted on the day they're made (TBD-7 resolved); FR-016 isn't built in release 1 (TBD-8 resolved). Changed: FR-013, FR-016 (C → W), FR-050, §3.7, §9 |
 
 ## 1. Brief
 - **Problem:** In a busy restaurant, guests wait for a waiter to take their order and to bring the bill. Orders taken by hand get lost or misread on the way to the kitchen. Restaurant owners have no simple, shared view of what was ordered and sold. Small and mid-sized restaurants can't run their own ordering system, so they need one they can rent.
@@ -81,10 +82,10 @@ Priorities are MoSCoW (M Must, S Should, C Could, W Won't this release). "Anothe
 | FR-010 | As a staff member, I want to sign in with my own account and get only my role's permissions, so that the restaurant controls who does what | M | Given an active staff account with a role (manager, waiter or kitchen) in one restaurant, when they sign in with their email and password, then their calls are authorised by role and restricted to their restaurant.<br>Wrong password or unknown email → the same 401, with no hint which one was wrong.<br>Unauthenticated, expired, forged or wrong-audience token → 401.<br>A role calling an operation it lacks (e.g. kitchen editing the menu) → 403.<br>A deactivated staff account is refused on its next call, at the latest when its access token expires (≤ 15 min, ASSUMPTION-5). |
 | FR-011 | As kitchen or waiter staff, I want a live feed of my restaurant's orders, so that I can start preparing at once | M | Given a signed-in waiter, kitchen or manager, when a guest places, cancels or changes an order, then it appears in the feed within NFR-PERF-03, with the table number, items, quantities, notes and time.<br>The feed contains only the caller's restaurant.<br>After a disconnect, the feed resumes without missing or duplicating any order (NFR-REL-03).<br>The current open orders can always be read as a list (fallback), filtered by status and paginated. |
 | FR-012 | As kitchen or waiter staff, I want to move an order through its stages, so that everyone sees its progress | M | Given an order, when staff with the right role change its status, then only these transitions are allowed: `placed → accepted → preparing → ready → served`, `placed → rejected` (reason required) and `placed → cancelled` (FR-006, FR-032).<br>Any other transition → 409.<br>Concurrent edit: two staff updating the same order version → exactly one succeeds; the other gets 412 and must re-read.<br>Every change records who made it and when (audit, NFR-SEC-03), and is pushed to the guests (FR-005) and staff (FR-011).<br>An order of another restaurant → 404. |
-| FR-013 | As a waiter or manager, I want to close the table's session when the guests have paid at the counter, so that the bill is final and the table is free | M | Given an open session, when staff close it and record the payment method (cash, card or bank transfer, recorded manually) and the amount received, then the bill is final, the session is closed, guest session tokens stop working and the next QR scan opens a new session.<br>Orders not yet `served` or `cancelled` → 409 unless staff confirm closing anyway (they are recorded as `cancelled` with a reason).<br>Closing twice (retry) → same result.<br>A closed bill can't be changed. Corrections are a manager action that is audited (TBD-7). |
+| FR-013 | As a waiter or manager, I want to close the table's session when the guests have paid at the counter, so that the bill is final and the table is free | M | Given an open session, when staff close it and record the payment method (cash, card or bank transfer, recorded manually) and the amount received, then the bill is final, the session is closed, guest session tokens stop working and the next QR scan opens a new session.<br>Orders not yet `served` or `cancelled` → 409 unless staff confirm closing anyway (they are recorded as `cancelled` with a reason).<br>Closing twice (retry) → same result.<br>A closed bill can't be changed. A manager corrects it with correcting entries (a signed amount, a payment method and a reason); a correction counts in reports on the local day it's made. Every correction is audited (TBD-7, resolved 2026-10-15). |
 | FR-014 | As a waiter, I want to place an order for a table on a guest's behalf, so that guests without a phone can still order | S | Same rules as FR-003. The order is marked as placed by staff, with the staff ID. |
 | FR-015 | As kitchen staff, I want to reject a single item of an accepted order (e.g. it just ran out), so that the guest is told and isn't billed for it | S | Given an accepted order, when kitchen staff reject one line with a reason, then that line leaves the bill and the guests see it within NFR-PERF-03. |
-| FR-016 | As a manager, I want waiters to confirm guest orders before the kitchen sees them, so that orders from someone who isn't at the table are stopped | C | Configurable per restaurant. When on, guest orders wait in `pending_confirmation` until a waiter confirms or rejects them. Decision: TBD-8 (depends on how R-02 is handled). |
+| FR-016 | As a manager, I want waiters to confirm guest orders before the kitchen sees them, so that orders from someone who isn't at the table are stopped | W | Not built in release 1 (TBD-8, resolved 2026-10-15). If built later: configurable per restaurant; when on, guest orders wait in `pending_confirmation` until a waiter confirms or rejects them. Clients accept order statuses they don't know, so it can be added within `/v1`. |
 
 ### 3.3 Menu
 | ID | Story | Priority | Acceptance criteria (Given / When / Then) |
@@ -114,11 +115,11 @@ Priorities are MoSCoW (M Must, S Should, C Could, W Won't this release). "Anothe
 ### 3.6 Reports
 | ID | Story | Priority | Acceptance criteria (Given / When / Then) |
 |---|---|---|---|
-| FR-050 | As a manager, I want daily sales reports, so that I know how the restaurant is doing | M | Given closed bills, when a manager asks for a date range (≤ 93 days), then they get, per day in the restaurant's time zone: number of sessions, orders, gross sales, sales per payment method, top items by quantity and revenue, and sales per table.<br>Only closed, non-cancelled lines are counted.<br>A bill counts on the restaurant's local day on which it was closed, even if the guests sat down the day before.<br>Range > 93 days or end before start → 400. Waiter or kitchen role → 403.<br>Reports finish within NFR-PERF-04. |
+| FR-050 | As a manager, I want daily sales reports, so that I know how the restaurant is doing | M | Given closed bills, when a manager asks for a date range (≤ 93 days), then they get, per day in the restaurant's time zone: number of sessions, orders, gross sales, sales per payment method, top items by quantity and revenue, and sales per table.<br>Only closed, non-cancelled lines are counted.<br>A bill counts on the restaurant's local day on which it was closed, even if the guests sat down the day before.<br>Corrections to closed bills count on the local day they were made.<br>Range > 93 days or end before start → 400. Waiter or kitchen role → 403.<br>Reports finish within NFR-PERF-04. |
 | FR-051 | As a manager, I want to export sales lines as CSV, so that I can give them to my accountant | C | A date range ≤ 93 days, produced asynchronously if large. |
 
 ### 3.7 Won't have in release 1
-Online payment and payment gateways · guest accounts, order history across visits, loyalty · reservations · delivery and take-away · inventory · kitchen printers · chains with several branches per tenant · invoices issued to the tax authority (e-invoice). Each needs its own requirements change (CR) later.
+Online payment and payment gateways · guest accounts, order history across visits, loyalty · reservations · delivery and take-away · inventory · kitchen printers · chains with several branches per tenant · invoices issued to the tax authority (e-invoice) · FR-016 waiter confirmation of guest orders (TBD-8). Each needs its own requirements change (CR) later.
 
 ## 4. Non-functional requirements
 The product owner confirmed these numbers at G1 (2026-10-13). "Peak" is the dinner peak load profile in the test plan (≈ 300 req/s and 15,000 concurrent guest devices).
@@ -197,8 +198,8 @@ One `AT-` scenario per Must FR, in [test-plan.md](test-plan.md) §5.
 - TBD-4: Retention periods (accounting records, audit log, staff data) and the erasure deadline. Legal review.
 - TBD-5: FR-022 menu images: Must or Should. Resolved 2026-10-15: Should (CR-004).
 - ~~TBD-6~~: Resolved at G1: menu prices include VAT; no separate VAT line.
-- TBD-7: How a manager corrects a closed bill (void and reissue, or an adjustment line).
-- TBD-8: FR-016 waiter confirmation: build in release 1 or not.
+- ~~TBD-7~~: Resolved by CR-006 (owner's decision 2026-10-15): a manager adds signed correcting entries to a closed bill, never edits it; each counts on the local day it's made.
+- ~~TBD-8~~: Resolved by CR-006 (owner's decision 2026-10-15): FR-016 is not built in release 1.
 - TBD-9: Team, budget and target launch date.
 - TBD-10: Data residency and legal basis per data type (legal review).
 

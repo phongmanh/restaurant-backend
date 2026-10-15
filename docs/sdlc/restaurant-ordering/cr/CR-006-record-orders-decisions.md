@@ -2,7 +2,7 @@
 
 | ID | Status | Raised | Raised by | Decides | Baseline affected |
 |---|---|---|---|---|---|
-| CR-006 | Proposed | 2026-10-15 | Manh Nguyen (product owner), from the orders design §15 (Q-6) | Manh Nguyen (product owner) | requirements.md v1.4, architecture.md v1.2 |
+| CR-006 | Approved | 2026-10-15 | Manh Nguyen (product owner), from the orders design §15 (Q-6) | Manh Nguyen (product owner) | requirements.md v1.4, architecture.md v1.2 |
 
 ## Summary
 On 2026-10-15 the owner accepted the seven recommendations of the [orders design](../design/orders.md) §15. Two of them settle open items written into the requirements (TBD-7 and TBD-8). Two numbers in the architecture turned out low while designing orders. This CR updates the text to match. No target gets stricter or looser.
@@ -47,4 +47,4 @@ None new. The audit volume is a storage cost, carried with TBD-11 (deferred: fre
 ## Decision
 | Date | Decision (Approved / Rejected / Deferred) | By | Notes |
 |---|---|---|---|
-| | | | |
+| 2026-10-15 | Approved | Manh Nguyen (product owner) | Applied the same day: requirements v1.5, architecture v1.3, RTM, STATUS |

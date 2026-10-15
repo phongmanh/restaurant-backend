@@ -2,7 +2,7 @@
 
 | Version | Status | Owner | Reviewers |
 |---|---|---|---|
-| 1.2 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR); CR-004 and CR-005 applied 2026-10-15 | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
+| 1.3 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR); CR-004, CR-005 and CR-006 applied 2026-10-15 | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
 
 **Version history**
 
@@ -11,8 +11,9 @@
 | 1.0 | 2026-10-15 | Baselined at G2 |
 | 1.1 | 2026-10-15 | [CR-004](cr/CR-004-menu-read-and-image-limits.md): Vercel's CDN doesn't cache requests with `Authorization`, so the guest menu is revalidated per menu version instead of cached at the edge; the image route takes up to 4 MB (4.5 MB function body cap). Changed: §1 driver 4, §8, §9 (menu-read row, cost-driver line), §11 |
 | 1.2 | 2026-10-15 | [CR-005](cr/CR-005-natural-idempotency-and-session-data.md): session open/join and waiter calls are idempotent by design and take no `Idempotency-Key` (no bearer token stored for replays); the guest token has no table claim (sessions move). Changed: §7, §10 |
+| 1.3 | 2026-10-15 | [CR-006](cr/CR-006-record-orders-decisions.md): figures from the orders design. Placing an order is ≈ 13 statements, not ≈ 6; the audit log (every staff order step, ≈ 400k rows/day) is added to the database size. Changed: §6, §9 |
 
-Baseline: [requirements.md](requirements.md) v1.4 (G1 2026-10-13; CR-002 and CR-003 2026-10-14; CR-004 and CR-005 2026-10-15). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). G2 approved by the owner on 2026-10-15 with one condition: TBD-10 (data residency, legal review) is settled before G5, by a region change or, if storage in Vietnam is required, a CR to change provider (§8, R-04). Accepted free-plan residual risks: R-11 to R-14. The cost estimate (TBD-11) was deferred on 2026-10-15 because the project stays on free plans.
+Baseline: [requirements.md](requirements.md) v1.5 (G1 2026-10-13; CR-002 and CR-003 2026-10-14; CR-004, CR-005 and CR-006 2026-10-15). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). G2 approved by the owner on 2026-10-15 with one condition: TBD-10 (data residency, legal review) is settled before G5, by a region change or, if storage in Vietnam is required, a CR to change provider (§8, R-04). Accepted free-plan residual risks: R-11 to R-14. The cost estimate (TBD-11) was deferred on 2026-10-15 because the project stays on free plans.
 
 ## 1. Drivers
 Quality goals, ranked (ASSUMPTION-8, confirmed by the owner 2026-10-14):
@@ -146,7 +147,7 @@ Shared `api-contract` KMP module with the clients: **not now**. TBD-2 is decided
 ## 6. Data stores
 | Store | Holds | Why this store | Size and growth | Consistency | Backup and retention |
 |---|---|---|---|---|---|
-| PostgreSQL (Neon, Singapore; ADR-0004) | All business data, staff credentials (password hashes, encrypted TOTP secrets, refresh-token and link-token hashes), the event log, outbox, idempotency keys, audit log | Transactions across order, idempotency key, event and outbox; relational reporting | ≈ 100k orders and 300k lines per day at 500 restaurants (ASSUMPTION-9) → ≈ 50 GB/year including indexes, so ≈ 100 GB once the 2-year window is full (older orders and bills are archived, see retention jobs); event log ≈ 500k rows/day, kept 7 days | Strong, single primary; reads from the primary (no replicas until measured) | PITR ≥ 7 days (RPO ≤ 5 min; needs Neon's Launch plan or above, the free plan keeps 6 h); daily snapshot copied to a second region/account, chosen within what TBD-10 allows; quarterly restore drill (NFR-REL-01). On the free plan PITR covers 6 h only (R-14) |
+| PostgreSQL (Neon, Singapore; ADR-0004) | All business data, staff credentials (password hashes, encrypted TOTP secrets, refresh-token and link-token hashes), the event log, outbox, idempotency keys, audit log | Transactions across order, idempotency key, event and outbox; relational reporting | ≈ 100k orders and 300k lines per day at 500 restaurants (ASSUMPTION-9) → ≈ 50 GB/year including indexes, so ≈ 100 GB once the 2-year window is full (older orders and bills are archived, see retention jobs); event log ≈ 500k rows/day, kept 7 days; audit log ≈ 400k rows/day (every staff order step is audited, design/orders.md §8), ≈ 70 GB within its 1-year window (TBD-4) | Strong, single primary; reads from the primary (no replicas until measured) | PITR ≥ 7 days (RPO ≤ 5 min; needs Neon's Launch plan or above, the free plan keeps 6 h); daily snapshot copied to a second region/account, chosen within what TBD-10 allows; quarterly restore drill (NFR-REL-01). On the free plan PITR covers 6 h only (R-14) |
 | Redis (managed, serverless, same region; ADR-0008) | Rate-limit counters only | Atomic counters with TTL shared by all instances; keeps that churn off PostgreSQL | < 100 MB | Best effort. If Redis is down, app-level limits fail open and WAF limits still apply | None needed (ephemeral) |
 | Object storage (e.g. Vercel Blob; FR-022) | Menu images | Large binaries off the database; served by CDN | ≈ 1,000 items × 500 restaurants × ≤ 500 KB (after resize) ≈ 250 GB worst case | Write-once objects under generated names | Versioning on; deleted with the item after 30 days |
 | Managed pub/sub (ADR-0003) | Nothing durable: thin "something changed" notifications | Fan-out to ≈ 17,500 live clients, which Vercel functions can't hold open | — | At most once; the event log is the source of truth | None |
@@ -255,12 +256,12 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
 | Session, orders, bill (guest) | 70 | 70 | 2–3 | Indexed by `session_id` |
 | Event catch-up (guest + staff) | 75 | 75 | 1 | `restaurant_id, seq` index; tiny pages |
 | QR open/join session | 15 | 15 | 3 (1 write) | Rate-limited |
-| Place order | 10 | 10 | ≈ 6 (write transaction) | ≈ 600 orders/min system-wide |
+| Place order | 10 | 10 | ≈ 13 statements (write transaction; design/orders.md §3.1) | ≈ 600 orders/min system-wide; ≈ 40–60 ms expected (S-2: 7 statements, p95 28.7 ms) |
 | Order status changes | 40 | 40 | 4 (write) | ≈ 4 transitions per order |
 | Staff lists, tables overview | 15 | 15 | 2 | |
 | Pub/sub token | 10 | 10 | 1 | Cached by clients until expiry |
 | Admin, reports, menu edits | 5 | 5 | 2–5 | Reports read `daily_sales` |
-| **Total** | **≈ 310** | **≈ 255** | | ≈ 800 queries/s, ≈ 60 write transactions/s |
+| **Total** | **≈ 310** | **≈ 255** | | ≈ 870 queries/s, ≈ 60 write transactions/s |
 
 - **In flight:** at ≈ 50 ms average service time, ≈ 15 requests are in flight at peak, 45 at 3× growth.
 - **Bottleneck: PostgreSQL connections, not CPU.** Every serverless instance holds its own pool, so instance count × pool size can exceed the database's limit during scale-out bursts. The tactic (ADR-0004):

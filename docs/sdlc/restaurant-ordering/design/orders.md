@@ -7,7 +7,7 @@
 | Package | `orders` (architecture §4) |
 | Requirements | FR-003 place, FR-004 more rounds, FR-005 guest status (reads; live delivery in `realtime`), FR-006 guest cancel, FR-007 bill, FR-011 staff feed (list fallback; live delivery in `realtime`), FR-012 state machine, FR-013 close and payment, FR-014 staff orders (Should), FR-015 line rejection (Should), FR-016 waiter confirmation (Could, TBD-8); FR-042, NFR-PERF-02, NFR-REL-02, NFR-SEC-02, NFR-SEC-03, NFR-SEC-04, NFR-PRIV-01 |
 | Builds on | architecture.md v1.2 §4, §7, §9, §10; ADR-0003 (event log and outbox), ADR-0005; S-2 (order transaction), S-5 (bill close updates the daily aggregates); [core-and-auth](core-and-auth.md) 0.6; [restaurants](restaurants.md) 0.2; [menu](menu.md) 0.2 §7 `MenuCatalog`; [tables](tables.md) 0.2 §7 `SessionAccess` |
-| Change request | [CR-006](../cr/CR-006-record-orders-decisions.md), Proposed 2026-10-15: writes TBD-7 and TBD-8 into the requirements and corrects architecture §6 and §9 |
+| Change request | [CR-006](../cr/CR-006-record-orders-decisions.md), approved 2026-10-15: writes TBD-7 and TBD-8 into the requirements and corrects architecture §6 and §9 |
 | Owner decisions | §15, all seven accepted 2026-10-15 (TBD-7 and TBD-8 resolved) |
 
 ## 1. Scope
@@ -466,7 +466,7 @@ Field codes inside `validation_failed` (not catalogue codes): `unknown_item`, `u
 | IT-ORD-22 | Auto-close job with a session whose only order was cancelled: session and bill both closed, nothing sent to the ledger | tables §3.5 |
 
 ## 15. Owner decisions (2026-10-15)
-The owner accepted all seven recommendations. They're recorded in STATUS.md (Decisions; Q-6, TBD-7 and TBD-8 resolved). CR-006 (Proposed) writes 1, 2 and 7's text into the baselined documents.
+The owner accepted all seven recommendations. They're recorded in STATUS.md (Decisions; Q-6, TBD-7 and TBD-8 resolved). CR-006 (approved 2026-10-15) wrote 1, 2 and 7's text into requirements v1.5 and architecture v1.3.
 
 1. **TBD-8, FR-016 waiter confirmation: not in release 1.** It's a Could. R-02 already has QR rotation, per-session order limits and staff rejection (`not_at_table`). The contract tells clients to accept unknown `status` values (§2), so `pending_confirmation` can be added within `/v1` later.
 2. **TBD-7, closed-bill corrections: correcting entries by a manager** (§7.2), never edits. Each is a signed amount with a payment method and a reason, counted on the day it's made. CR-006 writes it into FR-013 and requirements §9.
@@ -480,7 +480,7 @@ The owner accepted all seven recommendations. They're recorded in STATUS.md (Dec
 - **tables §3.5:** the auto-close job calls `EmptyBills.closeIfEmpty` after locking the session and closes the session only when it answers `true` (§11).
 - **tables §7:** `SessionAccess` gains `lockForClose`, the `FOR UPDATE` step split out of `close` (§11).
 - **Contract, `StaffTableSession`:** gains an optional `bill` summary (`order_count`, `total`), the "bill summary from `orders`" that tables §3.4 promises. Additive.
-- **Architecture §6 and §9** (CR-006, Proposed): the size estimate leaves out the audit log (≈ 70 GB a year at full scale, §8), and §9's "≈ 6 queries" per order is ≈ 13 statements (§3.1). Neither changes a decision; the load test measures both.
+- **Architecture §6 and §9** (CR-006, applied in v1.3): the size estimate leaves out the audit log (≈ 70 GB a year at full scale, §8), and §9's "≈ 6 queries" per order is ≈ 13 statements (§3.1). Neither changes a decision; the load test measures both.
 
 ## 17. Traceability
 The RTM's design column for FR-003 to FR-007 and FR-011 to FR-016 points here; FR-042, NFR-REL-02, NFR-SEC-02, NFR-SEC-03, NFR-SEC-04 and NFR-PRIV-01 add this design.

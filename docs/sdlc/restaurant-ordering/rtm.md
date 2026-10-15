@@ -18,7 +18,7 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | FR-013 | Close session, record payment at the counter | M | architecture.md §7; ADR-0006; design/orders.md | `table_sessions`, `bills`, `bill_adjustments`; `/v1/staff/table-sessions/{id}/close`, `.../bill`, `.../bill/adjustments`; `BillClosed`, `TableSessionClosed` | | AT-013 | | |
 | FR-014 | Waiter orders on a guest's behalf | S | architecture.md §7; design/orders.md | `orders`; `POST /v1/staff/table-sessions/{id}/orders` | | | | |
 | FR-015 | Kitchen rejects a single item | S | architecture.md §4; design/orders.md | `order_lines`; `POST /v1/staff/orders/{id}/lines/{lineId}/reject`; `OrderLineRejected` | | | | |
-| FR-016 | Waiter confirmation of guest orders | C | architecture.md §11; design/orders.md §15 Q1 (owner 2026-10-15: not in release 1; CR-006) | `restaurants` settings | | | | |
+| FR-016 | Waiter confirmation of guest orders | W (release 1; CR-006) | architecture.md §11; design/orders.md §15 Q1 (owner 2026-10-15: not in release 1; CR-006) | `restaurants` settings | | | | |
 | FR-020 | Manage menu categories and items | M | architecture.md §4; design/menu.md | `menu_categories`, `menu_items` | | AT-020 | | |
 | FR-021 | Toggle item sold out | M | architecture.md §4; design/menu.md | `menu_items`; `menu_items.sold_out`; `PUT /v1/staff/menu/items/{id}/sold-out` | | AT-021 | | |
 | FR-022 | Menu item images | S (TBD-5) | architecture.md §6, §12; design/menu.md | object storage; `menu_items.image_key`; `PUT /v1/staff/menu/items/{id}/image`; ImageStore (TBD-13) | | | | |
