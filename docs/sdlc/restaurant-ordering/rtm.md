@@ -32,12 +32,12 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | FR-042 | Tenant isolation on every call | M | ADR-0005; design/core-and-auth.md; design/restaurants.md; design/menu.md; design/tables.md | all tenant tables (RLS) | | AT-042 | | |
 | FR-043 | Suspend / reactivate a restaurant | S | architecture.md §7; design/restaurants.md | `restaurants` | | | | |
 | FR-044 | Edit restaurant profile | M | architecture.md §11; design/restaurants.md | `restaurants` | | AT-044 | | |
-| FR-050 | Daily sales report | M | architecture.md §1, §9 (Reports); ASSUMPTION-11 (day of closing) | `daily_sales`, `daily_sales_payment`, `daily_sales_table`, `daily_sales_item` | | AT-050 | | |
-| FR-051 | CSV export of sales lines | C | architecture.md §4 | `order_lines` | | | | |
+| FR-050 | Daily sales report | M | architecture.md §1, §9 (Reports); ASSUMPTION-11 (day of closing); design/reports.md | `daily_sales`, `daily_sales_payment`, `daily_sales_table`, `daily_sales_item`, `sales_reconciliation`; `GET /v1/staff/reports/daily-sales` | | AT-050 | | |
+| FR-051 | CSV export of sales lines | C | architecture.md §4; design/reports.md §13 Q3 (owner 2026-10-15: not in release 1; CR-007 proposed) | `order_lines` | | | | |
 | NFR-PERF-01 | Guest reads p95 ≤ 200 ms, p99 ≤ 500 ms at peak | M | architecture.md §1, §9; design/menu.md | | | | | |
 | NFR-PERF-02 | Writes p95 ≤ 300 ms, p99 ≤ 800 ms at peak | M | architecture.md §9; ADR-0004 | | | | | |
 | NFR-PERF-03 | Live-update delay ≤ 2 s p95 | M | ADR-0003; design/realtime.md | `domain_events`, `outbox`, `event_counters` | | | | |
-| NFR-PERF-04 | 31-day report ≤ 3 s p95 | M | architecture.md §1, §9 (Reports), §17 S-5 (met: p95 10.4 ms) | `daily_sales`, `daily_sales_payment`, `daily_sales_table`, `daily_sales_item` | | | | |
+| NFR-PERF-04 | 31-day report ≤ 3 s p95 | M | architecture.md §1, §9 (Reports), §17 S-5 (met: p95 10.4 ms); design/reports.md | `daily_sales`, `daily_sales_payment`, `daily_sales_table`, `daily_sales_item` | | | | |
 | NFR-SCAL-01 | 300 req/s + 17,500 live clients; 3× in 12 months | M | architecture.md §9; ADR-0002 | | | | | |
 | NFR-SCAL-02 | Fairness between restaurants | M | ADR-0008 | | | | | |
 | NFR-AVAIL-01 | 99.9% success per 28 days | M | architecture.md §13 | | | | | |

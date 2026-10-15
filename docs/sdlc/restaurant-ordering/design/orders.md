@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.2 Draft: the seven §15 questions decided by the owner on 2026-10-15; the whole design is approved at G3 |
+| Version | 0.3 Draft (0.3: `SalesLedger` signatures and the lock order from [reports](reports.md) §11): the seven §15 questions decided by the owner on 2026-10-15; the whole design is approved at G3 |
 | Date | 2026-10-15 |
 | Package | `orders` (architecture §4) |
 | Requirements | FR-003 place, FR-004 more rounds, FR-005 guest status (reads; live delivery in `realtime`), FR-006 guest cancel, FR-007 bill, FR-011 staff feed (list fallback; live delivery in `realtime`), FR-012 state machine, FR-013 close and payment, FR-014 staff orders (Should), FR-015 line rejection (Should), FR-016 waiter confirmation (Could, TBD-8); FR-042, NFR-PERF-02, NFR-REL-02, NFR-SEC-02, NFR-SEC-03, NFR-SEC-04, NFR-PRIV-01 |
@@ -93,7 +93,7 @@ Answer `201` with the order (§4), `Location: /v1/guest/orders/{id}` and `ETag`.
 
 **FR-004** needs nothing extra: every order of the session goes onto the same bill, and earlier orders aren't touched.
 
-**Lock order.** Every write in this design takes locks in the same order: session row → bill row → order rows → event counter → audit chain head. Two transactions then never wait on each other in a circle, so they can't deadlock.
+**Lock order.** Every write in this design takes locks in the same order: session row → bill row → order rows → daily sales rows (reports §4) → event counter → audit chain head. Two transactions then never wait on each other in a circle, so they can't deadlock.
 
 **Cost.** About 13 statements (S-2's measured order transaction had 7, p95 28.7 ms at ≈ 2 ms per round trip), so ≈ 40–60 ms expected against NFR-PERF-02's 300 ms. Architecture §9 counts "≈ 6 queries" for this group; the load test (test-plan) measures the real figure, and §14 records the difference.
 
@@ -333,13 +333,15 @@ Manager only.
 - `amount` ≠ 0, either sign; the corrected total (`total + adjustments_total + amount`) may not go below 0 → `400`.
 - **A wrong payment method** is two entries: −X on the old method and +X on the new one.
 - `If-Match` on the bill (stale → `412`) is what makes a retry harmless: the first call moves the version on, so a repeat is refused instead of correcting twice. So this needs no `Idempotency-Key`, and architecture §10's key list stays as it is.
-- The correction counts on **the local day it's made**, not the bill's day, so a day's report that was already given to the accountant doesn't change afterwards (`SalesLedger.recordAdjustment`).
+- The correction counts on **the local day it's made**, not the bill's day, so a day's report that was already given to the accountant doesn't change afterwards (`SalesLedger.recordCorrection`).
 - Audit `bill.adjusted` (amount, method, reason code); event `BillAdjusted`. Answer `201` with the bill.
 
 ### 7.3 `SalesLedger` (port provided by `reports`)
 Called inside the close or correction transaction, as S-5 measured (≈ +2 ms per close):
-- `recordClosedBill(restaurantId, businessDate, table, paymentMethod, total, orderCount, lines)` upserts the four daily tables, in key order so concurrent closes queue instead of deadlocking (architecture §9).
-- `recordAdjustment(restaurantId, businessDate, paymentMethod, amount)`.
+- `recordClosedBill(restaurantId, businessDate, tableId, tableNumber, paymentMethod, total, orderCount, items)` upserts the four daily tables, in key order so concurrent closes queue instead of deadlocking (architecture §9). `orders` sums the active lines per item (quantity, revenue, names) before the call.
+- `recordCorrection(restaurantId, businessDate, paymentMethod, amount)`.
+
+The details are in [reports](reports.md) §4.
 
 The nightly rebuild in `reports` reads the day's closed bills, orders, lines and adjustments through a `SalesSource` port that `orders` provides, so `reports` doesn't read these tables directly (architecture §4). The `reports` design finishes both ports.
 

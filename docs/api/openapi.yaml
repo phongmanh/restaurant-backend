@@ -1,13 +1,13 @@
 openapi: 3.1.0
 info:
   title: Restaurant ordering API
-  version: 0.6.0-draft
+  version: 0.7.0-draft
   description: |
     Contract for the restaurant ordering service (`docs/sdlc/restaurant-ordering/`).
     Hand-written in Phase 3 and frozen at G3 (architecture §5, ADR-0007).
     Built up one feature design at a time; this draft holds the shared parts and
     `/v1/auth/*` from `design/core-and-auth.md`, and the routes of
-    `design/restaurants.md`, `design/menu.md`, `design/tables.md`, `design/orders.md` and `design/realtime.md`. `x-allowed-when-suspended` on staff and guest
+    `design/restaurants.md`, `design/menu.md`, `design/tables.md`, `design/orders.md`, `design/realtime.md` and `design/reports.md`. `x-allowed-when-suspended` on staff and guest
     operations mirrors the endpoint registry (restaurants §6).
 
     Conventions (core-and-auth §2): snake_case fields; UUID v7 IDs; RFC 3339 UTC times;
@@ -38,6 +38,8 @@ tags:
     description: Orders, their status steps, bills, closing a session with its payment, and bill corrections
   - name: realtime
     description: Catch-up from the event log and Ably subscription tokens
+  - name: reports
+    description: Daily sales reports for managers
 
 paths:
   /v1/auth/sign-in:
@@ -2348,6 +2350,34 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
+  /v1/staff/reports/daily-sales:
+    get:
+      tags: [reports]
+      operationId: dailySalesReport
+      summary: 'Sales per local day for up to 93 days, with range totals (manager)'
+      description: |
+        Every day in the range is listed, with zeros where nothing sold; today shows the bills
+        closed so far. A bill counts on the local day it was closed, a correction on the day it was
+        made (design/reports.md §2, §6).
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: true
+      parameters:
+        - $ref: '#/components/parameters/ReportFrom'
+        - $ref: '#/components/parameters/ReportTo'
+      responses:
+        '200':
+          description: 'The report'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DailySalesReport' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
 components:
   securitySchemes:
     staffBearer:
@@ -2554,6 +2584,19 @@ components:
       in: query
       required: false
       schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+
+    ReportFrom:
+      name: from
+      in: query
+      required: true
+      description: 'First local date, in the restaurant''s time zone'
+      schema: { type: string, format: date }
+    ReportTo:
+      name: to
+      in: query
+      required: true
+      description: 'Last local date, included; at most 92 days after `from`'
+      schema: { type: string, format: date }
 
   headers:
     XRequestID:
@@ -3651,6 +3694,61 @@ components:
         timestamp: { type: integer, format: int64 }
         nonce: { type: string }
         mac: { type: string }
+    PaymentSales:
+      type: object
+      required: [method, sessions, amount, corrections]
+      properties:
+        method: { $ref: '#/components/schemas/PaymentMethod' }
+        sessions: { type: integer }
+        amount: { $ref: '#/components/schemas/Money' }
+        corrections: { $ref: '#/components/schemas/Money' }
+    TableSales:
+      type: object
+      required: [table_id, number, sessions, gross]
+      properties:
+        table_id: { type: string, format: uuid }
+        number: { type: string, description: 'The table number as it was that day' }
+        sessions: { type: integer }
+        gross: { $ref: '#/components/schemas/Money' }
+    ItemSales:
+      type: object
+      required: [item_id, name_vi, quantity, revenue]
+      properties:
+        item_id: { type: string, format: uuid }
+        name_vi: { type: string }
+        name_en: { type: string }
+        quantity: { type: integer }
+        revenue: { $ref: '#/components/schemas/Money' }
+    SalesTotals:
+      type: object
+      required: [sessions, orders, gross, corrections, net, payments]
+      properties:
+        sessions: { type: integer, description: 'Bills closed with a payment' }
+        orders: { type: integer }
+        gross: { $ref: '#/components/schemas/Money' }
+        corrections: { $ref: '#/components/schemas/Money' }
+        net: { $ref: '#/components/schemas/Money' }
+        payments: { type: array, items: { $ref: '#/components/schemas/PaymentSales' } }
+    SalesDay:
+      allOf:
+        - $ref: '#/components/schemas/SalesTotals'
+        - type: object
+          required: [date, correction_count, tables, top_items_by_quantity, top_items_by_revenue]
+          properties:
+            date: { type: string, format: date }
+            correction_count: { type: integer }
+            tables: { type: array, items: { $ref: '#/components/schemas/TableSales' } }
+            top_items_by_quantity: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/ItemSales' } }
+            top_items_by_revenue: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/ItemSales' } }
+    DailySalesReport:
+      type: object
+      required: [from, to, time_zone, totals, days]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        time_zone: { $ref: '#/components/schemas/TimeZone' }
+        totals: { $ref: '#/components/schemas/SalesTotals' }
+        days: { type: array, maxItems: 93, items: { $ref: '#/components/schemas/SalesDay' } }
 
 # Error-code catalogue (architecture §5). Feature designs add their codes here.
 x-error-catalogue:
