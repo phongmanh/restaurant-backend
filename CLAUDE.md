@@ -6,6 +6,7 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 1. Read `docs/sdlc/restaurant-ordering/STATUS.md` first. It is the single source of truth for the phase, gates, decisions, risks, open items and spikes.
 2. Don't read whole documents. Find what you need with `grep -n '^## '` and read only that section with `sed -n`. Architecture sections: §8 deployment, §9 capacity, §17 spikes (exit criteria).
 3. Each spike has a README in `spikes/<id>/` with its questions, how to run it, exit criteria and results. Continue from there.
+4. Phase 4 code lives at the repository root, one Gradle module under `io.github.phongmanh.restaurant`. The build order (9 steps, one PR each) and its progress are in the STATUS Decisions table. `./gradlew build` runs ktlint, detekt, the tests and the Kover gate, as CI does; Gradle downloads JDK 25 if it's missing. From step 2 the integration tests need Docker running (Testcontainers).
 
 ## Document map (`docs/sdlc/restaurant-ordering/`)
 | File | Holds |
@@ -60,6 +61,9 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 - A Vercel Function's request or response body is at most 4.5 MB; larger gets Vercel's own `413 FUNCTION_PAYLOAD_TOO_LARGE` (CR-004).
 - Vercel Hobby runs a cron job at most **once a day** (±59 min); a more frequent schedule fails the deployment. Set schedules per environment; on Hobby, jobs that should run every minute or hour run daily (Vercel docs read 2026-10-15; realtime §10).
 - The auto-mode classifier blocks production deploys, reading secrets from APIs, and writing secrets to a secret store (`vercel env add`, even piped from `.env.spike`). Ask the owner to do those steps.
+
+## Build: known gotchas
+- detekt 1.23.8 crashes (the error is just the JDK version, e.g. `> 25.0.4.1`) when Gradle itself runs on JDK 25, because its embedded Kotlin compiler can't parse the version. It passes on a machine whose Gradle runs on JDK 21, so it fails only in CI. `build.gradle.kts` therefore runs detekt-cli as a `JavaExec` task on a JDK 21 toolchain; don't switch back to the detekt Gradle plugin until detekt 2 is stable. Reproduce with `JAVA_HOME=<jdk 25> ./gradlew detekt --rerun` (PR #3, 2026-10-15).
 
 ## Saving context (automated in `.claude/settings.json`)
 - `SessionStart` hook (`.claude/hooks/resume_brief.py`): every session, `/clear` and compaction starts with a brief built from STATUS.md. Keep STATUS.md current, because the brief is only as good as it is.

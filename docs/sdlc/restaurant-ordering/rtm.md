@@ -45,14 +45,14 @@ Every requirement traces forward to design, code, tests and the release. Every t
 | NFR-REL-01 | RPO ≤ 5 min, RTO ≤ 1 h | M | architecture.md §6, §13 | | | | | |
 | NFR-REL-02 | No duplicates on retry, no lost orders | M | architecture.md §10; design/core-and-auth.md; design/orders.md | `idempotency_keys`, `outbox` | | | | |
 | NFR-REL-03 | Live updates catch up with no gaps | M | ADR-0003; design/realtime.md | `domain_events`; `GET /v1/guest/events`, `GET /v1/staff/events` | | | | |
-| NFR-SEC-01 | ASVS L2 + API Top 10 | M | architecture.md §12; design/core-and-auth.md | | | | | |
+| NFR-SEC-01 | ASVS L2 + API Top 10 | M | architecture.md §12; design/core-and-auth.md | | `core/http/ProblemDetails.kt` (`phase4/skeleton`) | IT-CORE-04 (no-database part) | | |
 | NFR-SEC-02 | Tenant and table isolation tests | M | ADR-0005, ADR-0006; design/core-and-auth.md; design/restaurants.md; design/tables.md; design/menu.md; design/orders.md; design/realtime.md; design/reports.md | | | AT-042 | | |
 | NFR-SEC-03 | Audit trail of staff actions | M | architecture.md §11; design/core-and-auth.md; design/restaurants.md; design/menu.md; design/tables.md; design/orders.md | `audit_events` | | AT-041 | | |
 | NFR-SEC-04 | Abuse rate limits; admin MFA | M | ADR-0008, ADR-0011; design/core-and-auth.md; design/tables.md; design/orders.md; design/realtime.md | | | | | |
 | NFR-PRIV-01 | Minimisation, retention job, staff data erasure | M | architecture.md §6, §11; design/core-and-auth.md; design/restaurants.md; design/tables.md; design/orders.md; design/realtime.md | | | | | |
 | NFR-PRIV-02 | Data residency | M | ADR-0002, ADR-0004 | | | | | |
-| NFR-COMPAT-01 | Additive changes within `/v1`; oldest client supported | M | architecture.md §5; ADR-0007; design/core-and-auth.md; design/orders.md §2 (unknown enum values); design/realtime.md §5 | | | | | |
-| NFR-OBS-01 | Request IDs, RED metrics, SLO alerts | M | architecture.md §13; ADR-0009; design/core-and-auth.md; design/realtime.md §11; design/reports.md §9 | | | | | |
+| NFR-COMPAT-01 | Additive changes within `/v1`; oldest client supported | M | architecture.md §5; ADR-0007; design/core-and-auth.md; design/orders.md §2 (unknown enum values); design/realtime.md §5 | | `core/http/Endpoints.kt` (`phase4/skeleton`) | IT-CORE-10 | | |
+| NFR-OBS-01 | Request IDs, RED metrics, SLO alerts | M | architecture.md §13; ADR-0009; design/core-and-auth.md; design/realtime.md §11; design/reports.md §9 | | `core/http/Http.kt`: request ID (`phase4/skeleton`) | IT-CORE-04 (request ID) | | |
 | NFR-OPS-01 | Zero-downtime deploys, rollback ≤ 10 min | M | architecture.md §8, §14 | | | | | |
 | NFR-MAINT-01 | ktlint/detekt clean, coverage ≥ 80% | M | ADR-0001; architecture.md §14 | | | | | |
 | NFR-I18N-01 | Error codes, VND, restaurant time zone | M | architecture.md §5, §11; design/core-and-auth.md §3; design/menu.md | | | AT-050 | | |

@@ -1,0 +1,7 @@
+ktor:
+  deployment:
+    # Vercel routes to $PORT; 8080 locally.
+    port: "$PORT:8080"
+  application:
+    modules:
+      - io.github.phongmanh.restaurant.ApplicationKt.module
