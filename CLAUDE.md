@@ -6,6 +6,7 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 1. Read `docs/sdlc/restaurant-ordering/STATUS.md` first. It is the single source of truth for the phase, gates, decisions, risks, open items and spikes.
 2. Don't read whole documents. Find what you need with `grep -n '^## '` and read only that section with `sed -n`. Architecture sections: §8 deployment, §9 capacity, §17 spikes (exit criteria).
 3. Each spike has a README in `spikes/<id>/` with its questions, how to run it, exit criteria and results. Continue from there.
+4. Phase 4 code lives at the repository root, one Gradle module under `io.github.phongmanh.restaurant`. The build order (9 steps, one PR each) and its progress are in the STATUS Decisions table. `./gradlew build` runs ktlint, detekt, the tests and the Kover gate, as CI does; Gradle downloads JDK 25 if it's missing. From step 2 the integration tests need Docker running (Testcontainers).
 
 ## Document map (`docs/sdlc/restaurant-ordering/`)
 | File | Holds |

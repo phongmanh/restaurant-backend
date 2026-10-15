@@ -1,0 +1,8 @@
+# Overrides on top of detekt's default config (buildUponDefaultConfig in build.gradle.kts).
+style:
+  MagicNumber:
+    # HTTP statuses in the ErrorCode enum.
+    ignoreEnums: true
+  MaxLineLength:
+    # The same limit as ktlint's ktlint_official style, so the two tools agree.
+    maxLineLength: 140

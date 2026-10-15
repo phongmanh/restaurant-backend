@@ -1,0 +1,12 @@
+<configuration>
+    <!-- One JSON object per line to stdout; Vercel collects it as runtime logs. MDC fields
+         (request_id, client_request_id) are included. No personal data, secrets or tokens in
+         messages (architecture §11). -->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
+    </appender>
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+    <logger name="io.netty" level="WARN"/>
+</configuration>
