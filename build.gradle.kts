@@ -3,7 +3,6 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ktor)
     alias(libs.plugins.ktlint)
-    alias(libs.plugins.detekt)
     alias(libs.plugins.kover)
 }
 
@@ -53,15 +52,36 @@ ktlint {
     version = libs.versions.ktlint.get()
 }
 
-detekt {
-    buildUponDefaultConfig = true
-    config.setFrom("config/detekt/detekt.yml")
+// detekt 1.23.8 (the latest stable; 2.0 is alpha) crashes when it runs on JDK 25: its embedded
+// Kotlin compiler can't parse the version string. So it runs as its own process on a JDK 21
+// toolchain, whatever JDK runs Gradle. It only parses the source, so the JDK doesn't change its
+// findings. Back to the Gradle plugin when detekt 2 is stable.
+val detektCli by configurations.creating
+
+dependencies {
+    detektCli(libs.detekt.cli)
 }
 
-// detekt 1.23.8, the latest stable, accepts JVM targets up to 22. Its plain task only parses the
-// source, so the target doesn't change its findings. Remove this when detekt 2 is stable.
-tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
-    jvmTarget = "22"
+val detekt by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Runs detekt on the main and test sources."
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
+    classpath = detektCli
+    mainClass = "io.gitlab.arturbosch.detekt.cli.Main"
+    val sources = files("src/main/kotlin", "src/test/kotlin")
+    val config = file("config/detekt/detekt.yml")
+    val report = layout.buildDirectory.file("reports/detekt/detekt.html")
+    inputs.files(sources, config)
+    outputs.file(report)
+    args(
+        "--input",
+        sources.joinToString(",") { it.path },
+        "--config",
+        config.path,
+        "--build-upon-default-config",
+        "--report",
+        "html:${report.get().asFile.path}",
+    )
 }
 
 kover {
@@ -81,5 +101,5 @@ kover {
 }
 
 tasks.check {
-    dependsOn(tasks.named("koverVerify"))
+    dependsOn(detekt, tasks.named("koverVerify"))
 }

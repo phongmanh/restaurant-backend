@@ -62,6 +62,9 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 - Vercel Hobby runs a cron job at most **once a day** (±59 min); a more frequent schedule fails the deployment. Set schedules per environment; on Hobby, jobs that should run every minute or hour run daily (Vercel docs read 2026-10-15; realtime §10).
 - The auto-mode classifier blocks production deploys, reading secrets from APIs, and writing secrets to a secret store (`vercel env add`, even piped from `.env.spike`). Ask the owner to do those steps.
 
+## Build: known gotchas
+- detekt 1.23.8 crashes (the error is just the JDK version, e.g. `> 25.0.4.1`) when Gradle itself runs on JDK 25, because its embedded Kotlin compiler can't parse the version. It passes on a machine whose Gradle runs on JDK 21, so it fails only in CI. `build.gradle.kts` therefore runs detekt-cli as a `JavaExec` task on a JDK 21 toolchain; don't switch back to the detekt Gradle plugin until detekt 2 is stable. Reproduce with `JAVA_HOME=<jdk 25> ./gradlew detekt --rerun` (PR #3, 2026-10-15).
+
 ## Saving context (automated in `.claude/settings.json`)
 - `SessionStart` hook (`.claude/hooks/resume_brief.py`): every session, `/clear` and compaction starts with a brief built from STATUS.md. Keep STATUS.md current, because the brief is only as good as it is.
 - `PreToolUse` hook on Read (`.claude/hooks/section_reads.py`): whole-file reads of Markdown over 150 lines are refused with the file's outline; read the section with `offset` and `limit`.
