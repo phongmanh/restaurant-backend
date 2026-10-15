@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.2 Draft: CR-004 approved and the seven §14 questions decided by the owner on 2026-10-15; the whole design is approved at G3 |
+| Version | 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: CR-004 approved and the seven §14 questions decided by the owner on 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `menu` (architecture §4) |
 | Requirements | FR-002 guest menu, FR-020 edit, FR-021 sold out, FR-022 images (Should; TBD-5 decided 2026-10-15), FR-023 options (Should), FR-024 vi/en (Should); NFR-PERF-01 (guest reads), FR-042 |

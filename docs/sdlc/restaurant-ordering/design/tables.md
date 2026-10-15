@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.3 Draft (0.3: the auto-close job and `SessionAccess.lockForClose` from [orders](orders.md) §16): CR-005 approved and the six §13 questions decided by the owner on 2026-10-15; the whole design is approved at G3 |
+| Version | 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.3 (0.3: the auto-close job and `SessionAccess.lockForClose` from [orders](orders.md) §16): CR-005 approved and the six §13 questions decided by the owner on 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `tables` (architecture §4) |
 | Requirements | FR-001 QR → session, FR-008 waiter call (Should), FR-030 tables, FR-031 QR codes, FR-032 floor view and sessions; FR-042, NFR-SEC-02 (session isolation), NFR-SEC-04 (scan limits), NFR-PRIV-01 |

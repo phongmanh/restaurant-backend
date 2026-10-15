@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.3 Draft (0.3: `SalesLedger` signatures and the lock order from [reports](reports.md) §11): the seven §15 questions decided by the owner on 2026-10-15; the whole design is approved at G3 |
+| Version | 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.3 (0.3: `SalesLedger` signatures and the lock order from [reports](reports.md) §11): the seven §15 questions decided by the owner on 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `orders` (architecture §4) |
 | Requirements | FR-003 place, FR-004 more rounds, FR-005 guest status (reads; live delivery in `realtime`), FR-006 guest cancel, FR-007 bill, FR-011 staff feed (list fallback; live delivery in `realtime`), FR-012 state machine, FR-013 close and payment, FR-014 staff orders (Should), FR-015 line rejection (Should), FR-016 waiter confirmation (Could, TBD-8); FR-042, NFR-PERF-02, NFR-REL-02, NFR-SEC-02, NFR-SEC-03, NFR-SEC-04, NFR-PRIV-01 |

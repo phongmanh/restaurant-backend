@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.2 Draft: the eight §15 questions decided by the owner on 2026-10-15; the whole design is approved at G3 |
+| Version | 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: the eight §15 questions decided by the owner on 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `restaurants` (architecture §4) |
 | Requirements | FR-040 onboard, FR-041 staff, FR-043 suspend, FR-044 profile; FR-042 and NFR-SEC-02 (isolation of these endpoints); NFR-SEC-03 (audit read); NFR-PRIV-01 (staff data export and erasure) |

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.2 Draft: the four §14 questions decided by the owner on 2026-10-15; the whole design is approved at G3 |
+| Version | 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: the four §14 questions decided by the owner on 2026-10-15 |
 | Owner decisions | §14, all four accepted 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `realtime` (architecture §4) |

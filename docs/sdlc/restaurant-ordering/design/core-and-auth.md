@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.6 Draft (0.6: §4 key list per CR-005; 0.5: menu reads and the image route as exceptions in §2, CR-004): the five §16 questions decided by the owner on 2026-10-15; 0.3–0.4 add the changes from [restaurants](restaurants.md) §14 (one-time secrets, suspension check, sign-in when suspended, staff token on admin routes → 404). The whole design is approved at G3 |
+| Version | 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.6 (0.6: §4 key list per CR-005; 0.5: menu reads and the image route as exceptions in §2, CR-004): the five §16 questions decided by the owner on 2026-10-15; 0.3–0.4 add the changes from [restaurants](restaurants.md) §14 (one-time secrets, suspension check, sign-in when suspended, staff token on admin routes → 404). |
 | Date | 2026-10-15 |
 | Package | `core` (shared kernel and staff/admin sign-in), per architecture §4 |
 | Requirements | FR-010, FR-042 (the shared parts), NFR-REL-02 (idempotency), NFR-SEC-01 to 04, NFR-PRIV-01 (logs, staff data), NFR-COMPAT-01, NFR-OBS-01 (request ID) |

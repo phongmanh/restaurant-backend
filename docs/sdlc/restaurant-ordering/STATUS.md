@@ -19,7 +19,7 @@
 | Compliance | Vietnam PDP Law (in force 2026-01-01), Decree 356/2025/ND-CP (replaced Decree 13/2023, CR-003); accounting record retention; data residency TBD-10. No PCI-DSS (no payments) |
 | SLOs | Agreed at G1: 99.9% success per 28 days; order flow 99.9%; guest reads p95 ≤ 200 ms; live updates ≤ 2 s p95; RPO ≤ 5 min, RTO ≤ 1 h |
 | Product owner / Tech lead / Ops owner | Manh Nguyen, product owner / Manh Nguyen, tech lead / TBD |
-| Current phase | 3 Design |
+| Current phase | 4 Implementation |
 | Tailoring | Full (service) |
 | Last updated | 2026-10-15 |
 
@@ -32,7 +32,7 @@
 | 2+ | ADRs | adr/0001–0009, 0011 | 10 Accepted (0001, 0002 with conditions, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0011); 0010 reserved by CR-001 | — |
 | 2 | Monthly cost estimate (TBD-11) | cost-estimate.md | Draft (Ably line confirmed by S-3; for the owner's review) | 0.2 |
 | 1–5 | Test plan + summary report | test-plan.md | Draft master plan (§1 and §5 approved at G1) | 0.4 |
-| 3 | Feature designs | design/<feature>.md | In progress: [core-and-auth](design/core-and-auth.md) Draft 0.6 (its §16 questions decided 2026-10-15); [restaurants](design/restaurants.md) Draft 0.2 (its §15 questions decided 2026-10-15); [menu](design/menu.md) Draft 0.2 (its §14 questions decided 2026-10-15; CR-004 approved); [tables](design/tables.md) Draft 0.3 (its §13 questions decided 2026-10-15; CR-005 approved; 0.3 takes the orders hand-offs); [orders](design/orders.md) Draft 0.2 (its §15 questions decided 2026-10-15; CR-006 approved); [realtime](design/realtime.md) Draft 0.2 (its §14 questions decided 2026-10-15); [reports](design/reports.md) Draft 0.2 (its §13 questions decided 2026-10-15; CR-007 approved); orders 0.3 takes the reports hand-offs. All Phase 3 designs drafted. **G3 consistency pass 2026-10-15:** contract, endpoint tables, suspension flags, error catalogue, RTM and cross-design hand-offs checked by script and by reading; findings fixed; Q-9 resolved and CR-008 applied. Ready for the G3 decision | — |
+| 3 | Feature designs | design/<feature>.md | Approved at G3 2026-10-15 (baseline; changes need a CR): [core-and-auth](design/core-and-auth.md), [restaurants](design/restaurants.md), [menu](design/menu.md), [tables](design/tables.md), [orders](design/orders.md), [realtime](design/realtime.md), [reports](design/reports.md), each v1.0; contract `docs/api/openapi.yaml` 1.0.0 (93 operations). Before G3: all question sets Q-2 to Q-9 decided, CR-004 to CR-008 approved, consistency pass run | 1.0 |
 | 6 | Release checklist | release-checklist.md | Not started | — |
 
 The OpenAPI contract is baselined at G3 with the feature designs, but lives in the code repository (`docs/api/openapi.yaml`), where CI checks it. Draft 0.1.0 started 2026-10-15 with the shared components, the error catalogue and `/v1/auth/*` (Redocly lint passes).
@@ -44,7 +44,7 @@ Decision is one of: Approved / Approved with conditions / Rejected / Waived.
 |---|---|---|---|---|---|
 | G1 Requirements baseline | 2026-10-13 | Approved | Manh Nguyen, product owner and tech lead | None. Open before G2: TBD-1, TBD-2, TBD-3, TBD-4; TBD-10 blocks G2 | `sdlc/restaurant-ordering/G1` on `149f7a4`. Nothing was committed at G1 time, so this commit also holds the Phase 2 drafts. The G1 baseline is requirements.md v1.0 in it, unchanged since approval; rtm.md and test-plan.md there already include Phase 2 additions |
 | G2 Architecture baseline | 2026-10-15 | Approved with conditions | Manh Nguyen, product owner and tech lead | Condition 1 (TBD-10, due before G5): keep `sin1` / Singapore; change region if the legal review requires it; raise a CR to change provider if it requires storage in Vietnam. Accepted risks: R-11, R-12, R-13, R-14 (free plan). TBD-11 deferred (free plans only) | `sdlc/restaurant-ordering/G2` on the G2 commit. Baseline: architecture.md v1.0, ADR-0001–0009 and 0011 |
-| G3 Ready to build | | | | | |
+| G3 Ready to build | 2026-10-15 | Approved | Manh Nguyen, product owner and tech lead | None. Open items that don't block G3: TBD-10 (G2 condition, before G5), TBD-4 (working values until the legal review), TBD-9, TBD-12, TBD-13 (before FR-022 is built); accepted risks R-11 to R-14 carry on | `sdlc/restaurant-ordering/G3` on the G3 commit. Baseline: the seven feature designs v1.0, `docs/api/openapi.yaml` 1.0.0, requirements v1.6, architecture v1.4 |
 | G4 Code complete | | | | | |
 | G5 Release readiness | | | | | |
 | G6 Launch accepted | | | | | |
@@ -153,6 +153,7 @@ Decision is one of: Approved / Approved with conditions / Rejected / Waived.
 | 2026-10-15 | YAML gotcha in CLAUDE.md extended under the owner's standing instruction: the G3 pass found five `x-error-catalogue` entries split at their commas since contract 0.1.0; flow mappings are now checked for exactly `code`, `status`, `meaning` | CLAUDE.md; contract 0.7.1-draft |
 | 2026-10-15 | G3 pass Q-9 (1) by the owner: every `/v1/auth/*` route is allowed for a suspended restaurant's staff, including password change, link inspection, invitation acceptance and reset completion; contract 0.7.2-draft sets `x-allowed-when-suspended` on all 93 operations | [design/restaurants.md](design/restaurants.md) §6; [design/core-and-auth.md](design/core-and-auth.md) §10 |
 | 2026-10-15 | **CR-008 approved** by the owner and applied: architecture v1.4 (§6 stale device-data step removed, §10 job list) | [CR-008](cr/CR-008-architecture-g3-alignment.md) |
+| 2026-10-15 | **G3 approved** by the owner: the seven feature designs baselined as v1.0 and the contract frozen as 1.0.0; Phase 4 (implementation) starts. Changes to a design or the contract now need a CR | Gate log |
 
 ## Risks
 | ID | Risk ("If …, then …") | Likelihood (H/M/L) | Impact (H/M/L) | Owner | Mitigation | Status |

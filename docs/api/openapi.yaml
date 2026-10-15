@@ -1,11 +1,12 @@
 openapi: 3.1.0
 info:
   title: Restaurant ordering API
-  version: 0.7.2-draft
+  version: 1.0.0
   description: |
     Contract for the restaurant ordering service (`docs/sdlc/restaurant-ordering/`).
-    Hand-written in Phase 3 and frozen at G3 (architecture §5, ADR-0007).
-    Built up one feature design at a time; this draft holds the shared parts and
+    Hand-written in Phase 3 and frozen at G3 on 2026-10-15 (architecture §5, ADR-0007). Changes need a CR;
+    within `/v1` they must be additive (NFR-COMPAT-01).
+    Built up one feature design at a time; it holds the shared parts and
     `/v1/auth/*` from `design/core-and-auth.md`, and the routes of
     `design/restaurants.md`, `design/menu.md`, `design/tables.md`, `design/orders.md`, `design/realtime.md` and `design/reports.md`. `x-allowed-when-suspended` on staff and guest
     operations mirrors the endpoint registry (restaurants §6).
