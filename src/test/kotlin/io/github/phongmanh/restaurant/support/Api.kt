@@ -111,7 +111,6 @@ val notYetRouted: Set<Endpoint> =
         Endpoints.Menu.DELETE_MENU_ITEM_IMAGE,
     ) +
         listOf(
-            Endpoints.Orders,
             Endpoints.Realtime,
             Endpoints.Reports,
         ).flatMap { it.entries }

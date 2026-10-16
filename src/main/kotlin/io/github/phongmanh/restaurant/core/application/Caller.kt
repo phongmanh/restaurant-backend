@@ -51,6 +51,9 @@ sealed interface Caller {
  * The role check, in the service so a second route to the same operation can't skip it (§6). It
  * doesn't look at the object, so a 403 can't reveal that another restaurant's object exists (§3).
  */
-fun Caller.Staff.requireRole(vararg allowed: StaffRole) {
+fun Caller.Staff.requireRole(vararg allowed: StaffRole) = requireRole(allowed.toSet())
+
+/** [requireRole] for a role set a feature keeps, such as the roles of an order step (orders §2). */
+fun Caller.Staff.requireRole(allowed: Set<StaffRole>) {
     if (role !in allowed) throw DomainError.Forbidden()
 }

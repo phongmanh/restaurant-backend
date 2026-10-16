@@ -135,7 +135,9 @@ class StaffSessionRoutes(
             respondSession(call, session, if (created) HttpStatusCode.Created else HttpStatusCode.OK)
         }
         route.endpoint(e.GET_TABLE_SESSION) {
-            respondSession(call, sessions.get(call.staffCaller(), call.sessionIdParam()))
+            val (session, bill) = sessions.get(call.staffCaller(), call.sessionIdParam())
+            call.response.header(HttpHeaders.ETag, etagOf(session.version))
+            call.respond(StaffTableSession.of(session, bill))
         }
         route.endpoint(e.MOVE_TABLE_SESSION) {
             val floor = FloorStaff.of(call.staffCaller())

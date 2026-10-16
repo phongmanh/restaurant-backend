@@ -2,6 +2,7 @@ package io.github.phongmanh.restaurant.tables.http
 
 import io.github.phongmanh.restaurant.core.domain.Rfc3339
 import io.github.phongmanh.restaurant.menu.http.MoneyBody
+import io.github.phongmanh.restaurant.tables.application.BillSummary
 import io.github.phongmanh.restaurant.tables.application.FloorEntry
 import io.github.phongmanh.restaurant.tables.application.GuestView
 import io.github.phongmanh.restaurant.tables.application.QrCode
@@ -16,8 +17,8 @@ import kotlinx.serialization.Serializable
 /*
  * Request and response bodies of the tables feature, as `components.schemas` in the contract names
  * them. Request fields are all optional here so that a missing one is a `validation_failed` field
- * error (`required`) rather than an unreadable body. `StaffTableSession.bill` comes from orders
- * (step 7); the contract makes it optional, so it's left out until then.
+ * error (`required`) rather than an unreadable body. `StaffTableSession.bill` is the bill summary
+ * from orders (`SessionSummaries`, orders §16), on a single session's read.
  */
 
 @Serializable
@@ -237,18 +238,29 @@ data class StaffTableSession(
     @SerialName("closed_at") val closedAt: String? = null,
     val table: TableRef,
     val version: Int,
+    val bill: SessionBillBody? = null,
 ) {
     companion object {
-        fun of(s: TableSession) =
-            StaffTableSession(
-                s.id.toString(),
-                s.status.value,
-                Rfc3339.format(s.openedAt),
-                s.closedAt?.let(Rfc3339::format),
-                tableRef(s),
-                s.version,
-            )
+        fun of(
+            s: TableSession,
+            bill: BillSummary? = null,
+        ) = StaffTableSession(
+            s.id.toString(),
+            s.status.value,
+            Rfc3339.format(s.openedAt),
+            s.closedAt?.let(Rfc3339::format),
+            tableRef(s),
+            s.version,
+            bill?.let { SessionBillBody(it.orderCount, MoneyBody.of(it.total)) },
+        )
     }
 }
+
+/** `StaffTableSession.bill`: how many orders the bill has and its total (orders §16). */
+@Serializable
+data class SessionBillBody(
+    @SerialName("order_count") val orderCount: Int,
+    val total: MoneyBody,
+)
 
 private fun tableRef(s: TableSession) = TableRef(s.tableId.toString(), s.tableNumber)

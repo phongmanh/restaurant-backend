@@ -3,17 +3,14 @@ package io.github.phongmanh.restaurant.tables
 import io.github.phongmanh.restaurant.core.auth.GuestSettings
 import io.github.phongmanh.restaurant.core.auth.application.GuestAuthenticator
 import io.github.phongmanh.restaurant.tables.application.DatabaseSessionAccess
-import io.github.phongmanh.restaurant.tables.application.EmptyBills
 import io.github.phongmanh.restaurant.tables.application.FloorViewService
 import io.github.phongmanh.restaurant.tables.application.GuestAuthentication
 import io.github.phongmanh.restaurant.tables.application.GuestSessionService
-import io.github.phongmanh.restaurant.tables.application.NoOrdersYet
 import io.github.phongmanh.restaurant.tables.application.QrService
 import io.github.phongmanh.restaurant.tables.application.ScanLimits
 import io.github.phongmanh.restaurant.tables.application.SessionAccess
 import io.github.phongmanh.restaurant.tables.application.SessionAutoClose
 import io.github.phongmanh.restaurant.tables.application.SessionOpener
-import io.github.phongmanh.restaurant.tables.application.SessionSummaries
 import io.github.phongmanh.restaurant.tables.application.StaffSessionService
 import io.github.phongmanh.restaurant.tables.application.TableService
 import io.github.phongmanh.restaurant.tables.application.WaiterCallService
@@ -45,10 +42,7 @@ fun tablesModule(
     single { IdleSessionRepository() }
     single { WaiterCallRepository() }
 
-    // Provided by orders from step 7; until then no session has orders (NoOrdersYet).
-    single<SessionSummaries> { NoOrdersYet }
-    single<EmptyBills> { NoOrdersYet }
-
+    // SessionSummaries and EmptyBills come from the orders module (orders §11).
     single<SessionAccess> { DatabaseSessionAccess(get(), get(), get()) }
     single<GuestAuthenticator> { GuestAuthentication(get(), get(), get()) }
     single { SessionOpener(get(), get(), get()) }
@@ -56,7 +50,7 @@ fun tablesModule(
     single { TableService(get(), get(), get(), get(), get(), get()) }
     single { QrService(get(), get(), get(), get(), get()) }
     single { GuestSessionService(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
-    single { StaffSessionService(get(), get(), get(), get(), get(), get(), get()) }
+    single { StaffSessionService(get(), get(), get(), get(), get(), get(), get(), get()) }
     single { WaiterCallService(get(), get(), get(), get(), get(), get(), get(), get()) }
     single { FloorViewService(get(), get(), get(), get(), get(), get()) }
     single { SessionAutoClose(get(), get(), get(), get(), get(), get()) }

@@ -90,3 +90,11 @@ rateLimits:
       present_table: "30/60"
       present_ip: "60/60"
     waiter_call: "10/3600"
+    # orders §10, §15 Q6: new orders per session, per restaurant and per staff member; guest cancels
+    # per session; staff status changes and line rejections per staff member.
+    order:
+      place_session: "10/60"
+      place_restaurant: "300/60"
+      place_staff: "30/60"
+      cancel: "30/60"
+      staff_change: "240/60"

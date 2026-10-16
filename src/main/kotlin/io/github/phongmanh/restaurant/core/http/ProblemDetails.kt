@@ -20,6 +20,7 @@ import io.ktor.server.response.respondText
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import org.slf4j.LoggerFactory
+import java.util.UUID
 
 /** RFC 9457 problem details, as `components.schemas.Problem` in the contract. */
 @Serializable
@@ -31,6 +32,10 @@ data class Problem(
     @SerialName("request_id") val requestId: String,
     val detail: String? = null,
     val errors: List<ProblemFieldError>? = null,
+    /** `OrderProblem` (orders §3.1): with `item_unavailable`. */
+    @SerialName("unavailable_items") val unavailableItems: List<String>? = null,
+    /** `OrderProblem` (orders §7.1): with `orders_not_finished`. */
+    @SerialName("order_ids") val orderIds: List<String>? = null,
 )
 
 @Serializable
@@ -49,6 +54,8 @@ suspend fun ApplicationCall.respondProblem(
     detail: String? = null,
     errors: List<FieldError> = emptyList(),
     retryAfterSeconds: Long? = null,
+    unavailableItems: List<UUID> = emptyList(),
+    orderIds: List<UUID> = emptyList(),
 ) {
     retryAfterSeconds?.let { response.header(HttpHeaders.RetryAfter, it.toString()) }
     if (code == ErrorCode.UNAUTHENTICATED) response.header(HttpHeaders.WWWAuthenticate, "Bearer")
@@ -61,6 +68,8 @@ suspend fun ApplicationCall.respondProblem(
             requestId = callId ?: "",
             detail = detail,
             errors = errors.takeIf { it.isNotEmpty() }?.map { ProblemFieldError(it.field, it.code, it.message) },
+            unavailableItems = unavailableItems.takeIf { it.isNotEmpty() }?.map(UUID::toString),
+            orderIds = orderIds.takeIf { it.isNotEmpty() }?.map(UUID::toString),
         )
     respondText(ApiJson.encodeToString(problem), ProblemJson, HttpStatusCode.fromValue(code.status))
 }
@@ -73,7 +82,7 @@ suspend fun ApplicationCall.respondProblem(
 fun Application.installProblemDetails() {
     install(StatusPages) {
         exception<DomainError> { call, error ->
-            call.respondProblem(error.code, error.detail, error.errors, error.retryAfterSeconds)
+            call.respondProblem(error.code, error.detail, error.errors, error.retryAfterSeconds, error.unavailableItems, error.orderIds)
         }
         // Ktor's own request failures. Their messages can echo the input, so none reaches the client.
         exception<BadRequestException> { call, _ -> call.respondProblem(ErrorCode.MALFORMED_REQUEST) }

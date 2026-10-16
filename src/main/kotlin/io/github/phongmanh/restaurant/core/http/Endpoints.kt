@@ -88,6 +88,7 @@ object Endpoints {
     object Jobs {
         const val PREFIX = "/internal/jobs/"
         const val SESSION_AUTO_CLOSE = PREFIX + "session-auto-close"
+        const val RETENTION = PREFIX + "retention"
     }
 
     /** All entries, in declaration order. A group missing here is caught by IT-CORE-10. */
