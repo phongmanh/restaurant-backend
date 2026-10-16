@@ -4,6 +4,7 @@ import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.sql.Types
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -38,6 +39,8 @@ internal fun PreparedStatement.bind(values: List<Any?>): PreparedStatement {
             // As timestamptz, typed: a bare timestamp parameter is "unknown" to PostgreSQL and reads as text in a CASE.
             is Instant -> setObject(index, value.atOffset(ZoneOffset.UTC))
 
+            is LocalDate -> setObject(index, value)
+
             is List<*> -> setArray(index, connection.createArrayOf("text", value.map { it as String }.toTypedArray()))
 
             else -> error("unsupported parameter type ${value::class.simpleName}")
@@ -52,6 +55,9 @@ internal fun <T> PreparedStatement.list(row: (ResultSet) -> T): List<T> =
 
 /** A nullable `timestamptz` column. */
 internal fun ResultSet.instant(column: String): Instant? = getTimestamp(column)?.toInstant()
+
+/** A nullable `date` column. */
+internal fun ResultSet.localDate(column: String): LocalDate? = getObject(column, LocalDate::class.java)
 
 /** A `uuid` column. */
 internal fun ResultSet.uuid(column: String): UUID? = getObject(column, UUID::class.java)

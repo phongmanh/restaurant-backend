@@ -54,6 +54,18 @@ class SessionRepository {
             it.bind(restaurantId.value, id.value).firstOrNull(::session)
         }
 
+    /** The sessions named; another restaurant's are missing. */
+    fun findAll(
+        tx: TxScope,
+        restaurantId: RestaurantId,
+        ids: Collection<TableSessionId>,
+    ): List<TableSession> {
+        if (ids.isEmpty()) return emptyList()
+        return connection(tx).prepareStatement("$SELECT WHERE s.restaurant_id = ? AND s.id = ANY(?::uuid[])").use {
+            it.bind(restaurantId.value, ids.map(TableSessionId::toString)).list(::session)
+        }
+    }
+
     /**
      * The session with its row locked until the transaction ends. The lock is taken by a query on
      * `table_sessions` alone, then the row is read: a locking query with a join re-checks the join

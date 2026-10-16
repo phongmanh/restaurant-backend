@@ -70,6 +70,16 @@ interface SessionAccess {
         tx: TxScope,
         restaurantId: RestaurantId,
     ): List<TableSession>
+
+    /**
+     * The sessions named, open or closed, with the number of the table each is at now, in one
+     * query: for the `table` of orders and bills (orders §4). Another restaurant's are missing.
+     */
+    fun find(
+        tx: TxScope,
+        restaurantId: RestaurantId,
+        ids: Collection<TableSessionId>,
+    ): Map<TableSessionId, TableSession>
 }
 
 class DatabaseSessionAccess(
@@ -116,6 +126,12 @@ class DatabaseSessionAccess(
         restaurantId: RestaurantId,
     ): List<TableSession> = sessions.open(tx, restaurantId)
 
+    override fun find(
+        tx: TxScope,
+        restaurantId: RestaurantId,
+        ids: Collection<TableSessionId>,
+    ): Map<TableSessionId, TableSession> = sessions.findAll(tx, restaurantId, ids).associateBy { it.id }
+
     private fun lockOpen(
         tx: TxScope,
         restaurantId: RestaurantId,
@@ -157,22 +173,4 @@ fun interface EmptyBills {
         restaurantId: RestaurantId,
         sessionId: TableSessionId,
     ): Boolean
-}
-
-/**
- * Both ports until the orders feature (step 7) provides them. No order can exist before then, so
- * every session has no orders and an empty bill: this answers what the real ports would.
- */
-object NoOrdersYet : SessionSummaries, EmptyBills {
-    override fun of(
-        tx: TxScope,
-        restaurantId: RestaurantId,
-        sessionIds: List<TableSessionId>,
-    ): Map<TableSessionId, BillSummary> = emptyMap()
-
-    override fun closeIfEmpty(
-        tx: TxScope,
-        restaurantId: RestaurantId,
-        sessionId: TableSessionId,
-    ): Boolean = true
 }

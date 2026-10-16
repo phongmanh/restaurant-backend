@@ -1,5 +1,7 @@
 package io.github.phongmanh.restaurant.core.domain
 
+import java.util.UUID
+
 /**
  * The stable error codes clients switch on (core-and-auth §3). Every code here is also in the
  * contract's `x-error-catalogue` with the same status; a test checks it. Feature codes join this
@@ -37,6 +39,12 @@ enum class ErrorCode(
     TABLE_HAS_OPEN_SESSION("table_has_open_session", 409, "Table has an open session"),
     SESSION_NOT_OPEN("session_not_open", 409, "Session not open"),
     TABLE_LIMIT_REACHED("table_limit_reached", 409, "Table limit reached"),
+    ITEM_UNAVAILABLE("item_unavailable", 409, "Item unavailable"),
+    ORDER_NOT_CANCELLABLE("order_not_cancellable", 409, "Order not cancellable"),
+    INVALID_TRANSITION("invalid_transition", 409, "Invalid status change"),
+    LINE_NOT_REJECTABLE("line_not_rejectable", 409, "Line not rejectable"),
+    ORDERS_NOT_FINISHED("orders_not_finished", 409, "Orders not finished"),
+    BILL_NOT_CLOSED("bill_not_closed", 409, "Bill not closed"),
     PRECONDITION_FAILED("precondition_failed", 412, "Precondition failed"),
     PAYLOAD_TOO_LARGE("payload_too_large", 413, "Payload too large"),
     UNSUPPORTED_MEDIA_TYPE("unsupported_media_type", 415, "Unsupported media type"),
@@ -71,6 +79,10 @@ sealed class DomainError(
     val errors: List<FieldError> = emptyList(),
     /** Sent as `Retry-After`, in seconds. Every 429 and 503 sets it (core-and-auth §2). */
     val retryAfterSeconds: Long? = null,
+    /** With `item_unavailable`: the hidden or sold-out items (`unavailable_items`; orders §3.1). */
+    val unavailableItems: List<UUID> = emptyList(),
+    /** With `orders_not_finished`: the orders still in progress (`order_ids`; orders §7.1). */
+    val orderIds: List<UUID> = emptyList(),
 ) : RuntimeException(code.value, null, false, false) {
     class MalformedRequest(
         detail: String? = null,
@@ -169,6 +181,28 @@ sealed class DomainError(
 
     /** The restaurant has 300 tables (tables §5, ASSUMPTION-4). */
     class TableLimitReached : DomainError(ErrorCode.TABLE_LIMIT_REACHED)
+
+    /** Ordered items that are hidden or sold out; nothing was ordered (orders §3.1, FR-003). */
+    class ItemUnavailable(
+        items: List<UUID>,
+    ) : DomainError(ErrorCode.ITEM_UNAVAILABLE, unavailableItems = items)
+
+    /** A guest cancelling an order the kitchen has accepted, or one that's finished (orders §5.2, FR-006). */
+    class OrderNotCancellable : DomainError(ErrorCode.ORDER_NOT_CANCELLABLE)
+
+    /** The status step isn't allowed from the order's current status (orders §2, FR-012). */
+    class InvalidTransition : DomainError(ErrorCode.INVALID_TRANSITION)
+
+    /** The line is already rejected, or the order isn't `accepted` or `preparing` (orders §5.3, FR-015). */
+    class LineNotRejectable : DomainError(ErrorCode.LINE_NOT_REJECTABLE)
+
+    /** Closing a session with orders in progress, without `force` (orders §7.1, FR-013). */
+    class OrdersNotFinished(
+        orders: List<UUID>,
+    ) : DomainError(ErrorCode.ORDERS_NOT_FINISHED, orderIds = orders)
+
+    /** Correcting a bill that's still open (orders §7.2). */
+    class BillNotClosed : DomainError(ErrorCode.BILL_NOT_CLOSED)
 
     /** `If-Match` doesn't name the current version (§5). */
     class PreconditionFailed : DomainError(ErrorCode.PRECONDITION_FAILED)

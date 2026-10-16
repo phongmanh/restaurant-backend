@@ -10,6 +10,7 @@ import io.github.phongmanh.restaurant.core.auth.crypto.Argon2Settings
 import io.github.phongmanh.restaurant.core.auth.crypto.EcKeySet
 import io.github.phongmanh.restaurant.core.auth.crypto.EmailHmac
 import io.github.phongmanh.restaurant.core.auth.crypto.SecretBox
+import io.github.phongmanh.restaurant.orders.application.OrderLimitPolicies
 import io.github.phongmanh.restaurant.restaurants.application.StaffLimits
 import io.github.phongmanh.restaurant.tables.application.TableLimits
 import java.math.BigInteger
@@ -111,6 +112,11 @@ object TestKeys {
                     RateLimitPolicy(TableLimits.QR_TABLE, 30, 60.seconds),
                     RateLimitPolicy(TableLimits.QR_IP, 60, 60.seconds),
                     RateLimitPolicy(TableLimits.WAITER_CALL, 10, 3600.seconds),
+                    RateLimitPolicy(OrderLimitPolicies.PLACE_SESSION, 10, 60.seconds),
+                    RateLimitPolicy(OrderLimitPolicies.PLACE_RESTAURANT, 300, 60.seconds),
+                    RateLimitPolicy(OrderLimitPolicies.PLACE_STAFF, 30, 60.seconds),
+                    RateLimitPolicy(OrderLimitPolicies.CANCEL, 30, 60.seconds),
+                    RateLimitPolicy(OrderLimitPolicies.STAFF_CHANGE, 240, 60.seconds),
                 ).associateBy { it.name },
         )
 

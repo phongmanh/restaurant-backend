@@ -192,6 +192,7 @@ class StaffSessionService(
     private val events: EventLog,
     private val audit: AuditLog,
     private val clock: Clock,
+    private val summaries: SessionSummaries,
 ) {
     /** For guests without a phone (FR-014): the table's open session, created if there's none. */
     suspend fun open(
@@ -220,12 +221,15 @@ class StaffSessionService(
             session to created
         }
 
-    /** Any staff role (§8). */
+    /** Any staff role (§8); with the bill summary from orders (§3.4, orders §16). */
     suspend fun get(
         caller: Caller.Staff,
         id: TableSessionId,
-    ): TableSession =
-        transactor.inTransaction(caller.restaurantId) { sessions.find(this, caller.restaurantId, id) } ?: throw DomainError.NotFound()
+    ): Pair<TableSession, BillSummary> =
+        transactor.inTransaction(caller.restaurantId) {
+            val session = sessions.find(this, caller.restaurantId, id) ?: throw DomainError.NotFound()
+            session to (summaries.of(this, caller.restaurantId, listOf(id))[id] ?: BillSummary(0, 0))
+        }
 
     /**
      * Moves an open session to a free table (FR-032); its orders and bill move with it, as they

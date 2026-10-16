@@ -10,6 +10,7 @@ import io.github.phongmanh.restaurant.core.domain.IdGenerator
 import io.github.phongmanh.restaurant.core.domain.UuidV7
 import io.github.phongmanh.restaurant.core.http.IdempotentRoutes
 import io.github.phongmanh.restaurant.core.http.JobSettings
+import io.github.phongmanh.restaurant.core.http.RetentionJobRoutes
 import io.github.phongmanh.restaurant.core.persistence.AuditRepository
 import io.github.phongmanh.restaurant.core.persistence.DatabasePools
 import io.github.phongmanh.restaurant.core.persistence.ExposedTransactor
@@ -34,4 +35,6 @@ fun coreModule(
         single { IdempotentRoutes(get(), get()) }
         single<AuditChainStore> { AuditRepository() }
         single<AuditLog> { ChainedAuditLog(get(), get(), get()) }
+        // Each feature adds its part of the retention job as a RetentionTask (core-and-auth §10).
+        single { RetentionJobRoutes(getAll()) }
     }

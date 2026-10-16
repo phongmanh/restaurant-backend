@@ -6,13 +6,19 @@ import io.github.phongmanh.restaurant.core.auth.http.AuthRoutes
 import io.github.phongmanh.restaurant.core.config.AppConfig
 import io.github.phongmanh.restaurant.core.coreModule
 import io.github.phongmanh.restaurant.core.http.Endpoints
+import io.github.phongmanh.restaurant.core.http.RetentionJobRoutes
 import io.github.phongmanh.restaurant.core.http.installHttp
 import io.github.phongmanh.restaurant.core.persistence.DatabasePools
 import io.github.phongmanh.restaurant.core.persistence.UpstashRateLimiter
 import io.github.phongmanh.restaurant.menu.http.MenuEditRoutes
 import io.github.phongmanh.restaurant.menu.http.MenuReadRoutes
 import io.github.phongmanh.restaurant.menu.menuModule
+import io.github.phongmanh.restaurant.orders.http.GuestOrderRoutes
+import io.github.phongmanh.restaurant.orders.http.StaffBillRoutes
+import io.github.phongmanh.restaurant.orders.http.StaffOrderRoutes
+import io.github.phongmanh.restaurant.orders.ordersModule
 import io.github.phongmanh.restaurant.realtime.realtimeModule
+import io.github.phongmanh.restaurant.reports.reportsModule
 import io.github.phongmanh.restaurant.restaurants.http.AdminRoutes
 import io.github.phongmanh.restaurant.restaurants.http.AuditAndPrivacyRoutes
 import io.github.phongmanh.restaurant.restaurants.http.StaffMemberRoutes
@@ -79,6 +85,10 @@ fun Application.module(
         get<StaffTableRoutes>().install(this)
         get<StaffSessionRoutes>().install(this)
         get<TableJobRoutes>().install(this)
+        get<GuestOrderRoutes>().install(this)
+        get<StaffOrderRoutes>().install(this)
+        get<StaffBillRoutes>().install(this)
+        get<RetentionJobRoutes>().install(this)
     }
 }
 
@@ -93,5 +103,7 @@ fun appModule(
         restaurantsModule(),
         menuModule(),
         tablesModule(config.guests, config.auth.issuer),
+        ordersModule(),
         realtimeModule(),
+        reportsModule(),
     )
