@@ -2,6 +2,7 @@ package io.github.phongmanh.restaurant.tables
 
 import io.github.phongmanh.restaurant.core.auth.GuestSettings
 import io.github.phongmanh.restaurant.core.auth.application.GuestAuthenticator
+import io.github.phongmanh.restaurant.realtime.application.Snapshots
 import io.github.phongmanh.restaurant.tables.application.DatabaseSessionAccess
 import io.github.phongmanh.restaurant.tables.application.FloorViewService
 import io.github.phongmanh.restaurant.tables.application.GuestAuthentication
@@ -20,10 +21,12 @@ import io.github.phongmanh.restaurant.tables.http.GuestSessionRoutes
 import io.github.phongmanh.restaurant.tables.http.StaffSessionRoutes
 import io.github.phongmanh.restaurant.tables.http.StaffTableRoutes
 import io.github.phongmanh.restaurant.tables.http.TableJobRoutes
+import io.github.phongmanh.restaurant.tables.http.WaiterCallSnapshots
 import io.github.phongmanh.restaurant.tables.persistence.IdleSessionRepository
 import io.github.phongmanh.restaurant.tables.persistence.SessionRepository
 import io.github.phongmanh.restaurant.tables.persistence.TableRepository
 import io.github.phongmanh.restaurant.tables.persistence.WaiterCallRepository
+import org.koin.dsl.bind
 import org.koin.dsl.module
 
 /**
@@ -54,6 +57,7 @@ fun tablesModule(
     single { WaiterCallService(get(), get(), get(), get(), get(), get(), get(), get()) }
     single { FloorViewService(get(), get(), get(), get(), get(), get()) }
     single { SessionAutoClose(get(), get(), get(), get(), get(), get()) }
+    single { WaiterCallSnapshots(get()) } bind Snapshots::class
 
     single { GuestSessionRoutes(get(), get()) }
     single { StaffTableRoutes(get(), get(), get()) }

@@ -5,6 +5,7 @@ import io.github.phongmanh.restaurant.core.application.TxKey
 import io.github.phongmanh.restaurant.core.application.TxScope
 import io.github.phongmanh.restaurant.core.domain.DomainError
 import io.github.phongmanh.restaurant.core.domain.RestaurantId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
@@ -57,19 +58,27 @@ class ExposedTransactor(
             return open.block()
         }
         val database = if (platform) pools.platform else pools.app
-        return try {
-            withContext(Dispatchers.IO) {
-                suspendTransaction(database) {
-                    val scope = Scope(restaurantId, platform, this)
-                    withContext(CurrentTx(scope)) {
-                        scope.start()
-                        scope.block().also { scope.runBeforeCommit() }
+        var committed: Scope? = null
+        val result =
+            try {
+                withContext(Dispatchers.IO) {
+                    suspendTransaction(database) {
+                        val scope = Scope(restaurantId, platform, this)
+                        withContext(CurrentTx(scope)) {
+                            scope.start()
+                            scope.block().also {
+                                scope.runBeforeCommit()
+                                committed = scope
+                            }
+                        }
                     }
                 }
+            } catch (e: SQLException) {
+                throw translate(e)
             }
-        } catch (e: SQLException) {
-            throw translate(e)
-        }
+        // suspendTransaction has committed once it returns; a failed commit throws above instead.
+        committed?.runAfterCommit()
+        return result
     }
 
     private inner class Scope(
@@ -78,12 +87,17 @@ class ExposedTransactor(
         val transaction: JdbcTransaction,
     ) : TxScope {
         private val beforeCommit = mutableListOf<suspend () -> Unit>()
+        private val afterCommit = mutableListOf<suspend () -> Unit>()
         private val attributes = mutableMapOf<TxKey<*>, Any>()
 
         val connection: Connection get() = transaction.connection.connection as Connection
 
         override fun beforeCommit(action: suspend () -> Unit) {
             beforeCommit += action
+        }
+
+        override fun afterCommit(action: suspend () -> Unit) {
+            afterCommit += action
         }
 
         override fun <T : Any> getOrPut(
@@ -112,6 +126,21 @@ class ExposedTransactor(
             // An action may register another one (an audit entry recorded by a hook), so loop by index.
             var i = 0
             while (i < beforeCommit.size) beforeCommit[i++]()
+        }
+
+        suspend fun runAfterCommit() {
+            for (action in afterCommit) {
+                try {
+                    action()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (
+                    @Suppress("TooGenericExceptionCaught") e: Exception,
+                ) {
+                    // Only the type: a message could carry row values (CLAUDE.md, SQL errors).
+                    log.error("an after-commit action failed: {}", e::class.qualifiedName)
+                }
+            }
         }
     }
 

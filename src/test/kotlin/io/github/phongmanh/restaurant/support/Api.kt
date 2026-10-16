@@ -110,10 +110,7 @@ val notYetRouted: Set<Endpoint> =
         Endpoints.Menu.PUT_MENU_ITEM_IMAGE,
         Endpoints.Menu.DELETE_MENU_ITEM_IMAGE,
     ) +
-        listOf(
-            Endpoints.Realtime,
-            Endpoints.Reports,
-        ).flatMap { it.entries }
+        Endpoints.Reports.entries
 
 /** The TOTP secret an authenticator app reads from the enrolment's Base32 text. */
 fun decodeBase32(text: String): ByteArray {

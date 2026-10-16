@@ -2,17 +2,20 @@ package io.github.phongmanh.restaurant.support
 
 import io.github.phongmanh.restaurant.core.config.AppConfig
 import io.github.phongmanh.restaurant.module
+import io.github.phongmanh.restaurant.realtime.application.RealtimePublisher
 import io.ktor.server.application.Application
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import org.koin.core.module.Module
+import org.koin.dsl.module
 
 /**
  * The whole service on the test database, plus [routes] that exist only in the test (under
  * `/test/`, or a made-up registry entry), with components replaced by [overrides] (a clock the test
- * moves). [block] sends the requests.
+ * moves). [block] sends the requests. Ably is always a [FakeAbly], so no test reaches the real
+ * service; a test that inspects it passes its own in [overrides].
  */
 fun testApp(
     config: AppConfig = TestDatabase.config,
@@ -21,7 +24,7 @@ fun testApp(
     block: suspend ApplicationTestBuilder.() -> Unit,
 ) = testApplication {
     application {
-        module(config, overrides)
+        module(config, listOf(module { single<RealtimePublisher> { FakeAbly() } }) + overrides)
         routing { routes(this@application) }
     }
     block()

@@ -1,12 +1,13 @@
 package io.github.phongmanh.restaurant.realtime.application
 
+import io.github.phongmanh.restaurant.core.application.TxKey
 import io.github.phongmanh.restaurant.core.application.TxScope
 import io.github.phongmanh.restaurant.core.domain.IdGenerator
 import io.github.phongmanh.restaurant.core.domain.RestaurantId
 import io.github.phongmanh.restaurant.core.domain.Rfc3339
 import io.github.phongmanh.restaurant.core.domain.TableSessionId
 import io.github.phongmanh.restaurant.realtime.persistence.EventRepository
-import io.github.phongmanh.restaurant.realtime.persistence.NewEvent
+import io.github.phongmanh.restaurant.realtime.persistence.LoggedEvent
 import java.time.Clock
 import java.util.UUID
 
@@ -38,8 +39,8 @@ data class AppendedEvent(
  * the restaurant's next sequence number, and an outbox row that says "still to be sent". If the
  * change rolls back, so do both. Sending happens after the commit, never inside it.
  *
- * Built with the menu (step 5), its first writer. Sending to Ably after commit, the sweep and the
- * catch-up reads come with the realtime feature (step 8); until then the outbox rows wait unsent.
+ * The transaction's events are published once it commits ([OutboxPublisher.afterCommit]), never
+ * inside it (architecture §9).
  */
 interface EventLog {
     /**
@@ -60,6 +61,7 @@ interface EventLog {
 /** [EventLog] on `event_counters`, `domain_events` and `outbox`. */
 class OutboxEventLog(
     private val events: EventRepository,
+    private val publisher: OutboxPublisher,
     private val clock: Clock,
     private val ids: IdGenerator,
 ) : EventLog {
@@ -74,8 +76,19 @@ class OutboxEventLog(
         require(tx.restaurantId == restaurantId) { "an event is written in its own restaurant's transaction" }
         require(audience == EventAudience.STAFF || sessionId != null) { "a session's event names the session" }
         val seq = events.nextSeq(tx, restaurantId)
-        val event = NewEvent(ids.next(), restaurantId, seq, Rfc3339.truncate(clock.instant()), type, subject, audience, sessionId)
+        val event = LoggedEvent(ids.next(), restaurantId, seq, Rfc3339.truncate(clock.instant()), type, subject, audience, sessionId)
         events.insert(tx, event)
+        // The first event of the transaction registers its publishing; the rest join the list.
+        tx.getOrPut(WRITTEN) {
+            mutableListOf<LoggedEvent>().also { written ->
+                tx.afterCommit { publisher.afterCommit(restaurantId, written) }
+            }
+        } +=
+            event
         return AppendedEvent(event.id, seq)
+    }
+
+    private companion object {
+        val WRITTEN = TxKey<MutableList<LoggedEvent>>("realtime.written")
     }
 }
