@@ -30,6 +30,8 @@ enum class RouteGroup(
  * - [ifMatch]: the resource is versioned and the operation requires `If-Match` (core-and-auth §5).
  * - [allowedWhenSuspended]: callers of a suspended restaurant may still use it (restaurants §6). It
  *   has no default, so every entry decides it.
+ * - [qrCredential]: the QR token in the body is the credential, not a bearer token, so the group's
+ *   authentication doesn't run (`x-auth: qr`; tables §8). Only `POST /v1/guest/sessions`.
  */
 data class Endpoint(
     val method: HttpMethod,
@@ -37,6 +39,7 @@ data class Endpoint(
     val idempotencyKey: Boolean,
     val ifMatch: Boolean,
     val allowedWhenSuspended: Boolean,
+    val qrCredential: Boolean = false,
 ) {
     val group: RouteGroup = RouteGroup.of(path)
 
@@ -61,7 +64,8 @@ abstract class EndpointGroup {
         idempotencyKey: Boolean = false,
         ifMatch: Boolean = false,
         allowedWhenSuspended: Boolean,
-    ): Endpoint = Endpoint(method, path, idempotencyKey, ifMatch, allowedWhenSuspended).also { declared += it }
+        qrCredential: Boolean = false,
+    ): Endpoint = Endpoint(method, path, idempotencyKey, ifMatch, allowedWhenSuspended, qrCredential).also { declared += it }
 }
 
 /**
@@ -69,13 +73,22 @@ abstract class EndpointGroup {
  * Route files use these entries, never path literals. Objects follow the contract's tags and names
  * follow its `operationId`s. IT-CORE-10 fails if this list, the contract and Ktor's routes differ.
  *
- * [HEALTH] and the `/internal/jobs/` paths are declared here too, but they aren't in the contract
- * or in [all] (core-and-auth §2).
+ * [HEALTH] and the [Jobs] paths are declared here too, but they aren't in the contract or in [all]
+ * (core-and-auth §2).
  */
 @Suppress("ktlint:standard:property-naming")
 object Endpoints {
     /** Platform health check: 200 without touching the database. */
     const val HEALTH = "/health"
+
+    /**
+     * The scheduled jobs (core-and-auth §2, §13 "Scheduled jobs"): Vercel Cron calls each with a GET
+     * and the cron secret. Routes declare them with `job()`, which checks the secret.
+     */
+    object Jobs {
+        const val PREFIX = "/internal/jobs/"
+        const val SESSION_AUTO_CLOSE = PREFIX + "session-auto-close"
+    }
 
     /** All entries, in declaration order. A group missing here is caught by IT-CORE-10. */
     val all: List<Endpoint> by lazy {
@@ -179,7 +192,7 @@ object Endpoints {
     }
 
     object Tables : EndpointGroup() {
-        val OPEN_OR_JOIN_SESSION = endpoint(HttpMethod.Post, "/v1/guest/sessions", allowedWhenSuspended = false)
+        val OPEN_OR_JOIN_SESSION = endpoint(HttpMethod.Post, "/v1/guest/sessions", allowedWhenSuspended = false, qrCredential = true)
         val GET_GUEST_SESSION = endpoint(HttpMethod.Get, "/v1/guest/session", allowedWhenSuspended = true)
         val CALL_WAITER = endpoint(HttpMethod.Post, "/v1/guest/waiter-calls", allowedWhenSuspended = false)
         val LIST_TABLES = endpoint(HttpMethod.Get, "/v1/staff/tables", allowedWhenSuspended = false)

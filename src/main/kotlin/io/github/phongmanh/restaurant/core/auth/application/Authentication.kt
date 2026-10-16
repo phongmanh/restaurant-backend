@@ -19,6 +19,18 @@ enum class Accepts {
 }
 
 /**
+ * The guest half of the caller lookup (core-and-auth §6, ADR-0006): turns a table-session token into
+ * a [Caller.Guest]. The tables feature provides it, as the sessions are its own (tables §3.2).
+ */
+fun interface GuestAuthenticator {
+    /** The guest, or `401 unauthenticated`, `401 table_session_closed` or `403 restaurant_suspended`. */
+    suspend fun authenticate(
+        bearer: String?,
+        allowedWhenSuspended: Boolean,
+    ): Caller.Guest
+}
+
+/**
  * Turns an access token into a [Caller] (core-and-auth §6): the token is verified, then one query
  * reads the account, the session and the restaurant's status. Because that query joins the
  * session, a sign-out, password change, role change or deactivation takes effect on the very next

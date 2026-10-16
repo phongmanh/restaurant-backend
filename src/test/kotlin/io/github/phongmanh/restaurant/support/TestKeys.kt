@@ -3,13 +3,15 @@ package io.github.phongmanh.restaurant.support
 import io.github.phongmanh.restaurant.core.application.RateLimitPolicy
 import io.github.phongmanh.restaurant.core.auth.AuthLimits
 import io.github.phongmanh.restaurant.core.auth.AuthSettings
+import io.github.phongmanh.restaurant.core.auth.GuestSettings
 import io.github.phongmanh.restaurant.core.auth.LinkUrls
 import io.github.phongmanh.restaurant.core.auth.RateLimitSettings
 import io.github.phongmanh.restaurant.core.auth.crypto.Argon2Settings
+import io.github.phongmanh.restaurant.core.auth.crypto.EcKeySet
 import io.github.phongmanh.restaurant.core.auth.crypto.EmailHmac
 import io.github.phongmanh.restaurant.core.auth.crypto.SecretBox
-import io.github.phongmanh.restaurant.core.auth.crypto.StaffKeySet
 import io.github.phongmanh.restaurant.restaurants.application.StaffLimits
+import io.github.phongmanh.restaurant.tables.application.TableLimits
 import java.math.BigInteger
 import java.security.KeyPair
 import java.security.KeyPairGenerator
@@ -34,6 +36,8 @@ object TestKeys {
     const val COOKIE_PATH = "/api/v1/auth"
     const val STAFF_APP = "https://staff.example.test"
     const val ADMIN_APP = "https://admin.example.test"
+    const val CUSTOMER_APP = "https://order.example.test"
+    const val CRON_SECRET = "test-cron-secret-0123456789"
 
     fun ecKeyPair(): KeyPair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
 
@@ -61,6 +65,18 @@ object TestKeys {
     val previous: KeyPair = ecKeyPair()
     val staffKeysJson = """{"keys":[${jwk("staff-2", current, true)},${jwk("staff-1", previous, false)}]}"""
 
+    /** The guest session keys (ADR-0006): one key, separate from the staff keys. */
+    val guestKeysJson = """{"keys":[${jwk("guest-1", ecKeyPair(), true)}]}"""
+
+    /** The QR keys (tables §2): key `2` signs, key `1` is an older key whose printed codes still work. */
+    val qrCurrent: KeyPair = ecKeyPair()
+    val qrPrevious: KeyPair = ecKeyPair()
+    val qrKeysJson = """{"keys":[${jwk("2", qrCurrent, true)},${jwk("1", qrPrevious, false)}]}"""
+
+    val guests: GuestSettings by lazy {
+        GuestSettings(EcKeySet.parse(guestKeysJson, "GUEST_JWT_KEYS"), EcKeySet.parse(qrKeysJson, "QR_SIGNING_KEYS"), CUSTOMER_APP)
+    }
+
     val totpKeysJson: String =
         """{"current":"t1","keys":{"t1":"${Base64.getEncoder().encodeToString(ByteArray(32).also(SecureRandom()::nextBytes))}"}}"""
 
@@ -70,7 +86,7 @@ object TestKeys {
     val auth: AuthSettings by lazy {
         AuthSettings(
             issuer = ISSUER,
-            staffKeys = StaffKeySet.parse(staffKeysJson),
+            staffKeys = EcKeySet.parse(staffKeysJson, "STAFF_JWT_KEYS"),
             totpKeys = SecretBox.parse(totpKeysJson),
             emailHmac = EmailHmac(ByteArray(32).also(SecureRandom()::nextBytes)),
             cookiePath = COOKIE_PATH,
@@ -91,6 +107,10 @@ object TestKeys {
                     RateLimitPolicy(AuthLimits.LINK, 10, 60.seconds),
                     RateLimitPolicy(AuthLimits.PASSWORD_CHANGE, 5, 900.seconds),
                     RateLimitPolicy(StaffLimits.LINK, 30, 3600.seconds),
+                    RateLimitPolicy(TableLimits.QR_DEVICE, 10, 60.seconds),
+                    RateLimitPolicy(TableLimits.QR_TABLE, 30, 60.seconds),
+                    RateLimitPolicy(TableLimits.QR_IP, 60, 60.seconds),
+                    RateLimitPolicy(TableLimits.WAITER_CALL, 10, 3600.seconds),
                 ).associateBy { it.name },
         )
 

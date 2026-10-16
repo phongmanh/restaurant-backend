@@ -53,6 +53,20 @@ auth:
     maxConcurrent: 4
     slotWaitMs: 2000
 
+# Guests (tables §2, §3.2; ADR-0006).
+guests:
+  # Secrets. JWK sets in the format of auth.staffJwtKeys, each with keys of its own.
+  sessionJwtKeys: "$GUEST_JWT_KEYS:"
+  # QR key IDs are numbers 0-255, as a printed code carries one byte. Old public keys stay in the set
+  # while codes they signed are still printed (§13 Q5).
+  qrSigningKeys: "$QR_SIGNING_KEYS:"
+  # Where printed codes open: <url>/t/<token>. Production needs https.
+  customerAppUrl: "$CUSTOMER_APP_URL:http://localhost:5175"
+
+# Scheduled jobs (core-and-auth §2, §13). The secret Vercel Cron sends as a bearer token.
+jobs:
+  cronSecret: "$CRON_SECRET:"
+
 # ADR-0008. Upstash is required outside dev and test; without it, limits count in memory.
 rateLimits:
   upstashUrl: "$UPSTASH_REDIS_REST_URL:"
@@ -70,3 +84,9 @@ rateLimits:
     # restaurants §7, §15 Q6: invitation and reset links per restaurant.
     staff:
       link: "30/3600"
+    # tables §9, §13 Q4: QR scans per device, table and IP; new waiter calls per table session.
+    qr:
+      present_device: "10/60"
+      present_table: "30/60"
+      present_ip: "60/60"
+    waiter_call: "10/3600"

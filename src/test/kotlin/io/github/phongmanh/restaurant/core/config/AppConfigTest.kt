@@ -41,6 +41,10 @@ class AppConfigTest {
             "auth.argon2.parallelism" to "1",
             "auth.argon2.maxConcurrent" to "4",
             "auth.argon2.slotWaitMs" to "2000",
+            "guests.sessionJwtKeys" to TestKeys.guestKeysJson,
+            "guests.qrSigningKeys" to TestKeys.qrKeysJson,
+            "guests.customerAppUrl" to TestKeys.CUSTOMER_APP,
+            "jobs.cronSecret" to TestKeys.CRON_SECRET,
             "rateLimits.upstashUrl" to "",
             "rateLimits.upstashToken" to "",
             "rateLimits.timeoutMs" to "200",
@@ -74,6 +78,23 @@ class AppConfigTest {
         assertEquals(RateLimitPolicy("auth.sign_in", 30, 60.seconds), c.rateLimits.policy("auth.sign_in"))
         assertEquals(RateLimitPolicy("auth.password_change", 5, 900.seconds), c.rateLimits.policy("auth.password_change"))
         assertNull(c.rateLimits.upstash, "in-memory limits in dev")
+        assertEquals("guest-1", c.guests.sessionKeys.signing.kid)
+        assertEquals(
+            listOf("2", "1"),
+            c.guests.qrKeys.keys
+                .map { it.kid },
+        )
+        assertEquals(TestKeys.CRON_SECRET, c.jobs.cronSecret)
+        assertFalse(TestKeys.CRON_SECRET in c.toString(), "no cron secret in toString")
+    }
+
+    @Test
+    fun `missing guest keys and cron secret stop startup`() {
+        val e =
+            assertFailsWith<IllegalStateException> {
+                AppConfig.load(config("guests.sessionJwtKeys" to "", "guests.qrSigningKeys" to "", "jobs.cronSecret" to ""))
+            }
+        listOf("GUEST_JWT_KEYS", "QR_SIGNING_KEYS", "CRON_SECRET").forEach { assertTrue(it in e.message!!, e.message) }
     }
 
     @Test
@@ -130,6 +151,18 @@ class AppConfigTest {
             "https://admin.example.test/reset-password#t0k",
             c.auth.links.of(LinkKind.PASSWORD_RESET, platformAdmin = true, token = "t0k"),
         )
+        val apps = arrayOf("auth.staffAppUrl" to "https://staff.example.test", "auth.adminAppUrl" to "https://admin.example.test")
+        val local =
+            assertFailsWith<IllegalStateException> {
+                AppConfig.load(
+                    config(
+                        *production,
+                        *apps,
+                        "guests.customerAppUrl" to "http://localhost:5175",
+                    ),
+                )
+            }
+        assertTrue("guests.customerAppUrl" in local.message!!, local.message)
     }
 
     @Test

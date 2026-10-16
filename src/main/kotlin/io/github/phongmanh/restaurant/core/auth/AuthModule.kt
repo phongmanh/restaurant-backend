@@ -71,7 +71,8 @@ fun authModule(
         single { CredentialFailures(get(), get()) }
         single { SessionIssuer(get(), get(), get(), get()) }
         single { Authentication(get(), get(), get(), get()) }
-        single<CallAuthenticator> { BearerAuthenticator(get()) }
+        // The GuestAuthenticator comes from the tables feature (tables §3.2).
+        single<CallAuthenticator> { BearerAuthenticator(get(), get()) }
         single { SignInService(get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
         single { MfaService(get(), get(), get(), get(), get(), get(), get(), get(), get()) }
         single { RefreshService(get(), get(), get(), get(), get(), get(), get()) }

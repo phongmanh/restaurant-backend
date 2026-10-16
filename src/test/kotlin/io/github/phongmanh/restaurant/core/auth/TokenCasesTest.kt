@@ -6,7 +6,7 @@ import io.github.phongmanh.restaurant.core.application.StaffRole
 import io.github.phongmanh.restaurant.core.auth.crypto.AccessClaims
 import io.github.phongmanh.restaurant.core.auth.crypto.AccessTokens
 import io.github.phongmanh.restaurant.core.auth.crypto.Audience
-import io.github.phongmanh.restaurant.core.auth.crypto.StaffKeySet
+import io.github.phongmanh.restaurant.core.auth.crypto.EcKeySet
 import io.github.phongmanh.restaurant.core.auth.persistence.CallerRepository
 import io.github.phongmanh.restaurant.core.auth.persistence.MemberFilter
 import io.github.phongmanh.restaurant.core.auth.persistence.StaffAccountRepository
@@ -140,7 +140,7 @@ class TokenCasesTest {
             assertEquals(
                 HttpStatusCode.Unauthorized,
                 client.probe(Probe.GUEST.path, valid).status,
-                "no guest tokens before the tables step",
+                "a staff token is no guest token",
             )
         }
 
@@ -199,7 +199,7 @@ class TokenCasesTest {
 
     @Test
     fun `AccessTokens round-trips its claims and refuses another audience`() {
-        val tokens = AccessTokens(StaffKeySet.parse(TestKeys.staffKeysJson), TestKeys.ISSUER, Clock.systemUTC())
+        val tokens = AccessTokens(EcKeySet.parse(TestKeys.staffKeysJson, "STAFF_JWT_KEYS"), TestKeys.ISSUER, Clock.systemUTC())
         val claims = AccessClaims(UuidV7.next(), UuidV7.next(), Audience.ADMIN, listOf("pwd", "otp"))
         val token = tokens.sign(claims)
         assertEquals(claims, tokens.verify(token, setOf(Audience.ADMIN)))

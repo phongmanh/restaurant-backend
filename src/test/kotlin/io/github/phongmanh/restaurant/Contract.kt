@@ -19,6 +19,8 @@ object Contract {
         val idempotencyKey: Boolean,
         val ifMatch: Boolean,
         val allowedWhenSuspended: Any?,
+        /** `x-auth`, e.g. `qr` for the scan whose credential is in the body. */
+        val auth: Any?,
     )
 
     private val methods = setOf("get", "put", "post", "delete", "patch", "head", "options", "trace")
@@ -37,6 +39,7 @@ object Contract {
                     idempotencyKey = "IdempotencyKey" in parameters,
                     ifMatch = "IfMatch" in parameters,
                     allowedWhenSuspended = operation["x-allowed-when-suspended"],
+                    auth = operation["x-auth"],
                 )
             }
         }

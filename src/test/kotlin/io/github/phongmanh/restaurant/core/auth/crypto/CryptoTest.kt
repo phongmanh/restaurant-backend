@@ -98,15 +98,15 @@ class CryptoTest {
     @Test
     fun `key settings are checked, and errors never echo key material`() {
         val keyJson = TestKeys.jwk("only", TestKeys.ecKeyPair(), withPrivate = false)
-        val noSigner = assertFailsWith<IllegalStateException> { StaffKeySet.parse("""{"keys":[$keyJson]}""") }
+        val noSigner = assertFailsWith<IllegalStateException> { EcKeySet.parse("""{"keys":[$keyJson]}""", "STAFF_JWT_KEYS") }
         assertFalse(keyJson.substringAfter("\"x\":\"").take(20) in noSigner.message!!)
-        assertFailsWith<IllegalStateException> { StaffKeySet.parse("not json") }
-        assertFailsWith<IllegalStateException> { StaffKeySet.parse("""{"keys":[{"kty":"RSA","kid":"r"}]}""") }
+        assertFailsWith<IllegalStateException> { EcKeySet.parse("not json", "STAFF_JWT_KEYS") }
+        assertFailsWith<IllegalStateException> { EcKeySet.parse("""{"keys":[{"kty":"RSA","kid":"r"}]}""", "STAFF_JWT_KEYS") }
         assertFailsWith<IllegalArgumentException> { SecretBox.parse("""{"current":"x","keys":{"x":"c2hvcnQ="}}""") }
-        val keys = StaffKeySet.parse(TestKeys.staffKeysJson)
+        val keys = EcKeySet.parse(TestKeys.staffKeysJson, "STAFF_JWT_KEYS")
         assertEquals("staff-2", keys.signing.kid)
         assertNotNull(keys.publicKey("staff-1"))
-        assertEquals("StaffKeySet(kids=[staff-2, staff-1])", keys.toString())
+        assertEquals("EcKeySet(STAFF_JWT_KEYS, kids=[staff-2, staff-1])", keys.toString())
     }
 
     @Test

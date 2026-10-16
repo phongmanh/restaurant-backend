@@ -48,6 +48,18 @@ class EndpointInventoryTest {
     }
 
     @Test
+    fun `the QR credential flag matches x-auth qr`() {
+        val qr = Contract.operations.filter { it.auth == "qr" }.map { it.key() }
+        assertEquals(
+            qr.sorted(),
+            Endpoints.all
+                .filter { it.qrCredential }
+                .map { it.key() }
+                .sorted(),
+        )
+    }
+
+    @Test
     fun `ktor routes equal the registry minus the entries not built yet`() =
         testApplication {
             lateinit var app: Application

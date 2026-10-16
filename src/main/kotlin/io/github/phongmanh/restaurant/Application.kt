@@ -18,6 +18,11 @@ import io.github.phongmanh.restaurant.restaurants.http.AuditAndPrivacyRoutes
 import io.github.phongmanh.restaurant.restaurants.http.StaffMemberRoutes
 import io.github.phongmanh.restaurant.restaurants.http.StaffRestaurantRoutes
 import io.github.phongmanh.restaurant.restaurants.restaurantsModule
+import io.github.phongmanh.restaurant.tables.http.GuestSessionRoutes
+import io.github.phongmanh.restaurant.tables.http.StaffSessionRoutes
+import io.github.phongmanh.restaurant.tables.http.StaffTableRoutes
+import io.github.phongmanh.restaurant.tables.http.TableJobRoutes
+import io.github.phongmanh.restaurant.tables.tablesModule
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.install
@@ -70,6 +75,10 @@ fun Application.module(
         get<AuditAndPrivacyRoutes>().install(this)
         get<MenuReadRoutes>().install(this)
         get<MenuEditRoutes>().install(this)
+        get<GuestSessionRoutes>().install(this)
+        get<StaffTableRoutes>().install(this)
+        get<StaffSessionRoutes>().install(this)
+        get<TableJobRoutes>().install(this)
     }
 }
 
@@ -77,4 +86,12 @@ fun Application.module(
 fun appModule(
     config: AppConfig,
     pools: DatabasePools,
-): List<Module> = listOf(coreModule(pools), authModule(config.auth, config.rateLimits), restaurantsModule(), menuModule(), realtimeModule())
+): List<Module> =
+    listOf(
+        coreModule(pools, config.jobs),
+        authModule(config.auth, config.rateLimits),
+        restaurantsModule(),
+        menuModule(),
+        tablesModule(config.guests, config.auth.issuer),
+        realtimeModule(),
+    )
