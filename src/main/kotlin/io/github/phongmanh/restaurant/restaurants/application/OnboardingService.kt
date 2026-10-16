@@ -6,6 +6,7 @@ import io.github.phongmanh.restaurant.core.application.Caller
 import io.github.phongmanh.restaurant.core.application.RequestMeta
 import io.github.phongmanh.restaurant.core.application.StaffRole
 import io.github.phongmanh.restaurant.core.application.Transactor
+import io.github.phongmanh.restaurant.core.application.TxScope
 import io.github.phongmanh.restaurant.core.auth.application.IssuedLink
 import io.github.phongmanh.restaurant.core.auth.application.StaffAccounts
 import io.github.phongmanh.restaurant.core.auth.domain.AccountStatus
@@ -22,6 +23,7 @@ import io.github.phongmanh.restaurant.restaurants.domain.StaffRules
 import io.github.phongmanh.restaurant.restaurants.persistence.RestaurantRepository
 import kotlinx.serialization.json.JsonPrimitive
 import java.time.Clock
+import java.time.Instant
 
 /** The first manager of a new restaurant (restaurants §5). */
 data class FirstManager(
@@ -29,6 +31,18 @@ data class FirstManager(
     val displayName: String,
     val phone: String?,
 )
+
+/**
+ * The `MenuSetup` port (menu §12): onboarding makes the new restaurant's menu row through it, which
+ * keeps the menu out of the restaurants tables and the restaurants out of the menu tables.
+ */
+fun interface MenuSetup {
+    fun create(
+        tx: TxScope,
+        restaurantId: RestaurantId,
+        now: Instant,
+    )
+}
 
 class Onboarded(
     val restaurant: Restaurant,
@@ -38,7 +52,7 @@ class Onboarded(
 
 /**
  * Onboarding (FR-040, restaurants §5), in one platform transaction: the restaurant, its first
- * manager (invited) and their invitation link, audited in the **new restaurant's** chain so its
+ * manager (invited) and their invitation link, its empty menu, audited in the **new restaurant's** chain so its
  * managers can see how it was set up. The route runs it under its `Idempotency-Key`.
  */
 class OnboardingService(
@@ -46,6 +60,7 @@ class OnboardingService(
     private val restaurants: RestaurantRepository,
     private val accounts: StaffAccounts,
     private val audit: AuditLog,
+    private val menus: MenuSetup,
     private val ids: IdGenerator,
     private val clock: Clock,
 ) {
@@ -59,6 +74,7 @@ class OnboardingService(
             val now = clock.instant()
             val id = RestaurantId(ids.next())
             restaurants.insert(this, id, restaurant, now)
+            menus.create(this, id, now)
             // An email in use → 409, which rolls the restaurant back with everything else (§15 Q8).
             val member = accounts.create(this, NewAccount(manager.email, manager.displayName, manager.phone, id, StaffRole.MANAGER), now)
             val link = accounts.issueLink(this, member, LinkKind.INVITATION, caller.staffId, now)

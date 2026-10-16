@@ -29,7 +29,7 @@ fun restaurantsModule() =
 
         single { RestaurantService(get(), get(), get(), get()) }
         single { SuspensionService(get(), get(), get(), get()) }
-        single { OnboardingService(get(), get(), get(), get(), get(), get()) }
+        single { OnboardingService(get(), get(), get(), get(), get(), get(), get()) }
         single { StaffService(get(), get(), get(), get(), get(), get(), get()) }
         single { AdminAccountService(get(), get(), get(), get(), get()) }
         single { AuditReadService(get(), get(), get(), get()) }

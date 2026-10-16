@@ -81,6 +81,8 @@ class OnboardingTest {
             val own = client.api(Endpoints.Restaurants.GET_OWN_RESTAURANT, manager).json()
             assertEquals(restaurant.str("id"), own.str("id"))
             assertFalse("owner_contact" in own, "staff never see the owner contact")
+            val menu = client.api(Endpoints.Menu.GET_STAFF_MENU, manager)
+            assertEquals("\"0\"", menu.headers[HttpHeaders.ETag], "an empty menu at version 0, made by the MenuSetup port (menu §12)")
             val members = client.api(Endpoints.Staff.LIST_MEMBERS, manager).items()
             assertEquals(listOf("quang@bun.example"), members.map { it.jsonObject.str("email") }, "none of A's staff")
             val actions = client.api(Endpoints.Audit.LIST_OWN_AUDIT_EVENTS, manager).items().map { it.jsonObject.str("action") }
