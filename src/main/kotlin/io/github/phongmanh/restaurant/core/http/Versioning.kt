@@ -27,4 +27,13 @@ fun ApplicationCall.requireIfMatch(): Int {
         ?.toIntOrNull() ?: throw DomainError.PreconditionFailed()
 }
 
+/**
+ * Whether the client already holds the copy with [etag] (`If-None-Match`, RFC 9110 §13.1.2): the
+ * header lists it, weak or strong, or is `*`. No header → `false`.
+ */
+fun ApplicationCall.holdsCurrent(etag: String): Boolean {
+    val value = request.header(HttpHeaders.IfNoneMatch) ?: return false
+    return value.split(',').map { it.trim().removePrefix("W/") }.any { it == "*" || it == etag }
+}
+
 private val ETAG = Regex("\"([0-9]{1,9})\"")

@@ -48,6 +48,8 @@ object AuthFixtures {
             if (suspended) "suspended" else "active",
             if (suspended) Timestamp.from(Instant.now()) else null,
         )
+        // Onboarding makes the menu row through the MenuSetup port (menu §12); a fixture does it here.
+        sql("INSERT INTO menu_state (restaurant_id, version, updated_at) VALUES (?, 0, now())", id)
         return RestaurantId(id)
     }
 

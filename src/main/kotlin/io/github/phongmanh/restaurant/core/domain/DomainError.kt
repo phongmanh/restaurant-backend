@@ -27,6 +27,9 @@ enum class ErrorCode(
     SELF_ACTION_NOT_ALLOWED("self_action_not_allowed", 409, "Not allowed on yourself"),
     MEMBER_STATE_CONFLICT("member_state_conflict", 409, "Member state conflict"),
     MEMBER_LIMIT_REACHED("member_limit_reached", 409, "Member limit reached"),
+    DUPLICATE_NAME("duplicate_name", 409, "Duplicate name"),
+    CATEGORY_NOT_EMPTY("category_not_empty", 409, "Category not empty"),
+    MENU_LIMIT_REACHED("menu_limit_reached", 409, "Menu limit reached"),
     PRECONDITION_FAILED("precondition_failed", 412, "Precondition failed"),
     PAYLOAD_TOO_LARGE("payload_too_large", 413, "Payload too large"),
     UNSUPPORTED_MEDIA_TYPE("unsupported_media_type", 415, "Unsupported media type"),
@@ -129,6 +132,15 @@ sealed class DomainError(
 
     /** The restaurant has 100 invited and active accounts (restaurants §7, ASSUMPTION-12). */
     class MemberLimitReached : DomainError(ErrorCode.MEMBER_LIMIT_REACHED)
+
+    /** A category or item name already used in the same scope, ignoring case (menu §5.1, §5.2). */
+    class DuplicateName : DomainError(ErrorCode.DUPLICATE_NAME)
+
+    /** Deleting a category that still has items (menu §14 Q7). */
+    class CategoryNotEmpty : DomainError(ErrorCode.CATEGORY_NOT_EMPTY)
+
+    /** A menu size limit would be passed (menu §3). */
+    class MenuLimitReached : DomainError(ErrorCode.MENU_LIMIT_REACHED)
 
     /** `If-Match` doesn't name the current version (§5). */
     class PreconditionFailed : DomainError(ErrorCode.PRECONDITION_FAILED)

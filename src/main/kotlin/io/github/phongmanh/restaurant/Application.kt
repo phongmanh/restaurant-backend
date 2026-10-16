@@ -9,6 +9,10 @@ import io.github.phongmanh.restaurant.core.http.Endpoints
 import io.github.phongmanh.restaurant.core.http.installHttp
 import io.github.phongmanh.restaurant.core.persistence.DatabasePools
 import io.github.phongmanh.restaurant.core.persistence.UpstashRateLimiter
+import io.github.phongmanh.restaurant.menu.http.MenuEditRoutes
+import io.github.phongmanh.restaurant.menu.http.MenuReadRoutes
+import io.github.phongmanh.restaurant.menu.menuModule
+import io.github.phongmanh.restaurant.realtime.realtimeModule
 import io.github.phongmanh.restaurant.restaurants.http.AdminRoutes
 import io.github.phongmanh.restaurant.restaurants.http.AuditAndPrivacyRoutes
 import io.github.phongmanh.restaurant.restaurants.http.StaffMemberRoutes
@@ -64,6 +68,8 @@ fun Application.module(
         get<StaffMemberRoutes>().install(this)
         get<AdminRoutes>().install(this)
         get<AuditAndPrivacyRoutes>().install(this)
+        get<MenuReadRoutes>().install(this)
+        get<MenuEditRoutes>().install(this)
     }
 }
 
@@ -71,4 +77,4 @@ fun Application.module(
 fun appModule(
     config: AppConfig,
     pools: DatabasePools,
-): List<Module> = listOf(coreModule(pools), authModule(config.auth, config.rateLimits), restaurantsModule())
+): List<Module> = listOf(coreModule(pools), authModule(config.auth, config.rateLimits), restaurantsModule(), menuModule(), realtimeModule())
