@@ -55,3 +55,10 @@ internal fun clientVersionPlugin(minimums: Map<String, SemVer>) =
             if (version < minimum) throw DomainError.ClientUpgradeRequired()
         }
     }
+
+/** The scheduled jobs' settings (core-and-auth §13): the secret Vercel Cron sends. */
+class JobSettings(
+    val cronSecret: String,
+) {
+    override fun toString(): String = "JobSettings(***)"
+}

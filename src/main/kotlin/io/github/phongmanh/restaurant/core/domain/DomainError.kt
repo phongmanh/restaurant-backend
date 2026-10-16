@@ -14,8 +14,10 @@ enum class ErrorCode(
     VALIDATION_FAILED("validation_failed", 400, "Request validation failed"),
     IDEMPOTENCY_KEY_REQUIRED("idempotency_key_required", 400, "Idempotency-Key required"),
     PASSWORD_REJECTED("password_rejected", 400, "Password rejected"),
+    QR_TOKEN_INVALID("qr_token_invalid", 400, "QR code invalid"),
     UNAUTHENTICATED("unauthenticated", 401, "Unauthenticated"),
     INVALID_CREDENTIALS("invalid_credentials", 401, "Invalid credentials"),
+    TABLE_SESSION_CLOSED("table_session_closed", 401, "Table session closed"),
     FORBIDDEN("forbidden", 403, "Forbidden"),
     RESTAURANT_SUSPENDED("restaurant_suspended", 403, "Restaurant suspended"),
     NOT_FOUND("not_found", 404, "Not found"),
@@ -30,6 +32,11 @@ enum class ErrorCode(
     DUPLICATE_NAME("duplicate_name", 409, "Duplicate name"),
     CATEGORY_NOT_EMPTY("category_not_empty", 409, "Category not empty"),
     MENU_LIMIT_REACHED("menu_limit_reached", 409, "Menu limit reached"),
+    TABLE_UNAVAILABLE("table_unavailable", 409, "Table unavailable"),
+    TABLE_OCCUPIED("table_occupied", 409, "Table occupied"),
+    TABLE_HAS_OPEN_SESSION("table_has_open_session", 409, "Table has an open session"),
+    SESSION_NOT_OPEN("session_not_open", 409, "Session not open"),
+    TABLE_LIMIT_REACHED("table_limit_reached", 409, "Table limit reached"),
     PRECONDITION_FAILED("precondition_failed", 412, "Precondition failed"),
     PAYLOAD_TOO_LARGE("payload_too_large", 413, "Payload too large"),
     UNSUPPORTED_MEDIA_TYPE("unsupported_media_type", 415, "Unsupported media type"),
@@ -141,6 +148,27 @@ sealed class DomainError(
 
     /** A menu size limit would be passed (menu §3). */
     class MenuLimitReached : DomainError(ErrorCode.MENU_LIMIT_REACHED)
+
+    /** A QR code that is malformed, forged, rotated or of a deleted table: one code for all (tables §2). */
+    class QrTokenInvalid : DomainError(ErrorCode.QR_TOKEN_INVALID)
+
+    /** The guest's table session has been closed; the app asks them to scan again (tables §3.2, §13 Q6). */
+    class TableSessionClosed : DomainError(ErrorCode.TABLE_SESSION_CLOSED)
+
+    /** The table is disabled or deleted (tables §3.1, §3.4). */
+    class TableUnavailable : DomainError(ErrorCode.TABLE_UNAVAILABLE)
+
+    /** Moving a session onto a table that has one (tables §3.4). */
+    class TableOccupied : DomainError(ErrorCode.TABLE_OCCUPIED)
+
+    /** Disabling or deleting a table with guests (tables §6, FR-030). */
+    class TableHasOpenSession : DomainError(ErrorCode.TABLE_HAS_OPEN_SESSION)
+
+    /** Moving, ordering into or closing a session that is closed (tables §3.4, §7). */
+    class SessionNotOpen : DomainError(ErrorCode.SESSION_NOT_OPEN)
+
+    /** The restaurant has 300 tables (tables §5, ASSUMPTION-4). */
+    class TableLimitReached : DomainError(ErrorCode.TABLE_LIMIT_REACHED)
 
     /** `If-Match` doesn't name the current version (§5). */
     class PreconditionFailed : DomainError(ErrorCode.PRECONDITION_FAILED)

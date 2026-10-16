@@ -6,6 +6,7 @@ import io.github.phongmanh.restaurant.core.auth.AuthSettings
 import io.github.phongmanh.restaurant.core.auth.RateLimitSettings
 import io.github.phongmanh.restaurant.core.auth.application.Accepts
 import io.github.phongmanh.restaurant.core.auth.application.Authentication
+import io.github.phongmanh.restaurant.core.auth.application.GuestAuthenticator
 import io.github.phongmanh.restaurant.core.auth.application.IssuedTokens
 import io.github.phongmanh.restaurant.core.auth.crypto.AccessTokens
 import io.github.phongmanh.restaurant.core.auth.crypto.Audience
@@ -26,6 +27,7 @@ import java.time.Duration
 /** Reads the bearer token and authenticates by the endpoint's route group (§2, §6). */
 class BearerAuthenticator(
     private val authentication: Authentication,
+    private val guests: GuestAuthenticator,
 ) : CallAuthenticator {
     override suspend fun authenticate(
         call: ApplicationCall,
@@ -39,8 +41,8 @@ class BearerAuthenticator(
 
                 RouteGroup.AUTH -> Accepts.STAFF_OR_ADMIN
 
-                // Table-session tokens come with the tables feature (ADR-0006, step 6); until then, none passes.
-                RouteGroup.GUEST -> throw DomainError.Unauthenticated()
+                // Table-session tokens (ADR-0006; tables §3.2), a key set of their own.
+                RouteGroup.GUEST -> return guests.authenticate(call.bearerToken(), endpoint.allowedWhenSuspended)
             }
         return authentication.authenticate(call.bearerToken(), accepts, endpoint.allowedWhenSuspended)
     }

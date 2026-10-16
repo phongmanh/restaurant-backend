@@ -9,6 +9,7 @@ import io.github.phongmanh.restaurant.core.application.Transactor
 import io.github.phongmanh.restaurant.core.domain.IdGenerator
 import io.github.phongmanh.restaurant.core.domain.UuidV7
 import io.github.phongmanh.restaurant.core.http.IdempotentRoutes
+import io.github.phongmanh.restaurant.core.http.JobSettings
 import io.github.phongmanh.restaurant.core.persistence.AuditRepository
 import io.github.phongmanh.restaurant.core.persistence.DatabasePools
 import io.github.phongmanh.restaurant.core.persistence.ExposedTransactor
@@ -18,8 +19,12 @@ import org.koin.dsl.module
 import java.time.Clock
 
 /** The shared kernel's components (core-and-auth §14). Feature modules depend on these. */
-fun coreModule(pools: DatabasePools): Module =
+fun coreModule(
+    pools: DatabasePools,
+    jobs: JobSettings,
+): Module =
     module {
+        single { jobs }
         single<Clock> { Clock.systemUTC() }
         single<IdGenerator> { UuidV7 }
         single { pools }

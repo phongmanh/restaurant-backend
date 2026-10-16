@@ -2,14 +2,16 @@ package io.github.phongmanh.restaurant.core.config
 
 import io.github.phongmanh.restaurant.core.application.RateLimitPolicy
 import io.github.phongmanh.restaurant.core.auth.AuthSettings
+import io.github.phongmanh.restaurant.core.auth.GuestSettings
 import io.github.phongmanh.restaurant.core.auth.LinkUrls
 import io.github.phongmanh.restaurant.core.auth.RateLimitSettings
 import io.github.phongmanh.restaurant.core.auth.UpstashSettings
 import io.github.phongmanh.restaurant.core.auth.crypto.Argon2Settings
+import io.github.phongmanh.restaurant.core.auth.crypto.EcKeySet
 import io.github.phongmanh.restaurant.core.auth.crypto.EmailHmac
 import io.github.phongmanh.restaurant.core.auth.crypto.SecretBox
-import io.github.phongmanh.restaurant.core.auth.crypto.StaffKeySet
 import io.github.phongmanh.restaurant.core.http.HttpSettings
+import io.github.phongmanh.restaurant.core.http.JobSettings
 import io.github.phongmanh.restaurant.core.http.SemVer
 import io.github.phongmanh.restaurant.core.persistence.DatabaseSettings
 import io.github.phongmanh.restaurant.core.persistence.JdbcTarget
@@ -28,6 +30,8 @@ data class AppConfig(
     val database: DatabaseSettings,
     val http: HttpSettings,
     val auth: AuthSettings,
+    val guests: GuestSettings,
+    val jobs: JobSettings,
     val rateLimits: RateLimitSettings,
 ) {
     companion object {
@@ -65,6 +69,9 @@ data class AppConfig(
             val jwtKeys = secret("auth.staffJwtKeys", "STAFF_JWT_KEYS")
             val totpKeys = secret("auth.totpEncryptionKeys", "TOTP_ENCRYPTION_KEYS")
             val hmacKey = secret("auth.emailHmacKey", "EMAIL_HMAC_KEY")
+            val guestKeys = secret("guests.sessionJwtKeys", "GUEST_JWT_KEYS")
+            val qrKeys = secret("guests.qrSigningKeys", "QR_SIGNING_KEYS")
+            val cronSecret = secret("jobs.cronSecret", "CRON_SECRET")
             val upstashUrl = config.propertyOrNull("rateLimits.upstashUrl")?.getString().orEmpty()
             val upstashToken = config.propertyOrNull("rateLimits.upstashToken")?.getString().orEmpty()
             if (environment !in LOCAL_ENVIRONMENTS) {
@@ -103,15 +110,12 @@ data class AppConfig(
                     ),
                 http = HttpSettings(allowedOrigins = origins, minClientVersions = minVersions),
                 auth = authSettings(config, jwtKeys, totpKeys, hmacKey, links),
+                guests = guestSettings(config, environment, guestKeys, qrKeys),
+                jobs = JobSettings(cronSecret),
                 rateLimits =
                     RateLimitSettings(
                         upstash = if (upstashUrl.isBlank() || upstashToken.isBlank()) null else UpstashSettings(upstashUrl, upstashToken),
-                        timeout =
-                            config
-                                .property("rateLimits.timeoutMs")
-                                .getString()
-                                .toLong()
-                                .milliseconds,
+                        timeout = millis("rateLimits.timeoutMs"),
                         policies = policies(config.config("rateLimits.policies").toMap()),
                     ),
             )
@@ -127,7 +131,7 @@ data class AppConfig(
             fun int(path: String) = config.property(path).getString().toInt()
             return AuthSettings(
                 issuer = config.property("auth.issuer").getString(),
-                staffKeys = StaffKeySet.parse(jwtKeys),
+                staffKeys = EcKeySet.parse(jwtKeys, "STAFF_JWT_KEYS"),
                 totpKeys = SecretBox.parse(totpKeys),
                 emailHmac = EmailHmac(decodeKey(hmacKey)),
                 cookiePath = config.property("auth.cookiePath").getString(),
@@ -145,6 +149,24 @@ data class AppConfig(
                                 .toLong()
                                 .milliseconds,
                     ),
+            )
+        }
+
+        /** The guest keys and where printed QR codes open (tables §2); production needs https and no localhost. */
+        private fun guestSettings(
+            config: ApplicationConfig,
+            environment: String,
+            sessionKeys: String,
+            qrKeys: String,
+        ): GuestSettings {
+            val customerApp = config.property("guests.customerAppUrl").getString()
+            check(environment != PRODUCTION || !(isLocal(customerApp) || !customerApp.startsWith("https://"))) {
+                "a production config needs an https customer app URL (guests.customerAppUrl)"
+            }
+            return GuestSettings(
+                sessionKeys = EcKeySet.parse(sessionKeys, "GUEST_JWT_KEYS"),
+                qrKeys = EcKeySet.parse(qrKeys, "QR_SIGNING_KEYS"),
+                customerAppUrl = customerApp,
             )
         }
 

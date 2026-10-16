@@ -2,9 +2,9 @@ package io.github.phongmanh.restaurant.core.auth
 
 import io.github.phongmanh.restaurant.core.application.RateLimitPolicy
 import io.github.phongmanh.restaurant.core.auth.crypto.Argon2Settings
+import io.github.phongmanh.restaurant.core.auth.crypto.EcKeySet
 import io.github.phongmanh.restaurant.core.auth.crypto.EmailHmac
 import io.github.phongmanh.restaurant.core.auth.crypto.SecretBox
-import io.github.phongmanh.restaurant.core.auth.crypto.StaffKeySet
 import io.github.phongmanh.restaurant.core.auth.persistence.LinkKind
 import kotlin.time.Duration
 
@@ -12,13 +12,24 @@ import kotlin.time.Duration
 data class AuthSettings(
     /** The API's public URL: the tokens' `iss`. */
     val issuer: String,
-    val staffKeys: StaffKeySet,
+    val staffKeys: EcKeySet,
     val totpKeys: SecretBox,
     val emailHmac: EmailHmac,
     /** The path the browser sees through the same-origin rewrite, `/api/v1/auth` (§8.3). */
     val cookiePath: String,
     val argon2: Argon2Settings,
     val links: LinkUrls,
+)
+
+/**
+ * Guest access (tables §2, §3.2; ADR-0006): the guest session tokens' keys, the QR codes' keys and
+ * the customer web app that printed codes open, as `<customerAppUrl>/t/<token>`. Each key set is
+ * separate from the others and from the staff keys.
+ */
+data class GuestSettings(
+    val sessionKeys: EcKeySet,
+    val qrKeys: EcKeySet,
+    val customerAppUrl: String,
 )
 
 /**

@@ -122,13 +122,14 @@ private val CallerKey = AttributeKey<Caller>("caller")
  *
  * The path prefix decides the authentication (§2): a route of the staff, admin or guest group runs
  * only after [CallAuthenticator] has found its caller, so no route of those groups can forget it.
- * The handler reads the caller with [caller]. `/v1/auth` routes authenticate themselves where needed.
+ * The handler reads the caller with [caller]. `/v1/auth` routes authenticate themselves where needed,
+ * and so does the one [Endpoint.qrCredential] route, whose QR token is in the body (tables §8).
  */
 fun Route.endpoint(
     endpoint: Endpoint,
     body: RoutingHandler,
 ): Route {
-    val authenticator = if (endpoint.group == RouteGroup.AUTH) null else application.get<CallAuthenticator>()
+    val authenticator = if (endpoint.group == RouteGroup.AUTH || endpoint.qrCredential) null else application.get<CallAuthenticator>()
     return route(endpoint.path, endpoint.method) {
         handle {
             authenticator?.let { call.attributes.put(CallerKey, it.authenticate(call, endpoint)) }

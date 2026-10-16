@@ -19,3 +19,17 @@ fun advisoryLock(
         .prepareStatement("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))")
         .use { it.bind(scope).executeQuery().close() }
 }
+
+/**
+ * [advisoryLock] without the wait: takes the lock on [scope] if it's free and returns `true`, or
+ * returns `false` at once if another transaction holds it. Scheduled jobs use it so two runs of
+ * the same job never work on the same scope together (core-and-auth §13 "Scheduled jobs").
+ */
+fun tryAdvisoryLock(
+    tx: TxScope,
+    scope: String,
+): Boolean =
+    ExposedTransactor
+        .connection(tx)
+        .prepareStatement("SELECT pg_try_advisory_xact_lock(hashtextextended(?, 0))")
+        .use { it.bind(scope).firstOrNull { rs -> rs.getBoolean(1) } } ?: false

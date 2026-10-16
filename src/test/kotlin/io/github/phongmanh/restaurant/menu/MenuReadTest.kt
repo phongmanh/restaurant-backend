@@ -2,6 +2,7 @@ package io.github.phongmanh.restaurant.menu
 
 import io.github.phongmanh.restaurant.core.http.Endpoints
 import io.github.phongmanh.restaurant.support.AuthFixtures
+import io.github.phongmanh.restaurant.support.Guests
 import io.github.phongmanh.restaurant.support.Tenants
 import io.github.phongmanh.restaurant.support.TestDatabase
 import io.github.phongmanh.restaurant.support.api
@@ -13,6 +14,8 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import java.time.Duration
+import java.time.Instant
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -85,6 +88,11 @@ class MenuReadTest {
             assertEquals("unauthenticated", client.api(e.GET_GUEST_MENU, null).problem())
             assertEquals("unauthenticated", client.api(e.GET_GUEST_MENU, "not-a-token").problem())
             assertEquals("unauthenticated", client.api(e.GET_GUEST_MENU, b.managerToken).problem(), "a staff token isn't a guest's")
+            val seat = Guests.seated(a.id)
+            val expired = Guests.token(a.id, seat.session, issuedAt = Instant.now().minus(Duration.ofHours(7)))
+            assertEquals("unauthenticated", client.api(e.GET_GUEST_MENU, expired).problem(), "a token past its 6 h")
+            Guests.closeSession(seat.session)
+            assertEquals("table_session_closed", client.api(e.GET_GUEST_MENU, seat.token).problem(), "a closed session")
             val names =
                 client
                     .guestMenu(a.id, "?restaurant_id=${b.id}")

@@ -1,16 +1,9 @@
 package io.github.phongmanh.restaurant.menu
 
-import io.github.phongmanh.restaurant.core.application.Caller
-import io.github.phongmanh.restaurant.core.auth.http.BearerAuthenticator
-import io.github.phongmanh.restaurant.core.domain.DeviceId
 import io.github.phongmanh.restaurant.core.domain.RestaurantId
-import io.github.phongmanh.restaurant.core.domain.TableId
-import io.github.phongmanh.restaurant.core.domain.TableSessionId
-import io.github.phongmanh.restaurant.core.domain.UuidV7
-import io.github.phongmanh.restaurant.core.http.CallAuthenticator
 import io.github.phongmanh.restaurant.core.http.Endpoints
-import io.github.phongmanh.restaurant.core.http.RouteGroup
 import io.github.phongmanh.restaurant.support.AuthFixtures
+import io.github.phongmanh.restaurant.support.Guests
 import io.github.phongmanh.restaurant.support.api
 import io.github.phongmanh.restaurant.support.authApp
 import io.github.phongmanh.restaurant.support.json
@@ -19,44 +12,15 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.HttpHeaders
-import io.ktor.server.request.header
 import io.ktor.server.testing.ApplicationTestBuilder
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
-import org.koin.dsl.module
-import java.util.UUID
 import kotlin.test.assertEquals
 
-/**
- * Table-session tokens come with the tables feature (step 6). Until then a guest of a restaurant is
- * the header [GUEST_HEADER] naming it, on the guest routes only; everything else goes to the real
- * authenticator, so a guest call without it is still `401`.
- */
-const val GUEST_HEADER = "X-Test-Guest-Restaurant"
-
-private class TestGuests(
-    private val real: CallAuthenticator,
-) : CallAuthenticator {
-    override suspend fun authenticate(
-        call: io.ktor.server.application.ApplicationCall,
-        endpoint: io.github.phongmanh.restaurant.core.http.Endpoint,
-    ): Caller {
-        val restaurant = call.request.header(GUEST_HEADER)
-        if (endpoint.group != RouteGroup.GUEST || restaurant == null) return real.authenticate(call, endpoint)
-        return Caller.Guest(
-            DeviceId(UuidV7.next()),
-            TableSessionId(UuidV7.next()),
-            TableId(UuidV7.next()),
-            RestaurantId(UUID.fromString(restaurant)),
-        )
-    }
-}
-
-/** The service with the guest stand-in, and no rate limits. */
-fun menuApp(block: suspend ApplicationTestBuilder.() -> Unit) =
-    authApp(overrides = listOf(module { single<CallAuthenticator> { TestGuests(BearerAuthenticator(get())) } }), block = block)
+/** The service with no rate limits. */
+fun menuApp(block: suspend ApplicationTestBuilder.() -> Unit) = authApp(block = block)
 
 private val e = Endpoints.Menu
 
@@ -100,8 +64,7 @@ suspend fun HttpClient.guestMenu(
     query: String = "",
     etag: String? = null,
 ): HttpResponse =
-    api(e.GET_GUEST_MENU.method, e.GET_GUEST_MENU.path + query, null) {
-        header(GUEST_HEADER, restaurant.toString())
+    api(e.GET_GUEST_MENU.method, e.GET_GUEST_MENU.path + query, Guests.seated(restaurant).token) {
         etag?.let { header(HttpHeaders.IfNoneMatch, it) }
     }
 
