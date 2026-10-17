@@ -26,6 +26,10 @@ kotlin {
 val systemTest: SourceSet by sourceSets.creating
 configurations[systemTest.implementationConfigurationName].extendsFrom(configurations.implementation.get())
 configurations[systemTest.runtimeOnlyConfigurationName].extendsFrom(configurations.runtimeOnly.get())
+// The system tests check every staging response against the contract with the tests' own
+// ContractCheck, so they see the test classes and their libraries (JUnit, the schema validator).
+configurations[systemTest.implementationConfigurationName].extendsFrom(configurations.testImplementation.get())
+dependencies { systemTest.implementationConfigurationName(sourceSets.test.get().output) }
 kotlin.target.compilations
     .getByName("systemTest")
     .associateWith(kotlin.target.compilations.getByName("main"))
@@ -135,6 +139,12 @@ val detekt by tasks.registering(JavaExec::class) {
 }
 
 kover {
+    currentProject {
+        instrumentation {
+            // Coverage is the CI tests' (test-plan §7); the system tests call a remote service.
+            disabledForTestTasks.add("systemTest")
+        }
+    }
     reports {
         // test-plan §7: coverage ≥ 80% in services and domain.
         filters {
@@ -170,6 +180,26 @@ tasks.register<JavaExec>("generateHistory") {
     classpath = systemTest.runtimeClasspath
     mainClass = "io.github.phongmanh.restaurant.staging.GenerateHistoryKt"
     workingDir = rootDir
+}
+
+// test-plan §5, §9 step 5: the acceptance scenarios against a staging deployment, through the API.
+// Never part of `./gradlew build`: it spends the free plans' allowances (test-plan §9's budget guard).
+tasks.register<Test>("systemTest") {
+    group = "staging"
+    description = "-PstagingUrl=<deployment URL>: the AT scenarios on staging (test-plan §5)"
+    testClassesDirs = systemTest.output.classesDirs
+    classpath = systemTest.runtimeClasspath
+    useJUnitPlatform()
+    workingDir = rootDir
+    systemProperty("staging.url", providers.gradleProperty("stagingUrl").getOrElse(""))
+    systemProperty("contract.path", rootProject.file("docs/api/openapi.yaml").absolutePath)
+    // A run is against a live deployment whose state the inputs don't describe: never up to date.
+    outputs.upToDateWhen { false }
+    testLogging {
+        events("passed", "skipped", "failed")
+        showStandardStreams = true
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.SHORT
+    }
 }
 
 // deploy/README.md, ST-07: pushes request counts with an injected 5xx share to Grafana Cloud, so

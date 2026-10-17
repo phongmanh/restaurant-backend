@@ -99,6 +99,16 @@ Claude runs both, with the environment exported as in step 5 from **both** files
 - **`seedStaging`** (about 160 requests) makes two admins: the first, with TOTP enrolled, comes from the operator's service call against the database; the second is invited and not enrolled. It then makes restaurants A and B through the API. Each has a manager, two waiters, a kitchen user, a deactivated waiter, a waiter locked by ten failed sign-ins (the lock lifts after 15 minutes), a menu with hidden, sold-out and option items, and 25 tables. The accounts go to `deploy/staging/.accounts.staging`, which is git-ignored and owner-only, like the env file. A second run skips what that file already lists.
 - **`generateHistory`** (about 1,100 requests), the same way, after the seed. Restaurant L (1,000 items, 25 tables) and 49 smaller restaurants are onboarded through the API. The history rows are then written through the service's own transactions: L's last 30 days as real bills, with their daily rows rebuilt by the reconcile's own code, and a year of daily rows for every restaurant. The run prints its size estimate and stops above 300 MB.
 
+### System tests (test-plan §5, §9 step 5)
+Claude runs them after the seed, with the environment exported from both files as for the seed:
+```
+./gradlew --no-daemon systemTest -PstagingUrl=<deployment URL>
+```
+- Every AT scenario of test-plan §5 runs through the API (no client app exists yet), in restaurants A and B, as the seeded accounts. Each response is checked against the contract with CI's own `ContractCheck`, so a response that breaks it fails the scenario that got it. Live updates go through real Ably subscriptions on the channels the service's tokens grant.
+- A run sends about 550 requests and stops at 2,000 (test-plan §9's budget guard); it prints its total at the end. The first run sent 535 in about 2 minutes, a minute of it AT-005 keeping a phone offline.
+- Each scenario seats its guests at tables free when it starts and closes their sessions when it ends. A run leaves closed bills in A, accounts named `….<run>@staging.example` (deactivated) and one restaurant `C <run>` from AT-040. Run one class with `--tests '*IsolationTest'`.
+- The results are JUnit's, in `build/test-results/systemTest/`; lines starting `[AT-…]` in the output are the measurements (live-update delays, call counts).
+
 ### Redeploying
 Repeat step 10. Migrations come first whenever the release adds one (step 5): they are expand-only within a release, so the deployment still running keeps working (architecture §8).
 

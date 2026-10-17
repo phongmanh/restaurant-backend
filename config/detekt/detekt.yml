@@ -1,11 +1,20 @@
 # Overrides on top of detekt's default config (buildUponDefaultConfig in build.gradle.kts).
+#
+# detekt's defaults exclude test sources (`**/test/**`) from FunctionNaming, MagicNumber and
+# TooManyFunctions: tests name themselves in backticks and read better with their numbers in place.
+# The system tests (`src/systemTest/…/system`) are tests too, so they get the same three exclusions;
+# the staging tools beside them (`…/staging`) stay under every rule.
 style:
   MagicNumber:
     # HTTP statuses in the ErrorCode enum.
     ignoreEnums: true
+    excludes: ['**/test/**', '**/systemTest/**/system/**']
   MaxLineLength:
     # The same limit as ktlint's ktlint_official style, so the two tools agree.
     maxLineLength: 140
+naming:
+  FunctionNaming:
+    excludes: ['**/test/**', '**/systemTest/**/system/**']
 complexity:
   LongParameterList:
     # Koin-built services take their collaborators in the constructor, and row classes one field
@@ -17,3 +26,4 @@ complexity:
     # The rule is about a class's or file's public surface. Private helpers are how long functions
     # get split, so counting them pushes the other way.
     ignorePrivate: true
+    excludes: ['**/test/**', '**/systemTest/**/system/**']
