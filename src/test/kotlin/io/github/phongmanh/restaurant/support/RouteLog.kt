@@ -12,8 +12,13 @@ import java.util.concurrent.ConcurrentHashMap
  * at G4 (401 / 400 / 404 / success per endpoint). At the end of the test JVM it writes
  * `build/route-log/<pid>.tsv`; `scripts/route-matrix.py` maps the paths onto the registry.
  * Paths only: no bodies, tokens or query strings.
+ *
+ * A request with the [UNRECORDED] header isn't recorded: a test sends it when it doesn't assert the
+ * status, so the matrix counts only statuses some test checks.
  */
 object RouteLog {
+    const val UNRECORDED = "X-Test-Unrecorded"
+
     private val seen = ConcurrentHashMap.newKeySet<String>()
 
     init {
@@ -28,6 +33,7 @@ object RouteLog {
     val plugin =
         createApplicationPlugin("RouteLog") {
             on(ResponseSent) { call ->
+                if (call.request.headers.contains(UNRECORDED)) return@on
                 val status = call.response.status()?.value ?: return@on
                 seen += "${call.request.httpMethod.value}\t${call.request.path()}\t$status"
             }

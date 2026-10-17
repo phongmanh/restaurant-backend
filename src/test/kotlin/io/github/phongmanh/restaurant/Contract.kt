@@ -21,6 +21,11 @@ object Contract {
         val allowedWhenSuspended: Any?,
         /** `x-auth`, e.g. `qr` for the scan whose credential is in the body. */
         val auth: Any?,
+        /**
+         * `security`: the alternatives the operation accepts, each the set of schemes it needs, e.g.
+         * `[{staffBearer}, {adminBearer}]`. An empty set (`{}`) allows a call without credentials.
+         */
+        val security: List<Set<String>>,
     )
 
     private val methods = setOf("get", "put", "post", "delete", "patch", "head", "options", "trace")
@@ -40,6 +45,7 @@ object Contract {
                     ifMatch = "IfMatch" in parameters,
                     allowedWhenSuspended = operation["x-allowed-when-suspended"],
                     auth = operation["x-auth"],
+                    security = (operation["security"] as List<*>? ?: emptyList<Any>()).map { map(it).keys },
                 )
             }
         }
