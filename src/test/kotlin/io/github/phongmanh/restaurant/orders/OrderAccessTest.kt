@@ -164,10 +164,11 @@ class OrderAccessTest {
     }
 
     @Test
-    fun `IT-ORD-21 notes and reason notes are cleared 30 days after the close, and never reach the audit`() =
+    fun `IT-ORD-21 notes and reason notes are cleared 30 days after the close, a correction's 30 days after it, never in the audit`() =
         ordersApp {
             val old = client.floor("A")
             client.closedWithNotes(old)
+            client.correctedTwice(old)
 
             val recent = client.floor("B")
             client.placed(recent.guest, line(recent.tea, note = "mang về"))
@@ -187,31 +188,39 @@ class OrderAccessTest {
                 recentClosed.seat.session.value,
             )
 
-            fun notes(): Set<String> =
-                AuthFixtures
-                    .query(
-                        "SELECT coalesce(note, '') || '/' || coalesce(reason_note, '') FROM order_lines " +
-                            "WHERE note IS NOT NULL OR reason_note IS NOT NULL " +
-                            "UNION ALL SELECT '/' || reason_note FROM orders WHERE reason_note IS NOT NULL",
-                    ) { it.getString(1) }
-                    .toSet()
-            assertEquals(setOf("/khách đổi ý", "không đá/", "mang về/", "thêm chanh/", "ít hành/hết hành"), notes())
+            assertEquals(
+                setOf(
+                    "/khách đổi ý",
+                    "không đá/",
+                    "mang về/",
+                    "thêm chanh/",
+                    "ít hành/hết hành",
+                    "correction:hoàn tiền cũ",
+                    "correction:hoàn tiền mới",
+                ),
+                notes(),
+            )
 
             val run = client.job(Endpoints.Jobs.RETENTION, TestKeys.CRON_SECRET)
             assertEquals(HttpStatusCode.OK, run.status)
-            assertEquals("3", run.json().obj("tasks").str("order_notes"))
-            assertEquals(setOf("mang về/", "thêm chanh/"), notes(), "an open bill, and one closed 29 days ago, keep theirs")
+            assertEquals("4", run.json().obj("tasks").str("order_notes"))
             assertEquals(
-                "0",
-                client
-                    .job(Endpoints.Jobs.RETENTION, TestKeys.CRON_SECRET)
-                    .json()
-                    .obj("tasks")
-                    .str("order_notes"),
+                setOf("mang về/", "thêm chanh/", "correction:hoàn tiền mới"),
+                notes(),
+                "an open bill, one closed 29 days ago, and today's correction keep theirs",
             )
+            assertEquals(
+                listOf("-100 cash goodwill", "-100 cash goodwill"),
+                AuthFixtures.query(
+                    "SELECT amount || ' ' || payment_method || ' ' || reason_code FROM bill_adjustments",
+                ) { it.getString(1) },
+                "the accounting record stays",
+            )
+            val again = client.job(Endpoints.Jobs.RETENTION, TestKeys.CRON_SECRET).json()
+            assertEquals("0", again.obj("tasks").str("order_notes"), "a second run finds nothing")
             assertEquals("unauthenticated", client.job(Endpoints.Jobs.RETENTION, "wrong").problem())
             val texts = AuthFixtures.query("SELECT details::text FROM audit_events") { it.getString(1) }
-            assertEquals(emptyList(), texts.filter { t -> listOf("đá", "hành", "đổi ý", "chanh").any { it in t } })
+            assertEquals(emptyList(), texts.filter { t -> listOf("đá", "hành", "đổi ý", "chanh", "hoàn tiền").any { it in t } })
         }
 
     @Test
@@ -238,3 +247,30 @@ class OrderAccessTest {
             )
         }
 }
+
+/** Two corrections with notes to [f]'s closed bill: one made 31 days ago, one today (CR-009 option A). */
+private suspend fun HttpClient.correctedTwice(f: Floor) {
+    listOf("hoàn tiền cũ", "hoàn tiền mới").forEach { note ->
+        val version = bill(f.manager, f.session).int("version")
+        val body =
+            """{"amount": {"amount": "-100", "currency": "VND"}, "payment_method": "cash",
+               "reason_code": "goodwill", "note": "$note"}"""
+        val corrected =
+            api(Endpoints.Orders.ADJUST_CLOSED_BILL, f.manager, "sessionId" to f.session, body = body) {
+                header(HttpHeaders.IfMatch, "\"$version\"")
+            }
+        assertEquals(HttpStatusCode.Created, corrected.status)
+    }
+    AuthFixtures.sql("UPDATE bill_adjustments SET created_at = created_at - interval '31 days' WHERE note = 'hoàn tiền cũ'")
+}
+
+/** Every note still stored: lines (note/reason), orders (/reason) and corrections. */
+private fun notes(): Set<String> =
+    AuthFixtures
+        .query(
+            "SELECT coalesce(note, '') || '/' || coalesce(reason_note, '') FROM order_lines " +
+                "WHERE note IS NOT NULL OR reason_note IS NOT NULL " +
+                "UNION ALL SELECT '/' || reason_note FROM orders WHERE reason_note IS NOT NULL " +
+                "UNION ALL SELECT 'correction:' || note FROM bill_adjustments WHERE note IS NOT NULL",
+        ) { it.getString(1) }
+        .toSet()
