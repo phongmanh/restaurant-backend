@@ -20,6 +20,16 @@ kotlin {
     }
 }
 
+// test-plan §2, §9: tools run against staging (seed, history) and, from Phase 5 step 5, the system
+// tests. They call a deployed service, so they never run in `./gradlew build`; `check` compiles them
+// so they don't rot. Associated with `main`, so they reuse the service's own code.
+val systemTest: SourceSet by sourceSets.creating
+configurations[systemTest.implementationConfigurationName].extendsFrom(configurations.implementation.get())
+configurations[systemTest.runtimeOnlyConfigurationName].extendsFrom(configurations.runtimeOnly.get())
+kotlin.target.compilations
+    .getByName("systemTest")
+    .associateWith(kotlin.target.compilations.getByName("main"))
+
 dependencies {
     implementation(platform(libs.ktor.bom))
     implementation(libs.ktor.server.core)
@@ -98,11 +108,11 @@ dependencies {
 
 val detekt by tasks.registering(JavaExec::class) {
     group = "verification"
-    description = "Runs detekt on the main and test sources."
+    description = "Runs detekt on the main, test and systemTest sources."
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
     classpath = detektCli
     mainClass = "io.gitlab.arturbosch.detekt.cli.Main"
-    val sources = files("src/main/kotlin", "src/test/kotlin")
+    val sources = files("src/main/kotlin", "src/test/kotlin", "src/systemTest/kotlin")
     val config = file("config/detekt/detekt.yml")
     val report = layout.buildDirectory.file("reports/detekt/detekt.html")
     inputs.files(sources, config)
@@ -135,7 +145,25 @@ kover {
 }
 
 tasks.check {
-    dependsOn(detekt, tasks.named("koverVerify"), routeMatrix)
+    dependsOn(detekt, tasks.named("koverVerify"), routeMatrix, tasks.named("compileSystemTestKotlin"))
+}
+
+// deploy/README.md, test-plan §6: staging's data. Both read the service's environment (exported from
+// deploy/staging/*.env, as for `migrate`) and take the deployment's URL.
+tasks.register<JavaExec>("seedStaging") {
+    group = "staging"
+    description = "<deployment URL>: restaurants A and B, their staff accounts, menus and tables"
+    classpath = systemTest.runtimeClasspath
+    mainClass = "io.github.phongmanh.restaurant.staging.SeedStagingKt"
+    workingDir = rootDir
+}
+
+tasks.register<JavaExec>("generateHistory") {
+    group = "staging"
+    description = "<deployment URL>: restaurant L and 49 smaller ones, with a scaled year of sales"
+    classpath = systemTest.runtimeClasspath
+    mainClass = "io.github.phongmanh.restaurant.staging.GenerateHistoryKt"
+    workingDir = rootDir
 }
 
 // ADR-0004: migrations run from CI (or locally) over a direct connection as the migrator, never at
