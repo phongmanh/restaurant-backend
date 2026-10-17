@@ -60,6 +60,16 @@ Steps marked **you** are the owner's. The auto-mode safety check blocks Claude f
 11. **Claude: smoke-check the deployment.** `GET /health` with the bypass header answers 200, and the same request without it is refused by Deployment Protection. Then read the Vercel logs for the start-up line, and look for any secret or personal data in them.
 12. **Claude: check the scheduled jobs** the day after the deploy. The Cron Jobs tab shows one run of each, and on Hobby each runs once a day at most. A run against a deployment without its alias is recorded, whatever the result.
 
+### Staging data (test-plan §6)
+Claude runs both, with the environment exported as in step 5 from **both** files (the seed needs the service's settings too):
+```
+(for f in deploy/staging/staging.env deploy/staging/.env.staging; do
+   while IFS= read -r line; do case "$line" in ''|'#'*) ;; *) export "$line" ;; esac; done < "$f"; done
+ ./gradlew --no-daemon seedStaging --args="<deployment URL>")
+```
+- **`seedStaging`** (about 160 requests) makes two admins: the first, with TOTP enrolled, comes from the operator's service call against the database; the second is invited and not enrolled. It then makes restaurants A and B through the API. Each has a manager, two waiters, a kitchen user, a deactivated waiter, a waiter locked by ten failed sign-ins (the lock lifts after 15 minutes), a menu with hidden, sold-out and option items, and 25 tables. The accounts go to `deploy/staging/.accounts.staging`, which is git-ignored and owner-only, like the env file. A second run skips what that file already lists.
+- **`generateHistory`** (about 1,100 requests), the same way, after the seed. Restaurant L (1,000 items, 25 tables) and 49 smaller restaurants are onboarded through the API. The history rows are then written through the service's own transactions: L's last 30 days as real bills, with their daily rows rebuilt by the reconcile's own code, and a year of daily rows for every restaurant. The run prints its size estimate and stops above 300 MB.
+
 ### Redeploying
 Repeat step 10. Migrations come first whenever the release adds one (step 5): they are expand-only within a release, so the deployment still running keeps working (architecture §8).
 
