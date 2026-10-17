@@ -4,3 +4,4 @@ build/
 .kotlin/
 .vercel/
 .env*
+.DS_Store
