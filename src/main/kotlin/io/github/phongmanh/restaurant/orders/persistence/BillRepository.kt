@@ -219,7 +219,7 @@ class BillRepository {
 
     private fun connection(tx: TxScope) = ExposedTransactor.connection(tx)
 
-    private companion object {
+    internal companion object {
         const val SELECT =
             "SELECT session_id, status, order_count, total, adjustments_total, payment_method, amount_received, closed_at, " +
                 "business_date, version FROM bills"

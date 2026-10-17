@@ -315,13 +315,16 @@ class BillService(
             }
         error?.let { throw DomainError.ValidationFailed(listOf(it)) }
     }
-
-    /** The bill's lines summed per item, for the daily item totals (orders §7.3); names from the latest line. */
-    private fun itemsOf(lines: List<BillLine>): List<ItemSale> =
-        lines
-            .groupBy { it.line.itemId }
-            .map { (itemId, of) ->
-                val latest = of.last().line
-                ItemSale(itemId, latest.nameVi, latest.nameEn, of.sumOf { it.line.quantity }, of.sumOf { it.line.lineTotal })
-            }
 }
+
+/**
+ * The bill's lines summed per item, for the daily item totals (orders §7.3); names from the latest
+ * line. The close and the nightly rebuild (`SalesFactsSource`) both use it, so they can't disagree.
+ */
+internal fun itemsOf(lines: List<BillLine>): List<ItemSale> =
+    lines
+        .groupBy { it.line.itemId }
+        .map { (itemId, of) ->
+            val latest = of.last().line
+            ItemSale(itemId, latest.nameVi, latest.nameEn, of.sumOf { it.line.quantity }, of.sumOf { it.line.lineTotal })
+        }

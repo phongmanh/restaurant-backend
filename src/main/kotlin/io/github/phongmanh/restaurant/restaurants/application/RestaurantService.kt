@@ -133,11 +133,23 @@ fun interface RestaurantDirectory {
     ): RestaurantProfile?
 }
 
-/** Both ports, in the caller's transaction. */
+/** A restaurant and its time zone, for a job that works by each restaurant's local day. */
+data class RestaurantZone(
+    val id: RestaurantId,
+    val timeZone: String,
+)
+
+/** The `RestaurantZones` port: every restaurant's time zone, read in a platform transaction (reports §5). */
+fun interface RestaurantZones {
+    fun all(tx: TxScope): List<RestaurantZone>
+}
+
+/** The three ports, in the caller's transaction. */
 class RestaurantPorts(
     private val restaurants: RestaurantRepository,
 ) : TenantStatus,
-    RestaurantDirectory {
+    RestaurantDirectory,
+    RestaurantZones {
     override fun of(
         tx: TxScope,
         restaurantId: RestaurantId,
@@ -147,6 +159,8 @@ class RestaurantPorts(
         tx: TxScope,
         restaurantId: RestaurantId,
     ): RestaurantProfile? = restaurants.find(tx, restaurantId)?.let { RestaurantProfile(it.name, it.timeZone, it.languages) }
+
+    override fun all(tx: TxScope): List<RestaurantZone> = restaurants.zones(tx)
 }
 
 const val RESTAURANT_TARGET = "restaurant"

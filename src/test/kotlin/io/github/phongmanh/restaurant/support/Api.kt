@@ -109,8 +109,7 @@ val notYetRouted: Set<Endpoint> =
         // FR-022 (Should) waits for TBD-13, the image store (owner, 2026-10-15).
         Endpoints.Menu.PUT_MENU_ITEM_IMAGE,
         Endpoints.Menu.DELETE_MENU_ITEM_IMAGE,
-    ) +
-        Endpoints.Reports.entries
+    )
 
 /** The TOTP secret an authenticator app reads from the enrolment's Base32 text. */
 fun decodeBase32(text: String): ByteArray {
