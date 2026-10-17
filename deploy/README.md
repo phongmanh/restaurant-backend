@@ -4,7 +4,7 @@ The service runs as a container on Vercel (architecture §8, ADR-0002), built fr
 
 | Environment | Vercel project | Database | Live updates, rate limits | Runbook |
 |---|---|---|---|---|
-| staging (free plans, Phase 5) | `restaurant-staging` on the Hobby test account `liam-36c7`; the production deployment, public alias removed (CR-011) | Neon free plan, its own project, Singapore | Ably free app `restaurant-staging`; Upstash free database, Singapore | Below |
+| staging (free plans, Phase 5) | `restaurant-staging` on the Hobby test account `liam-36c7`; the production deployment, public alias removed (CR-011) | Neon free plan, its own project, Singapore | Ably free app `restaurant-staging`; Upstash free database, Singapore; metrics to Grafana Cloud's free plan (TBD-12) | Below |
 | production | Not set up: it needs paid plans (TBD-11) and TBD-10 | | | |
 
 ## What the service needs
@@ -17,6 +17,7 @@ The non-secret settings for staging are in [`staging/staging.env`](staging/stagi
 | `DATABASE_URL_MIGRATOR_DIRECT` | Neon console: the `migrator` role's **direct** connection string (pooling off). Used by `./gradlew migrate` on your machine; never sent to Vercel |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Upstash console, the database's REST API section |
 | `ABLY_API_KEY` | Ably console, the app's API keys |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` | Grafana Cloud, the stack's OpenTelemetry (OTLP) connection: the endpoint, and the `Authorization=Basic …` header made with a token that can write metrics (ADR-0009, TBD-12) |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | Vercel project → Settings → Deployment Protection → Protection Bypass for Automation. Test clients send it as `x-vercel-protection-bypass`; never sent to the service |
 
 The service refuses to start if a secret is missing and names every missing one in the error (core-and-auth §13).
@@ -59,6 +60,12 @@ Steps marked **you** are the owner's. The auto-mode safety check blocks Claude f
     ```
 11. **Claude: smoke-check the deployment.** `GET /health` with the bypass header answers 200, and the same request without it is refused by Deployment Protection. Then read the Vercel logs for the start-up line, and look for any secret or personal data in them.
 12. **Claude: check the scheduled jobs** the day after the deploy. The Cron Jobs tab shows one run of each, and on Hobby each runs once a day at most. A run against a deployment without its alias is recorded, whatever the result.
+
+### Metrics backend (ADR-0009, TBD-12)
+1. **You:** at grafana.com, sign up for the free plan and create a stack, choosing the **Singapore** region if it's offered (TBD-10 may care where data lives). Otherwise pick the nearest.
+2. **You:** in the stack, open **Connections → OpenTelemetry (OTLP)** and create a token. The page then shows the endpoint (`https://otlp-gateway-….grafana.net/otlp`) and the header, `Authorization=Basic …`. Paste them after `OTEL_EXPORTER_OTLP_ENDPOINT=` and `OTEL_EXPORTER_OTLP_HEADERS=` in `deploy/staging/.env.staging`, adding the two lines if the file doesn't have them. The header holds the token: never paste it into chat.
+3. **You:** run steps 9 and 10 again (send the variables, deploy, remove the alias). Without both settings, a staging deployment refuses to start and names them.
+4. **Claude:** after some traffic, check in Grafana's **Explore** that `ktor_http_server_requests_seconds_count` arrives with `service_name="restaurant-backend"`.
 
 ### Staging data (test-plan §6)
 Claude runs both, with the environment exported as in step 5 from **both** files (the seed needs the service's settings too):

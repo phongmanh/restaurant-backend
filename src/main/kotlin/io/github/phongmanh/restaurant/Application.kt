@@ -8,6 +8,8 @@ import io.github.phongmanh.restaurant.core.coreModule
 import io.github.phongmanh.restaurant.core.http.Endpoints
 import io.github.phongmanh.restaurant.core.http.RetentionJobRoutes
 import io.github.phongmanh.restaurant.core.http.installHttp
+import io.github.phongmanh.restaurant.core.observability.Metrics
+import io.github.phongmanh.restaurant.core.observability.installMetrics
 import io.github.phongmanh.restaurant.core.persistence.DatabasePools
 import io.github.phongmanh.restaurant.core.persistence.UpstashRateLimiter
 import io.github.phongmanh.restaurant.menu.http.MenuEditRoutes
@@ -41,9 +43,12 @@ import io.ktor.server.netty.EngineMain
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import org.koin.core.module.Module
+import org.koin.dsl.module
 import org.koin.ktor.ext.get
 import org.koin.ktor.plugin.KoinIsolated
 
@@ -69,12 +74,21 @@ fun Application.service(
     config: AppConfig,
     overrides: List<Module> = emptyList(),
 ) {
+    // First, so the pools and the HTTP timer report from the first request (ADR-0009).
+    val metrics = Metrics.registry(config.observability, config.environment)
+    installMetrics(metrics, config.http.minClientVersions.keys)
     installHttp(config.http)
     // Opened here, at startup, so a cold start pays the connect time before the first request.
-    val pools = DatabasePools(config.database)
-    monitor.subscribe(ApplicationStopped) { pools.close() }
+    val pools = DatabasePools(config.database, metrics)
+    monitor.subscribe(ApplicationStopped) {
+        pools.close()
+        // Last: closing an OTLP registry pushes what it hasn't sent yet, before the instance goes.
+        metrics.close()
+    }
     // Isolated: each application (and each test) gets its own graph, not a global one.
-    install(KoinIsolated) { modules(appModule(config, pools) + overrides) }
+    install(KoinIsolated) { modules(appModule(config, pools, metrics) + overrides) }
+    // One per instance start: the cold starts of architecture §13.
+    metrics.counter("app.starts").increment()
     // The rate-limit store's connection opens now, not on the first sign-in (S-1 Q10 design rule).
     (get<RateLimiter>() as? UpstashRateLimiter)?.let { upstash ->
         launch { runCatching { upstash.warmUp() }.onFailure { log.warn("rate limit store didn't answer at startup") } }
@@ -108,8 +122,10 @@ fun Application.service(
 fun appModule(
     config: AppConfig,
     pools: DatabasePools,
+    metrics: MeterRegistry = SimpleMeterRegistry(),
 ): List<Module> =
     listOf(
+        module { single<MeterRegistry> { metrics } },
         coreModule(pools, config.jobs),
         authModule(config.auth, config.rateLimits),
         restaurantsModule(),

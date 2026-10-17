@@ -13,6 +13,7 @@ import io.github.phongmanh.restaurant.core.auth.crypto.SecretBox
 import io.github.phongmanh.restaurant.core.http.HttpSettings
 import io.github.phongmanh.restaurant.core.http.JobSettings
 import io.github.phongmanh.restaurant.core.http.SemVer
+import io.github.phongmanh.restaurant.core.observability.ObservabilitySettings
 import io.github.phongmanh.restaurant.core.persistence.DatabaseSettings
 import io.github.phongmanh.restaurant.core.persistence.JdbcTarget
 import io.ktor.server.config.ApplicationConfig
@@ -34,6 +35,7 @@ data class AppConfig(
     val jobs: JobSettings,
     val rateLimits: RateLimitSettings,
     val realtime: RealtimeSettings,
+    val observability: ObservabilitySettings = ObservabilitySettings.NONE,
 ) {
     companion object {
         const val PRODUCTION = "production"
@@ -44,6 +46,7 @@ data class AppConfig(
 
         /** `openssl rand -hex 16` makes one: 128 random bits, so the bearer can't be guessed. */
         private const val MIN_CRON_SECRET_CHARS = 32
+        private const val DEFAULT_STEP_S = 10L
 
         /**
          * Reads and checks the settings. The service refuses to start if a secret is missing, or if a
@@ -69,7 +72,7 @@ data class AppConfig(
 
             val environment = config.property("app.environment").getString()
 
-            // Upstash and Ably may be left out in dev and test only.
+            // Upstash, Ably and the metrics backend may be left out in dev and test only.
             fun outsideDev(
                 path: String,
                 env: String,
@@ -93,6 +96,8 @@ data class AppConfig(
             val upstashUrl = outsideDev("rateLimits.upstashUrl", "UPSTASH_REDIS_REST_URL")
             val upstashToken = outsideDev("rateLimits.upstashToken", "UPSTASH_REDIS_REST_TOKEN")
             val ablyKey = outsideDev("realtime.ablyApiKey", "ABLY_API_KEY")
+            val otlpEndpoint = outsideDev("observability.otlpEndpoint", "OTEL_EXPORTER_OTLP_ENDPOINT")
+            val otlpHeaders = outsideDev("observability.otlpHeaders", "OTEL_EXPORTER_OTLP_HEADERS")
             check(missing.isEmpty()) { "missing settings: ${missing.joinToString()}" }
             check(cronSecret.length >= MIN_CRON_SECRET_CHARS) { "CRON_SECRET must be at least $MIN_CRON_SECRET_CHARS characters" }
 
@@ -135,8 +140,23 @@ data class AppConfig(
                         policies = policies(config.config("rateLimits.policies").toMap()),
                     ),
                 realtime = RealtimeSettings(ablyKey.ifBlank { null }),
+                observability = observability(config, otlpEndpoint, otlpHeaders),
             )
         }
+
+        /** Where metrics go (ADR-0009); blank values only in dev and test, as `load` checks. */
+        private fun observability(
+            config: ApplicationConfig,
+            endpoint: String,
+            headers: String,
+        ) = ObservabilitySettings(
+            otlpEndpoint = endpoint.ifBlank { null },
+            headers = if (headers.isBlank()) emptyMap() else ObservabilitySettings.parseHeaders(headers),
+            step =
+                java.time.Duration.ofSeconds(
+                    config.propertyOrNull("observability.stepSeconds")?.getString()?.toLong() ?: DEFAULT_STEP_S,
+                ),
+        )
 
         private fun authSettings(
             config: ApplicationConfig,

@@ -2,6 +2,8 @@ package io.github.phongmanh.restaurant.core.persistence
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import io.micrometer.core.instrument.Gauge
+import io.micrometer.core.instrument.MeterRegistry
 import org.jetbrains.exposed.v1.core.DatabaseConfig
 import org.jetbrains.exposed.v1.jdbc.Database
 import kotlin.time.Duration
@@ -26,11 +28,17 @@ data class DatabaseSettings(
  */
 class DatabasePools(
     val settings: DatabaseSettings,
+    /** Pool usage and waits (architecture §13); `null` for the tools that open pools outside the service. */
+    private val metrics: MeterRegistry? = null,
 ) : AutoCloseable {
     private val appPool = pool("app", settings.app, settings.maxPoolSize, minIdle = 1)
 
     // Used rarely (admin work, jobs, sign-in), so it keeps no idle connection.
     private val platformPool = pool("platform", settings.platform, settings.platformMaxPoolSize, minIdle = 0)
+
+    init {
+        metrics?.let { registry -> listOf(appPool, platformPool).forEach { gauges(it, registry) } }
+    }
 
     val app: Database = Database.connect(appPool, databaseConfig = exposedConfig)
     val platform: Database = Database.connect(platformPool, databaseConfig = exposedConfig)
@@ -38,6 +46,28 @@ class DatabasePools(
     override fun close() {
         appPool.close()
         platformPool.close()
+    }
+
+    /**
+     * Pool usage and waits from the pool's own counters (architecture §13): connections in use, idle,
+     * at most, and requests waiting for one. HikariCP's Micrometer tracker isn't used: with it the
+     * test suite, which starts hundreds of applications, ran out of heap.
+     */
+    private fun gauges(
+        pool: HikariDataSource,
+        registry: MeterRegistry,
+    ) {
+        fun gauge(
+            name: String,
+            value: (HikariDataSource) -> Int,
+        ) = Gauge
+            .builder(name, pool) { p -> p.hikariPoolMXBean?.let { value(p).toDouble() } ?: 0.0 }
+            .tag("pool", pool.poolName)
+            .register(registry)
+        gauge("db.pool.connections.active") { it.hikariPoolMXBean.activeConnections }
+        gauge("db.pool.connections.idle") { it.hikariPoolMXBean.idleConnections }
+        gauge("db.pool.connections.pending") { it.hikariPoolMXBean.threadsAwaitingConnection }
+        gauge("db.pool.connections.max") { it.maximumPoolSize }
     }
 
     private fun pool(

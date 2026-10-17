@@ -112,3 +112,13 @@ rateLimits:
 # restaurant.* and session.*; one Ably app per environment. Required outside dev and test.
 realtime:
   ablyApiKey: "$ABLY_API_KEY:"
+
+# Metrics pushed over OTLP (ADR-0009, architecture §13) to Grafana Cloud (TBD-12). Required outside dev
+# and test; without them, meters count in memory only.
+observability:
+  # The backend's OTLP base URL, e.g. https://otlp-gateway-prod-ap-southeast-1.grafana.net/otlp
+  otlpEndpoint: "$OTEL_EXPORTER_OTLP_ENDPOINT:"
+  # Secret: "Authorization=Basic <base64 of instance ID:token>", as the backend shows it; comma-separated.
+  otlpHeaders: "$OTEL_EXPORTER_OTLP_HEADERS:"
+  # ADR-0009: a short push interval, since a serverless instance can freeze or stop at any time.
+  stepSeconds: 10
