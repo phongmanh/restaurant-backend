@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+
+# The service's image for Vercel's container runtime (architecture §8, ADR-0002). Vercel accepts only
+# this file name as a container entrypoint. Plain JVM, as S-1 measured it; S-1's AOT cache took
+# about 1 s off a 5-7 s cold start, most of which is the platform's.
+
+FROM eclipse-temurin:25-jdk AS build
+WORKDIR /workspace
+
+COPY gradlew settings.gradle.kts build.gradle.kts ./
+COPY gradle/ gradle/
+RUN ./gradlew --no-daemon --quiet --version
+
+COPY src/main/ src/main/
+RUN ./gradlew --no-daemon --quiet buildFatJar \
+    && cp build/libs/*-all.jar /workspace/app.jar
+
+FROM eclipse-temurin:25-jre AS runtime
+RUN groupadd --system app && useradd --system --gid app --home /app app
+WORKDIR /app
+COPY --from=build --chown=app:app /workspace/app.jar /app/app.jar
+COPY --chown=app:app docker-entrypoint.vercel.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+USER app
+
+# Vercel routes to $PORT (default 80, which a non-root process can't bind): the project sets PORT=8080.
+EXPOSE 8080
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["java", "-XX:+UseG1GC", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar"]

@@ -1,0 +1,8 @@
+# Only what Dockerfile.vercel copies; keeps local builds' context small.
+*
+!gradlew
+!settings.gradle.kts
+!build.gradle.kts
+!gradle/
+!src/main/
+!docker-entrypoint.vercel.sh

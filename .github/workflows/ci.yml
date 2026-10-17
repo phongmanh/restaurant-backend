@@ -3,7 +3,7 @@
 # runner's Docker serves it), the Kover gate, the route-test matrix (`routeMatrix`, G4 hardening
 # H4) and the contract tests (every test response validated against the contract, H3). It also lints
 # the contract and checks it for breaking changes against the G3 contract (oasdiff, H3). Later
-# Phase 4 steps add the dependency and secret scans, the Vercel bundle, and preview deploys.
+# Phase 4 steps add the dependency and secret scans. The `image` job builds the Vercel image (Phase 5).
 name: ci
 
 on:
@@ -52,3 +52,13 @@ jobs:
         run: git fetch --no-tags --depth=1 origin refs/tags/sdlc/restaurant-ordering/G3:refs/tags/sdlc/restaurant-ordering/G3
       - name: No breaking change against the G3 contract
         run: scripts/contract-breaking.sh sdlc/restaurant-ordering/G3
+
+  image:
+    # The image Vercel builds from Dockerfile.vercel (deploy/README.md), so a broken image shows on
+    # the PR instead of at the next deploy. Built only, never pushed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the service image
+        run: docker build --file Dockerfile.vercel --tag restaurant-backend:ci .

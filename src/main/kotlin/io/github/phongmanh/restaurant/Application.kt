@@ -54,14 +54,18 @@ data class Health(
     val status: String,
 )
 
-/** The service, as `application.yaml` names it: reads the settings, then starts. */
-fun Application.module() = module(AppConfig.load(environment.config))
+/**
+ * The service, as `application.yaml` names it: reads the settings, then starts. Keep it the only
+ * function named `module`: given two, Ktor 3 picked the one with parameters and tried to inject
+ * them, so the image didn't start (`StartupTest`; Phase 5 step 2).
+ */
+fun Application.module() = service(AppConfig.load(environment.config))
 
 /**
  * The service with the given settings; tests start it this way with `testApplication`, and may
  * replace components (a clock they move, a failing rate-limit store) with [overrides].
  */
-fun Application.module(
+fun Application.service(
     config: AppConfig,
     overrides: List<Module> = emptyList(),
 ) {

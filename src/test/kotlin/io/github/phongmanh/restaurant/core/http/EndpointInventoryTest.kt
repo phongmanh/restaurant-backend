@@ -1,7 +1,7 @@
 package io.github.phongmanh.restaurant.core.http
 
 import io.github.phongmanh.restaurant.Contract
-import io.github.phongmanh.restaurant.module
+import io.github.phongmanh.restaurant.service
 import io.github.phongmanh.restaurant.support.TestDatabase
 import io.github.phongmanh.restaurant.support.notYetRouted
 import io.ktor.server.application.Application
@@ -64,7 +64,7 @@ class EndpointInventoryTest {
         testApplication {
             lateinit var app: Application
             application {
-                module(TestDatabase.config)
+                service(TestDatabase.config)
                 app = this
             }
             startApplication()
