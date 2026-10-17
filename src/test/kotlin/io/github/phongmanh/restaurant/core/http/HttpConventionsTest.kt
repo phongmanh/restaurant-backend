@@ -111,6 +111,17 @@ class HttpConventionsTest {
         }
 
     @Test
+    fun `every response carries HSTS and nosniff, and no Server header`() =
+        withRoutes {
+            for (path in listOf("/v1/test/ok", "/v1/test/nothing", "/v1/test/down", Endpoints.HEALTH)) {
+                val headers = client.get(path).headers
+                assertEquals(HSTS_VALUE, headers[HttpHeaders.StrictTransportSecurity], path)
+                assertEquals("nosniff", headers["X-Content-Type-Options"], path)
+                assertNull(headers[HttpHeaders.Server], path)
+            }
+        }
+
+    @Test
     fun `a body over 64 KB is 413`() =
         withRoutes {
             fun body(size: Int) = "\"" + "x".repeat(size - 2) + "\""

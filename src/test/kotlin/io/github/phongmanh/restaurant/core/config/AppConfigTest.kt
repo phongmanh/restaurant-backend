@@ -101,6 +101,14 @@ class AppConfigTest {
     }
 
     @Test
+    fun `a short cron secret stops startup, without its value in the message`() {
+        val short = "guessable-cron-secret"
+        val e = assertFailsWith<IllegalStateException> { AppConfig.load(config("jobs.cronSecret" to short)) }
+        assertTrue("CRON_SECRET" in e.message!!, e.message)
+        assertFalse(short in e.message!!, "the message never holds the secret")
+    }
+
+    @Test
     fun `missing auth secrets and, outside dev, Upstash stop startup`() {
         val e =
             assertFailsWith<IllegalStateException> {

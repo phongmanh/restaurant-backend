@@ -102,7 +102,7 @@ class StaffAccounts(
         member: StaffMember,
         now: Instant,
     ): StaffMember {
-        members.deactivate(tx, member.id, now)
+        members.deactivate(tx, member, now)
         sessions.revokeAll(tx, member.id, RevokeReason.DEACTIVATED, now)
         links.supersedeAll(tx, member.id, now)
         return reread(tx, member)
@@ -114,7 +114,7 @@ class StaffAccounts(
         member: StaffMember,
         now: Instant,
     ): StaffMember {
-        members.reactivate(tx, member.id, now)
+        members.reactivate(tx, member, now)
         return reread(tx, member)
     }
 
@@ -204,6 +204,6 @@ class StaffPrivacy(
     ) {
         sessions.revokeAll(tx, member.id, RevokeReason.DEACTIVATED, now)
         links.supersedeAll(tx, member.id, now)
-        members.anonymise(tx, member.id, now)
+        members.anonymise(tx, member, now)
     }
 }
