@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: CR-004 approved and the seven §14 questions decided by the owner on 2026-10-15 |
+| Version | 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: CR-004 approved and the seven §14 questions decided by the owner on 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `menu` (architecture §4) |
 | Requirements | FR-002 guest menu, FR-020 edit, FR-021 sold out, FR-022 images (Should; TBD-5 decided 2026-10-15), FR-023 options (Should), FR-024 vi/en (Should); NFR-PERF-01 (guest reads), FR-042 |
@@ -214,7 +214,7 @@ The same body as the staff read, read only (authorisation matrix: admins read an
 | `name_en` | 1–100 characters or absent (empty string = remove) |
 | `description_vi`, `description_en` | ≤ 500 characters |
 | `price` | Money, VND, whole number 0 – 100,000,000 |
-| `option_groups` | ≤ 10; each `min_choices` 0 ≤ min ≤ max, `max_choices` ≥ 1 and ≤ the group's number of options; ≤ 20 options each; `price_delta` VND 0 – 100,000,000 |
+| `option_groups` | each `min_choices` 0 ≤ min ≤ max, `max_choices` ≥ 1 and ≤ the group's number of options; `price_delta` VND 0 – 100,000,000. The counts, ≤ 10 groups and ≤ 20 options per group, are menu limits (§3): passing one is `409 menu_limit_reached`, as IT-MENU-12 tests (CR-009, Q-11) |
 | `category_id` | A category of this restaurant that isn't deleted → otherwise `404 not_found` |
 
 Waiter or kitchen on any write except sold-out → `403`. An ID of another restaurant → `404`. A stale `If-Match` → `412`.

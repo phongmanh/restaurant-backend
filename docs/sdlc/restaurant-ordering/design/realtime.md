@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: the four §14 questions decided by the owner on 2026-10-15 |
+| Version | 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: the four §14 questions decided by the owner on 2026-10-15 |
 | Owner decisions | §14, all four accepted 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `realtime` (architecture §4) |
@@ -101,12 +101,13 @@ The counter comes after the business rows and before the audit chain head in the
 - **Inline, after commit and before the response** (§14 Q2): one try with a 300 ms timeout; on Ably's `42918` (rate limit), one more try after 50 ms. On success, `UPDATE outbox SET published_at = now()` in its own short statement. On failure the row stays for the sweep, and the request still succeeds (S-3 finding 2).
   - From `sin1` to Ably's Singapore endpoint this should add ≈ 5–15 ms (S-3 measured 35 ms p50 from Vietnam, which includes the longer leg). Phase 4 measures it.
   - A per-instance circuit breaker (architecture §10) skips the inline try for 30 s after 5 failures in a row; the rows wait for the next publisher.
+  - A request publishes its events in order and stops at the first failure: when Ably is down, it isn't sent the rest, each of which could wait 300 ms. Those rows wait for the next publisher (CR-009, Q-14).
 - **No remote call inside a transaction** (architecture §9): publishing always happens after commit.
 
 ### 4.3 Catching up on missed publishes
 Rows that weren't published (Ably down, a refused request, an instance that died after commit) are picked up three ways:
-1. **By later requests of the same restaurant.** After its own inline publish, a request claims up to 20 of the restaurant's rows that are at least 10 s overdue and publishes them too. A busy restaurant clears its backlog within seconds once Ably is back.
-2. **By the sweep job** `/internal/jobs/outbox-sweep` (architecture §10): every minute on Pro, for restaurants that went quiet.
+1. **By later requests of the same restaurant.** After its own inline publish, a request claims up to 20 of the restaurant's rows that are at least 10 s overdue and publishes them too. A busy restaurant clears its backlog within seconds once Ably is back. Skipped while the circuit breaker is open, like the inline try (CR-009, Q-14).
+2. **By the sweep job** `/internal/jobs/outbox-sweep` (architecture §10): every minute on Pro, for restaurants that went quiet. A run stops at its first failure. It ignores the circuit breaker: it is the probe that finds Ably back (CR-009, Q-14).
 3. **By the clients themselves** (§7): a reconnect, the safety poll and the fallback poll all read the event log, which never depends on Ably.
 
 **Claiming without holding a transaction open during the call:**
@@ -158,7 +159,7 @@ The session's events after `seq`, oldest first, plus the current state of each o
 ```
 
 - **Snapshots, not history.** `orders` holds each named order once, in its current state (here version 1, not 0), so the client applies one state per order and keeps whichever version is higher. A burst of 10 events on one order costs one order in the answer.
-- **`cursor`** is the highest `seq` in the answer, or the restaurant's latest `seq` when there are no events (so a quiet client's cursor still moves forward). The client sends it back as `after` next time.
+- **`cursor`** is the restaurant's latest `seq` read when there is no next page (the page was read up to it, so a quiet client's cursor still moves forward), otherwise the highest `seq` in the answer. For a guest, that also skips other sessions' events after their last one (CR-009, Q-14). The client sends it back as `after` next time.
 - **Without `after`** the answer is empty with `cursor` = the latest `seq`: the starting point (§7).
 - **`after` older than the oldest kept event** (7 days), or ahead of the latest: `reset: true` and no events. The client reloads its lists and starts again from `cursor`. A guest session can't be 7 days old in practice, but a staff tablet left off for a week can.
 - **Session filter:** `session_id` = the caller's session. Events of other sessions are skipped, so a guest's cursor jumps over them.
@@ -266,11 +267,11 @@ Both are idempotent, hold `pg_try_advisory_xact_lock`, and are called by Vercel 
 | IT-RT-05 | Another restaurant's events never appear in staff catch-up; a token for restaurant A names only A's channel | FR-042, NFR-SEC-02 |
 | IT-RT-06 | `after` older than the oldest kept event, or ahead of the latest → `reset: true` | NFR-REL-03 |
 | IT-RT-07 | Ably fake down: requests still succeed; rows stay unsent; a later request of the same restaurant publishes them; the sweep publishes the rest; each event is published with its own ID (no duplicates at the fake) | NFR-REL-03, NFR-AVAIL-02 |
-| IT-RT-08 | `42918` from the fake → one retry after 50 ms; two sweepers at once never claim the same row | ADR-0003 |
+| IT-RT-08 | `42918` from the fake → one retry after 50 ms; two sweepers at once never claim the same row | NFR-REL-03, NFR-AVAIL-02 (ADR-0003) |
 | IT-RT-09 | Token: the guest gets exactly `session.<sid>: subscribe`; the staff member gets exactly `restaurant.<rid>.staff: subscribe`; a closed session → `401`; suspended → `403`; no `clientId` | NFR-SEC-02, FR-043 |
 | IT-RT-10 | Resilience (Phase 5, with live clients): drop connections under load, then compare every client's received state with the database; no missing or extra orders | NFR-REL-03 |
 | IT-RT-11 | Live delay end to end at peak: p95 ≤ 2 s, p99 ≤ 5 s (Phase 5 on a paid Ably plan, R-13) | NFR-PERF-03 |
-| IT-RT-12 | Purge: events older than 7 days are deleted with their outbox rows; a client with an older cursor gets `reset` | architecture §6 |
+| IT-RT-12 | Purge: events older than 7 days are deleted with their outbox rows; a client with an older cursor gets `reset` | NFR-REL-03, NFR-PRIV-01 (architecture §6) |
 | IT-RT-13 | No personal data in events, Ably messages or tokens (names, notes, IPs, device IDs) | NFR-PRIV-01 |
 
 ## 14. Owner decisions (2026-10-15)

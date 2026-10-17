@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: the eight §15 questions decided by the owner on 2026-10-15 |
+| Version | 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: the eight §15 questions decided by the owner on 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `restaurants` (architecture §4) |
 | Requirements | FR-040 onboard, FR-041 staff, FR-043 suspend, FR-044 profile; FR-042 and NFR-SEC-02 (isolation of these endpoints); NFR-SEC-03 (audit read); NFR-PRIV-01 (staff data export and erasure) |
@@ -139,7 +139,7 @@ In one platform transaction (core-and-auth §7):
 ## 6. Suspension (FR-043)
 `POST /v1/admin/restaurants/{restaurantId}/suspend` `{"reason"}` and `POST .../reactivate`.
 - Both are naturally idempotent: suspending a suspended restaurant changes nothing and returns `200` with the current state. They take no `If-Match`.
-- Audit `restaurant.suspended` (with the reason) and `restaurant.reactivated`, in the restaurant's chain.
+- Audit `restaurant.suspended` and `restaurant.reactivated` in the restaurant's chain, without the reason. The reason is an admin's free text: core-and-auth §12 keeps free text out of audit `details`, and the restaurant's managers read that chain (§9). It stays in `restaurants.suspension_reason`, which only admins read (CR-009, Q-10).
 - No data is deleted, and no session or token is revoked: reactivation simply restores everything.
 
 **What a suspended restaurant can still do** (§15 Q4):

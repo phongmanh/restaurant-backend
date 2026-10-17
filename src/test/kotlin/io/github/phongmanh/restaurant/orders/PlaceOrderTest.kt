@@ -33,7 +33,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** IT-ORD-01 to IT-ORD-05, IT-ORD-18 and IT-ORD-19 (orders §3, FR-003, FR-004, FR-007, FR-014). */
+/**
+ * IT-ORD-01 to IT-ORD-05, IT-ORD-18, IT-ORD-19 and IT-MENU-10's order half (orders §3, menu §3;
+ * FR-003, FR-004, FR-007, FR-014, FR-020).
+ */
 class PlaceOrderTest {
     @BeforeTest
     fun setUp() = TestDatabase.truncate()
@@ -240,4 +243,25 @@ class PlaceOrderTest {
             assertEquals(10, count("SELECT count(*) FROM orders"))
         }
     }
+
+    @Test
+    fun `IT-MENU-10 an ordered item deleted from the menu keeps its snapshot on the order and the bill`() =
+        ordersApp {
+            val f = client.floor()
+            val order = client.placed(f.guest, line(f.pho, options = listOf(f.large)), line(f.tea))
+            val version = count("SELECT version FROM menu_items WHERE id = ?::uuid", f.pho)
+            val deleted =
+                client.api(Endpoints.Menu.DELETE_MENU_ITEM, f.manager, "itemId" to f.pho) { header(HttpHeaders.IfMatch, "\"$version\"") }
+            assertEquals(HttpStatusCode.NoContent, deleted.status)
+
+            val read = client.api(Endpoints.Orders.GET_STAFF_ORDER, f.waiter, "orderId" to order.str("id")).json()
+            val pho = read.getValue("lines").jsonArray[0].jsonObject
+            assertEquals(
+                listOf(f.pho, "Phở bò", "75000"),
+                listOf(pho.str("item_id"), pho.str("name_vi"), pho.obj("line_total").str("amount")),
+            )
+            val bill = client.bill(f.waiter, f.session)
+            assertEquals(listOf("Phở bò", "Trà đá"), bill.getValue("lines").jsonArray.map { it.jsonObject.str("name_vi") })
+            assertEquals("80000", bill.obj("total").str("amount"))
+        }
 }
