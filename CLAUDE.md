@@ -84,6 +84,7 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 
 - A `/*` inside a KDoc or comment (e.g. a path like `/v1/auth/*` in backticks) opens a nested comment in Kotlin, and the compiler reports "Unclosed comment" at the end of the file. Write the path without the `*` (step 3).
 - Tests never reach Ably: `testApp` binds a `FakeAbly` (down, rate-limited, publish hook). A test that inspects it passes its own in `overrides`. The real adapter is checked by `AblyLiveTest`, which runs only when `ABLY_API_KEY` is set in the shell (step 8).
+- The route-test matrix (`RouteLog`, `scripts/route-matrix.py`) counts every status a test receives, checked or not. A test that sends requests without checking their status (e.g. the accepted-token calls in `AuthenticationMatrixTest`) adds the `RouteLog.UNRECORDED` header, or the G4 evidence overstates coverage (H1).
 - macOS has no `timeout` command: `timeout 300 ./gradlew test` fails at once and prints nothing, which reads like a passing run. Run long Gradle tasks with the Bash tool's background mode and read `build/test-results` (step 3).
 
 ## Saving context (automated in `.claude/settings.json`)
