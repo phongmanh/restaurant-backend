@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.3 (0.3: `SalesLedger` signatures and the lock order from [reports](reports.md) §11): the seven §15 questions decided by the owner on 2026-10-15 |
+| Version | 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.3 (0.3: `SalesLedger` signatures and the lock order from [reports](reports.md) §11): the seven §15 questions decided by the owner on 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `orders` (architecture §4) |
 | Requirements | FR-003 place, FR-004 more rounds, FR-005 guest status (reads; live delivery in `realtime`), FR-006 guest cancel, FR-007 bill, FR-011 staff feed (list fallback; live delivery in `realtime`), FR-012 state machine, FR-013 close and payment, FR-014 staff orders (Should), FR-015 line rejection (Should), FR-016 waiter confirmation (Could, TBD-8); FR-042, NFR-PERF-02, NFR-REL-02, NFR-SEC-02, NFR-SEC-03, NFR-SEC-04, NFR-PRIV-01 |
@@ -160,7 +160,7 @@ All guest reads are allowed when the restaurant is suspended (restaurants §6); 
 - **Which lines:** active lines of orders that aren't `cancelled` or `rejected`, so a `placed` order is on the bill already (FR-007).
 - **No VAT line and no service charge** (TBD-6, ASSUMPTION-7).
 - **A closed bill** adds `closed_at`, `payment: {method, amount_received, change}`, and any `adjustments` with `adjusted_total` (§7.2).
-- **A session without orders** has no bill row yet; reading it returns an empty open bill with `version` 0.
+- **A session without orders** has no bill row yet; reading it returns an empty bill with `version` 0, open or closed as its session is (CR-009, Q-13).
 
 ## 5. Changing an order
 ### 5.1 Staff: `POST /v1/staff/orders/{orderId}/status` + `If-Match`
@@ -276,7 +276,7 @@ CREATE TABLE bill_adjustments (
   amount          bigint NOT NULL CHECK (amount <> 0),        -- signed: negative = refund or discount
   payment_method  text NOT NULL CHECK (payment_method IN ('cash', 'card', 'bank_transfer')),
   reason_code     text NOT NULL CHECK (reason_code IN ('wrong_item_billed', 'wrong_payment_method', 'goodwill', 'other')),
-  note            text CHECK (char_length(note) <= 200),
+  note            text CHECK (char_length(note) <= 200),   -- manager free text; cleared 30 days after the correction
   created_at      timestamptz NOT NULL,
   created_by      uuid NOT NULL,
   business_date   date NOT NULL                              -- local day of the correction, not of the bill
@@ -289,7 +289,7 @@ CREATE INDEX bill_adjustments_day_ix ON bill_adjustments (restaurant_id, busines
 - **Totals are kept twice on purpose:** on the order and the bill for fast reads, and in the lines as the record. The close recomputes the total from the lines and refuses to close if they differ (an `internal_error` with an alert; it means a bug, not a user mistake).
 - **Foreign key to `table_sessions`.** A foreign key isn't a read of another feature's table in code (architecture §4), and it keeps money rows from pointing at a session that doesn't exist.
 - **No status history table.** The order keeps its latest step and time; who made each staff step is in the audit log (NFR-SEC-03; §8). Guests' steps are only `placed` and `cancelled`, and both are on the row.
-- **Free text** (`note`, `reason_note`) is cleared 30 days after the session closes by the daily retention job (requirements §5, architecture §6). Audit `details` never copy it (core-and-auth §12).
+- **Free text** (`note`, `reason_note`) is cleared 30 days after the session closes by the daily retention job (requirements §5, architecture §6). A correction's `bill_adjustments.note` is cleared 30 days after the correction; its amount, method and reason code stay, as they are the accounting record (CR-009 option A, Q-13). Audit `details` never copy free text (core-and-auth §12).
 - **Retention:** orders, lines, bills and adjustments follow TBD-4's working values (2 years in PostgreSQL, then archived; 10 years in all). Table sessions go with their bills (tables §5).
 - **Limits:** 50 lines per order, quantity 20, 10 orders a minute per session (ASSUMPTION-4). An order's total is at most 50 lines × 20 × (100 M + 50 options × 100 M) ≈ 5 × 10¹² đồng, far inside `bigint`.
 
@@ -315,8 +315,8 @@ Steps, in one transaction:
    - total > 0 → `payment` required; `amount_received` ≥ total, otherwise `400` with field code `less_than_total` (§15 Q5). `change` = received − total, shown on the bill;
    - total = 0 (nothing ordered, or everything cancelled) → `payment` must be absent; the session closes without one.
 7. Close the bill: `status`, payment, `closed_at`, `closed_by`, `business_date` = the close's local date in the restaurant's time zone (`RestaurantDirectory`, ASSUMPTION-11).
-8. `SessionAccess.close(reason = paid, or closed_by_staff when total = 0)`: the session closes, its waiter calls close, guest tokens stop working (tables §7).
-9. `SalesLedger.recordClosedBill` (§7.3) when total > 0.
+8. `SalesLedger.recordClosedBill` (§7.3) when total > 0. It comes before the session close because `SessionAccess.close` writes `TableSessionClosed`, which takes the event counter, and the lock order puts the daily sales rows before the event counter (CLAUDE.md, lock order). Nothing a reader sees changes: it is one transaction (CR-009, Q-13).
+9. `SessionAccess.close(reason = paid, or closed_by_staff when total = 0)`: the session closes, its waiter calls close, guest tokens stop working (tables §7).
 10. Audit `bill.closed` (total, method, amount received, forced cancellations); events `BillClosed`, `OrderStatusChanged` for each forced cancel, and `TableSessionClosed` from `tables`.
 
 Answer `200` with the closed bill. A suspended restaurant can't close (restaurants §6: staff may only sign in and read reports), so the close isn't `allowedWhenSuspended`.
@@ -387,14 +387,14 @@ Over a limit → `429 rate_limited` with `Retry-After`. If Redis is down, these 
 ## 11. Ports
 **Used by `orders`:**
 - `MenuCatalog.price` (menu §7).
-- `SessionAccess.requireOpenForUpdate`, `touch`, `lockForClose`, `close`, `openSessionsFor` (tables §7). `lockForClose` is the `FOR UPDATE` step that tables §7 describes inside `close`, split out so the bill checks happen between the lock and the close.
+- `SessionAccess.requireOpenForUpdate`, `touch`, `lockForClose`, `close`, `openSessionsFor`, and `find`, a batch read of sessions with their table, open or closed, for `table` on orders and bills (tables §7; CR-009, Q-13). `lockForClose` is the `FOR UPDATE` step that tables §7 describes inside `close`, split out so the bill checks happen between the lock and the close.
 - `RestaurantDirectory.profile` (restaurants §6) for the time zone.
 - `OrderEvents` (`realtime`), `SalesLedger` (`reports`), `AuditLog` and `Idempotency` (core).
 
 **Provided by `orders`:**
 - `SessionSummaries.of(restaurantId, sessionIds)`: `order_count` and running total per session from `bills`, one query, for the floor view (tables §6).
 - `EmptyBills.closeIfEmpty(restaurantId, sessionId)`: used by the tables auto-close job (tables §3.5) inside its transaction, after it locks the session. It closes the bill with total 0 and no payment if the session has no live orders, and answers `false` otherwise, so the job leaves the session open. Without it, an abandoned session that had only cancelled orders would leave an open bill behind.
-- `SalesSource` for the nightly `reports` rebuild (§7.3).
+- `SalesSource` for the nightly `reports` rebuild (§7.3): `SalesFactsSource`, on `SalesRowRepository`, reads one local day's closed bills, their lines and its corrections, built with the same `itemsOf` as the close, so the rebuild and the ledger can't disagree (reports §5; CR-009).
 
 ## 12. Endpoints
 All of these go into `core/http/Endpoints.kt` and the contract.
@@ -459,13 +459,13 @@ Field codes inside `validation_failed` (not catalogue codes): `unknown_item`, `u
 | IT-ORD-13 | Close with unfinished orders → `409 orders_not_finished` with their IDs; with `force` → they become `cancelled` (`closed_with_session`) and leave the bill | FR-013 |
 | IT-ORD-14 | A guest orders between the waiter's bill read and the close → `412`; `amount_received` below the total → `400 validation_failed` with field code `less_than_total` | FR-013 |
 | IT-ORD-15 | An order racing a close: either on the bill, or `409 session_not_open`; never an order in a closed session (with IT-TBL-14) | FR-003, FR-013 |
-| IT-ORD-16 | Close updates the daily aggregates in the same transaction, on the local day of the close (a bill closed at 00:30 local counts on the new day) | FR-013, FR-050 |
+| IT-ORD-16 | Close updates the daily aggregates in the same transaction, on the local day of the close (a bill closed at 00:30 local counts on the new day) | FR-013, FR-050, NFR-I18N-01 |
 | IT-ORD-17 | Correction: manager only (waiter `403`); open bill → `409 bill_not_closed`; repeat with the old `If-Match` → `412`; counts on the day it's made; a method change as two entries | FR-013 (TBD-7) |
 | IT-ORD-18 | Staff order on a guest's behalf: `placed_by_staff` set, audited; kitchen placing → `403` | FR-014 |
 | IT-ORD-19 | Rate limits: the 11th order in a minute from one session → `429` with `Retry-After` | NFR-SEC-04 |
 | IT-ORD-20 | Suspended restaurant: guest order and cancel → `403 restaurant_suspended`; guest orders and bill reads → `200` | FR-043 |
-| IT-ORD-21 | Notes and reason notes are gone 30 days after the close; no note text in logs or audit `details` | NFR-PRIV-01 |
-| IT-ORD-22 | Auto-close job with a session whose only order was cancelled: session and bill both closed, nothing sent to the ledger | tables §3.5 |
+| IT-ORD-21 | Notes and reason notes are gone 30 days after the close, a correction's note 30 days after the correction; no note text in logs or audit `details` | NFR-PRIV-01 |
+| IT-ORD-22 | Auto-close job with a session whose only order was cancelled: session and bill both closed, nothing sent to the ledger | FR-032, FR-050 (tables §3.5) |
 
 ## 15. Owner decisions (2026-10-15)
 The owner accepted all seven recommendations. They're recorded in STATUS.md (Decisions; Q-6, TBD-7 and TBD-8 resolved). CR-006 (approved 2026-10-15) wrote 1, 2 and 7's text into requirements v1.5 and architecture v1.3.

@@ -14,8 +14,8 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 | requirements.md | v1.6 (baselined at G1, changed by CR-002 to CR-007). Changing it needs a CR |
 | architecture.md | v1.4: approved at G2 (2026-10-15) with the TBD-10 condition, then changed by CR-004 to CR-006 and CR-008. Changing it needs a CR |
 | adr/0001–0009, 0011 | Decisions; ADR-0002 (Vercel) is Accepted with conditions (paid-plan cold-start check before G5); 0003 (live updates through Ably) is Accepted after S-3; 0004 (Neon PostgreSQL) and 0008 (rate limiting: WAF + Upstash) are Accepted; 0010 is reserved by CR-001; 0011 (built-in staff sign-in) is Accepted too |
-| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003, CR-004 (menu read and image limits), CR-005 (natural idempotency, no guest device data), CR-006 (orders decisions: closed-bill corrections, no FR-016 in release 1), CR-007 (no CSV export in release 1) and CR-008 (architecture aligned at the G3 pass) are Approved |
-| design/ | Feature designs, all v1.0, approved at G3 (2026-10-15): core-and-auth, restaurants, menu, tables, orders, realtime, reports. Changing one needs a CR |
+| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003, CR-004 (menu read and image limits), CR-005 (natural idempotency, no guest device data), CR-006 (orders decisions: closed-bill corrections, no FR-016 in release 1), CR-007 (no CSV export in release 1), CR-008 (architecture aligned at the G3 pass) and CR-009 (designs aligned with the Phase 4 build, Q-10 to Q-15) are Approved |
+| design/ | Feature designs, approved at G3 (2026-10-15) at v1.0: core-and-auth, restaurants, menu, tables, orders, realtime, reports. All but core-and-auth are v1.1 since CR-009 (2026-10-17). Changing one needs a CR |
 | `docs/api/openapi.yaml` (repo root) | The API contract, 1.0.0, frozen at G3 (2026-10-15). Changing it needs a CR, and within `/v1` only additively |
 | rtm.md, test-plan.md | Traceability and test plan |
 | cost-estimate.md | Monthly cost (TBD-11), v0.2 for the owner's review; S-3 confirmed the Ably line |

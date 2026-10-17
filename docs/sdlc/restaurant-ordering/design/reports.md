@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: the four §13 questions decided by the owner on 2026-10-15 |
+| Version | 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: the four §13 questions decided by the owner on 2026-10-15 |
 | Owner decisions | §13, all four accepted 2026-10-15 |
 | Change request | [CR-007](../cr/CR-007-csv-export-out-of-release-1.md), approved 2026-10-15: FR-051 Won't in release 1 |
 | Date | 2026-10-15 |
@@ -105,10 +105,11 @@ CREATE TABLE sales_reconciliation (
 - **When:** hourly on Pro; once a day on the free Hobby account (realtime §10). Each run picks the restaurants whose local time is past 03:00 and whose `reconciled_through` is before their local yesterday, so restaurants in different time zones are each rebuilt after their own night.
 - **What, per restaurant and day** (yesterday, and the day before as a margin), in one tenant transaction:
   1. `SalesSource.facts(restaurantId, date)` from `orders` computes the four breakdowns and the corrections for that date from the closed bills, orders, lines and corrections (the S-5 `rawFacts` query, with corrections added). `reports` doesn't read the order tables itself (architecture §4).
-  2. Compare with the stored rows. If they differ, count it (`reports_reconcile_mismatch_total`), set `last_mismatch_on`, and log the restaurant ID and date (no figures).
-  3. Delete the day's rows and insert the computed ones. That's idempotent: running it twice gives the same rows.
+  2. Compare the figures with the stored rows, leaving the display names aside (table number, item names): those are the latest snapshot a close wrote, which the raw rows can't rebuild. If they differ, count it (`reports_reconcile_mismatch_total`), set `last_mismatch_on`, and log the restaurant ID and date (no figures).
+  3. Only when they differ, delete the day's rows and insert the computed ones. That's idempotent: running it twice gives the same rows. A rewritten row keeps the stored names; a row that was missing takes the table's current number and the order lines' names (CR-009, Q-15).
   4. Move `reconciled_through` forward.
-- **Cost** (S-5): ≈ 50–60 ms per restaurant-day, so ≈ 1 min for 500 restaurants × 2 days. The job takes batches of 50 restaurants within the function's time limit and continues on the next run; `pg_try_advisory_xact_lock` keeps runs from overlapping.
+- **Cost** (S-5): ≈ 50–60 ms per restaurant-day, so ≈ 1 min for 500 restaurants × 2 days. The job takes up to 1,000 restaurants per run (≈ 2 min); the rest are due again on the next run, and the lag log line shows them (CR-009, Q-15). `pg_try_advisory_xact_lock` keeps runs from overlapping.
+- **Failures and inputs:** a restaurant whose rebuild fails is logged (its ID and the error type) and skipped; the run goes on. The restaurants and their time zones come from the `RestaurantZones` port of `restaurants` (CR-009, Q-15).
 - **A mismatch means a bug**, because every close updates the tally in its own transaction. The alert (§9) makes sure it gets looked at rather than silently repaired forever.
 - **Days are never rebuilt once the raw rows may be archived** (2 years, architecture §6). The job only touches the last 2 days.
 
@@ -146,6 +147,7 @@ Manager only (architecture §7). Allowed when the restaurant is suspended (resta
 
 - **Gross, corrections and net** (§13 Q1): `gross` is the bills closed that day; `corrections` is the signed sum of corrections made that day, whichever bill they belong to; `net` = gross + corrections. Per payment method the same. Tables and items count bills only, because a correction isn't tied to a table or an item.
 - **Top items:** 10 by quantity and 10 by revenue per day; ties break on `item_id`, so the order is stable.
+- **Order and checks:** payments are listed by method, tables by number then ID. The route checks the role, then the rate limit, then the query (403, then 429, then 400), as the realtime reads do (CR-009, Q-15).
 - **Size:** at most 93 days × (3 methods + one row per table that sold + 20 items). A 300-table restaurant using every table every day comes to ≈ 2.5 MB, under Vercel's 4.5 MB response cap (CR-004), and responses are compressed (architecture §11).
 - **No personal data:** figures, table numbers and item names only. `Cache-Control: no-store` like every staff response (core-and-auth §2).
 
@@ -177,7 +179,7 @@ The job route `/internal/jobs/sales-reconcile` is in the endpoint registry with 
 | ID | Case | Req |
 |---|---|---|
 | IT-REP-01 | A closed bill appears in all four tables on its local day, in the same transaction as the close; a rolled-back close leaves them unchanged | FR-050, FR-013 |
-| IT-REP-02 | A bill opened at 23:40 and closed at 00:20 local counts on the new day; in a restaurant in another time zone, by that zone | FR-050, ASSUMPTION-11 |
+| IT-REP-02 | A bill opened at 23:40 and closed at 00:20 local counts on the new day; in a restaurant in another time zone, by that zone | FR-050, NFR-I18N-01, ASSUMPTION-11 |
 | IT-REP-03 | Cancelled and rejected orders and rejected lines don't count; a bill closed with total 0 isn't a session | FR-050 |
 | IT-REP-04 | A correction counts on the day it's made, in `corrections` and its payment method, not in tables or items; net = gross + corrections | FR-050, FR-013 |
 | IT-REP-05 | 10 bills sharing items and tables close at once (concurrency test): no deadlock, figures equal the sum | FR-050 |

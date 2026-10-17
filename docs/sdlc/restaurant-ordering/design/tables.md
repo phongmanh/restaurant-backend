@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.3 (0.3: the auto-close job and `SessionAccess.lockForClose` from [orders](orders.md) §16): CR-005 approved and the six §13 questions decided by the owner on 2026-10-15 |
+| Version | 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.3 (0.3: the auto-close job and `SessionAccess.lockForClose` from [orders](orders.md) §16): CR-005 approved and the six §13 questions decided by the owner on 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `tables` (architecture §4) |
 | Requirements | FR-001 QR → session, FR-008 waiter call (Should), FR-030 tables, FR-031 QR codes, FR-032 floor view and sessions; FR-042, NFR-SEC-02 (session isolation), NFR-SEC-04 (scan limits), NFR-PRIV-01 |
@@ -97,7 +97,7 @@ Steps:
 - **After 6 h** the token expires while the session may still be open. The guest scans the code again and gets a new token for the same session.
 
 ### 3.3 Read: `GET /v1/guest/session`
-Returns the session as in §3.1 (without a token), plus the guest's open waiter calls. The bill and orders are in the `orders` design. Allowed when suspended.
+Returns the session as in §3.1 (without a token), plus the latest waiter call of each kind while it is open or acknowledged, so the app can show "a waiter is coming" after an acknowledgement (§4; CR-009, Q-12). The bill and orders are in the `orders` design. Allowed when suspended.
 
 ### 3.4 Staff: open without a scan, move
 - **`POST /v1/staff/tables/{tableId}/session`** (waiter, manager; FR-032):
@@ -213,7 +213,7 @@ The QR endpoints don't return a token to store: the URL is the only form of the 
 - `waiter_call.acknowledged` (who answered).
 
 ## 7. `SessionAccess` (for `orders`)
-- **`requireOpenForUpdate(restaurantId, sessionId)`** locks the session row `FOR SHARE` inside the order transaction and fails with `session_not_open` if it's closed. Closing takes `FOR UPDATE`. So an order can't slip into a session at the moment it closes: one waits for the other (FR-003 "session closed meanwhile → rejected").
+- **`requireOpenForUpdate(restaurantId, sessionId)`** locks the session row `FOR NO KEY UPDATE` inside the order transaction and fails with `session_not_open` if it's closed. Closing takes `FOR UPDATE`. So an order can't slip into a session at the moment it closes: one waits for the other (FR-003 "session closed meanwhile → rejected"). Not `FOR SHARE`: the same order transaction then updates the row (`touch`), and two transactions that each hold a share lock and wait to update deadlock. Two orders of one session take turns, as the bill row already makes them do (orders §6; CR-009, Q-12).
 - **`touch(sessionId)`** sets `last_activity_at` (§3.5); orders call it on every order.
 - **`lockForClose(restaurantId, sessionId)`** takes the session row `FOR UPDATE` and fails with `session_not_open` if it's closed. `orders` calls it first, checks the bill, then calls `close` in the same transaction (orders §7.1).
 - **`close(restaurantId, sessionId, reason, by)`**, called by `orders` when it closes the bill (FR-013):
@@ -299,7 +299,7 @@ Per-session order limits are in the `orders` design (ASSUMPTION-4: ≤ 10 orders
 | IT-TBL-10 | Table CRUD: duplicate number → 409; delete or disable with guests → 409; waiter or kitchen creating → 403; 301st table → 409 | FR-030 |
 | IT-TBL-11 | Waiter calls: taps within 60 s merge into one; an acknowledged call clears for all waiters; the 11th call in an hour → 429 | FR-008 |
 | IT-TBL-12 | Rate limits: the 11th scan from one device in a minute → 429 with `Retry-After` | NFR-SEC-04 |
-| IT-TBL-13 | Auto-close: an empty session idle 2 h is closed by the job, audited as `system`; a session with orders isn't | §3.5 |
+| IT-TBL-13 | Auto-close: an empty session idle 2 h is closed by the job, audited as `system`; a session with orders isn't | FR-032 (§3.5) |
 | IT-TBL-14 | An order racing a close: either the order is in the bill, or it's rejected with `session_not_open`; never an order in a closed session | FR-003, FR-013 |
 | IT-TBL-15 | No device ID, IP or user agent is stored in `table_sessions` or `waiter_calls` | NFR-PRIV-01 |
 
