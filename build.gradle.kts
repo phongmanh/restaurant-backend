@@ -193,6 +193,9 @@ tasks.register<Test>("systemTest") {
     workingDir = rootDir
     systemProperty("staging.url", providers.gradleProperty("stagingUrl").getOrElse(""))
     systemProperty("contract.path", rootProject.file("docs/api/openapi.yaml").absolutePath)
+    // ST-08's restore drill (deploy/README.md): -PrestoreDrill=mark|check|clean, -PrestorePoint=<RFC 3339>.
+    systemProperty("restore.drill", providers.gradleProperty("restoreDrill").getOrElse(""))
+    systemProperty("restore.point", providers.gradleProperty("restorePoint").getOrElse(""))
     // A run is against a live deployment whose state the inputs don't describe: never up to date.
     outputs.upToDateWhen { false }
     testLogging {

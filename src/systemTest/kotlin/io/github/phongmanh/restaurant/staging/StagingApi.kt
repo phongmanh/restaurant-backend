@@ -21,7 +21,8 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * Error messages hold the method, the path, the status and the problem's `code` and `request_id`,
  * never a body: a body can hold a link or a token. [onResponse] sees every response but a waited-out
- * `429` (the system tests check each one against the contract).
+ * `429` and the edge WAF's (the system tests check each one against the contract). A caller that
+ * wants the `429` itself, as ST-14 does, passes `waitOut429 = false`.
  */
 class StagingApi(
     baseUrl: String,
@@ -50,8 +51,19 @@ class StagingApi(
     class Response(
         val status: Int,
         val body: JsonElement?,
+        private val headers: Map<String, List<String>> = emptyMap(),
     ) {
         val json: JsonObject get() = requireNotNull(body).jsonObject
+
+        /** A response header's first value; names are matched without regard to case. */
+        fun header(name: String): String? =
+            headers.entries
+                .firstOrNull { it.key.equals(name, ignoreCase = true) }
+                ?.value
+                ?.firstOrNull()
+
+        /** Vercel's edge answered, not the service (its WAF, or an error of its own). */
+        val fromEdge: Boolean get() = header("X-Vercel-Error") != null || (status == TOO_MANY_REQUESTS && header("Retry-After") == null)
 
         fun text(field: String): String = json.getValue(field).jsonPrimitive.content
     }
@@ -62,6 +74,7 @@ class StagingApi(
         body: JsonElement? = null,
         token: String? = null,
         headers: Map<String, String> = emptyMap(),
+        waitOut429: Boolean = true,
     ): Response {
         repeat(MAX_TRIES) {
             check(count.incrementAndGet() <= budget) { "the run's request budget of $budget is spent (test-plan §9)" }
@@ -83,15 +96,27 @@ class StagingApi(
                         }
                     }.build()
             val response = http.send(request, HttpResponse.BodyHandlers.ofString())
-            if (response.statusCode() != TOO_MANY_REQUESTS) {
+            if (response.statusCode() != TOO_MANY_REQUESTS || !waitOut429) {
                 val contentType =
                     response
                         .headers()
                         .firstValue("Content-Type")
                         .map { it.substringBefore(';').trim() }
                         .orElse(null)
-                onResponse(Exchange(method, path.substringBefore('?'), response.statusCode(), contentType, response.body()))
-                return Response(response.statusCode(), response.body().takeIf { it.isNotBlank() }?.let(Json::parseToJsonElement))
+                val result =
+                    Response(
+                        response.statusCode(),
+                        response.body().takeIf { it.isNotBlank() && contentType?.endsWith("json") == true }?.let(Json::parseToJsonElement),
+                        response.headers().map(),
+                    )
+                // The WAF's 429 isn't the service's, so the contract doesn't describe it; ST-14 checks it. Any
+                // other edge answer still goes to the contract check, which is how D-1 was found.
+                if (!(result.fromEdge && result.status == TOO_MANY_REQUESTS)) {
+                    onResponse(
+                        Exchange(method, path.substringBefore('?'), response.statusCode(), contentType, response.body()),
+                    )
+                }
+                return result
             }
             val wait =
                 response
@@ -124,16 +149,16 @@ class StagingApi(
         return response
     }
 
-    private companion object {
-        const val CLIENT = "staging-tools/1.0.0"
-        const val MAX_TRIES = 5
+    companion object {
         const val TOO_MANY_REQUESTS = 429
-        const val EDGE_WINDOW_S = 61L
-        const val MILLIS = 1_000L
-        const val CONNECT_TIMEOUT_S = 10L
+        private const val CLIENT = "staging-tools/1.0.0"
+        private const val MAX_TRIES = 5
+        private const val EDGE_WINDOW_S = 61L
+        private const val MILLIS = 1_000L
+        private const val CONNECT_TIMEOUT_S = 10L
 
         /** A cold start took about 9 s on Hobby; this leaves room for a slow one. */
-        const val REQUEST_TIMEOUT_S = 60L
+        private const val REQUEST_TIMEOUT_S = 60L
     }
 }
 
