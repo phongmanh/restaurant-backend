@@ -54,6 +54,7 @@ dependencies {
     testImplementation(platform(libs.ktor.bom))
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.snakeyaml.engine)
+    testImplementation(libs.json.schema.validator)
     testImplementation(platform(libs.testcontainers.bom))
     testImplementation(libs.testcontainers.postgresql)
 }

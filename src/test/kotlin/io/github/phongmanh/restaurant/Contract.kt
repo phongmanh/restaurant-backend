@@ -6,7 +6,7 @@ import java.io.File
 
 /** `docs/api/openapi.yaml`, parsed. The build passes its path as the `contract.path` property. */
 object Contract {
-    private val root: Map<String, Any?> by lazy {
+    val root: Map<String, Any?> by lazy {
         val path = System.getProperty("contract.path") ?: error("contract.path isn't set; run the tests through Gradle")
         @Suppress("UNCHECKED_CAST")
         File(path).inputStream().use { Load(LoadSettings.builder().build()).loadFromInputStream(it) } as Map<String, Any?>

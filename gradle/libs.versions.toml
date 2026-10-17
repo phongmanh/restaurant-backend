@@ -22,6 +22,8 @@ javaJwt = "4.6.0"
 ably = "1.8.2"
 testcontainers = "2.0.5"
 snakeyamlEngine = "3.2"
+# G4 hardening H3 (2026-10-17): validates test responses against the contract (OpenAPI 3.1, JSON Schema 2020-12).
+jsonSchemaValidator = "3.0.8"
 ktlintGradle = "14.2.0"
 ktlint = "1.8.0"
 detekt = "1.23.8"
@@ -61,6 +63,7 @@ testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
 detekt-cli = { module = "io.gitlab.arturbosch.detekt:detekt-cli", version.ref = "detekt" }
 snakeyaml-engine = { module = "org.snakeyaml:snakeyaml-engine", version.ref = "snakeyamlEngine" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "jsonSchemaValidator" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
