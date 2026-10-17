@@ -1,0 +1,256 @@
+# The service's SLOs and alerts as code (architecture §13, NFR-OBS-01, ADR-0009), in Prometheus's
+# rule format. Grafana Cloud evaluates them in its Mimir ruler; `load.sh` sends them. CI checks them:
+# AlertRulesTest runs `promtool test rules` on rules-test.yaml, and MetricNamesTest checks that every
+# series named here is one the service pushes.
+#
+# Names. Micrometer pushes over OTLP, and Grafana Cloud names each series by the OpenTelemetry rules:
+# dots become underscores, then the unit is added (timers are in milliseconds), then `_total` for a
+# counter. The `job` label is the OTLP resource's `service.name`, and `instance` its
+# `service.instance.id`: one per Vercel instance.
+#
+# SLOs (architecture §13). Each has an error ratio recorded over 5m, 30m, 1h and 6h, and two
+# alerts on how fast it spends its 28-day error budget, each needing a long and a short window:
+#   fast: 14× the budget rate over 1h and 5m (2% of the budget in an hour), critical;
+#   slow:  6× over 6h and 30m (5% of the budget in 6 hours), warning.
+#   availability     NFR-AVAIL-01  99.9% of valid requests non-5xx (the guest, staff, admin and auth paths)
+#   order_flow       NFR-AVAIL-02  99.9%: an order placement that fails, or an event published later
+#                                  than 2 s after its change (NFR-PERF-03's p95), each spends the budget
+#   guest_read_p95   NFR-PERF-01   95% of guest reads (menu, session, orders, bill) within 200 ms
+#   guest_read_p99   NFR-PERF-01   99% within 500 ms
+# The latency is the service's own (Ktor's timer): a cold start's seconds before the request reaches
+# Ktor aren't in it, and the load tests measure them at the edge (test-plan §4).
+#
+# Every alert has a `runbook_url` (runbooks.md). Keep the annotations free of `{{ $value }}`:
+# promtool compares them exactly.
+
+groups:
+  - name: restaurant-backend-slo
+    interval: 1m
+    rules:
+      # NFR-AVAIL-01: 5xx among valid requests.
+      - record: slo:availability:error_ratio_rate5m
+        expr: |
+          (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", group=~"guest|staff|admin|auth", status="5xx"}[5m])) or vector(0))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", group=~"guest|staff|admin|auth"}[5m]))
+      - record: slo:availability:error_ratio_rate30m
+        expr: |
+          (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", group=~"guest|staff|admin|auth", status="5xx"}[30m])) or vector(0))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", group=~"guest|staff|admin|auth"}[30m]))
+      - record: slo:availability:error_ratio_rate1h
+        expr: |
+          (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", group=~"guest|staff|admin|auth", status="5xx"}[1h])) or vector(0))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", group=~"guest|staff|admin|auth"}[1h]))
+      - record: slo:availability:error_ratio_rate6h
+        expr: |
+          (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", group=~"guest|staff|admin|auth", status="5xx"}[6h])) or vector(0))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", group=~"guest|staff|admin|auth"}[6h]))
+
+      # NFR-AVAIL-02, part 1: 5xx among order placements, by guests and by staff.
+      - record: slo:order_placement:error_ratio_rate5m
+        expr: |
+          (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders", status="5xx"}[5m])) or vector(0))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders"}[5m]))
+      - record: slo:order_placement:error_ratio_rate30m
+        expr: |
+          (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders", status="5xx"}[30m])) or vector(0))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders"}[30m]))
+      - record: slo:order_placement:error_ratio_rate1h
+        expr: |
+          (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders", status="5xx"}[1h])) or vector(0))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders"}[1h]))
+      - record: slo:order_placement:error_ratio_rate6h
+        expr: |
+          (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders", status="5xx"}[6h])) or vector(0))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders"}[6h]))
+
+      # NFR-AVAIL-02, part 2: events that reached Ably more than 2 s after their change.
+      - record: slo:feed_delay:slow_ratio_rate5m
+        expr: |
+          1 - sum(rate(realtime_feed_delay_milliseconds_bucket{job="restaurant-backend", le="2000"}[5m]))
+          / sum(rate(realtime_feed_delay_milliseconds_count{job="restaurant-backend"}[5m]))
+      - record: slo:feed_delay:slow_ratio_rate30m
+        expr: |
+          1 - sum(rate(realtime_feed_delay_milliseconds_bucket{job="restaurant-backend", le="2000"}[30m]))
+          / sum(rate(realtime_feed_delay_milliseconds_count{job="restaurant-backend"}[30m]))
+      - record: slo:feed_delay:slow_ratio_rate1h
+        expr: |
+          1 - sum(rate(realtime_feed_delay_milliseconds_bucket{job="restaurant-backend", le="2000"}[1h]))
+          / sum(rate(realtime_feed_delay_milliseconds_count{job="restaurant-backend"}[1h]))
+      - record: slo:feed_delay:slow_ratio_rate6h
+        expr: |
+          1 - sum(rate(realtime_feed_delay_milliseconds_bucket{job="restaurant-backend", le="2000"}[6h]))
+          / sum(rate(realtime_feed_delay_milliseconds_count{job="restaurant-backend"}[6h]))
+
+      # NFR-AVAIL-02: both parts spend one budget. A part with no traffic adds 0.
+      - record: slo:order_flow:error_ratio_rate5m
+        expr: (slo:order_placement:error_ratio_rate5m or vector(0)) + (slo:feed_delay:slow_ratio_rate5m or vector(0))
+      - record: slo:order_flow:error_ratio_rate30m
+        expr: (slo:order_placement:error_ratio_rate30m or vector(0)) + (slo:feed_delay:slow_ratio_rate30m or vector(0))
+      - record: slo:order_flow:error_ratio_rate1h
+        expr: (slo:order_placement:error_ratio_rate1h or vector(0)) + (slo:feed_delay:slow_ratio_rate1h or vector(0))
+      - record: slo:order_flow:error_ratio_rate6h
+        expr: (slo:order_placement:error_ratio_rate6h or vector(0)) + (slo:feed_delay:slow_ratio_rate6h or vector(0))
+
+      # NFR-PERF-01: guest reads slower than 200 ms (p95 target).
+      - record: slo:guest_read_p95:slow_ratio_rate5m
+        expr: |
+          1 - sum(rate(ktor_http_server_requests_milliseconds_bucket{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)", le="200"}[5m]))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)"}[5m]))
+      - record: slo:guest_read_p95:slow_ratio_rate30m
+        expr: |
+          1 - sum(rate(ktor_http_server_requests_milliseconds_bucket{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)", le="200"}[30m]))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)"}[30m]))
+      - record: slo:guest_read_p95:slow_ratio_rate1h
+        expr: |
+          1 - sum(rate(ktor_http_server_requests_milliseconds_bucket{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)", le="200"}[1h]))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)"}[1h]))
+      - record: slo:guest_read_p95:slow_ratio_rate6h
+        expr: |
+          1 - sum(rate(ktor_http_server_requests_milliseconds_bucket{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)", le="200"}[6h]))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)"}[6h]))
+
+      # NFR-PERF-01: guest reads slower than 500 ms (p99 target).
+      - record: slo:guest_read_p99:slow_ratio_rate5m
+        expr: |
+          1 - sum(rate(ktor_http_server_requests_milliseconds_bucket{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)", le="500"}[5m]))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)"}[5m]))
+      - record: slo:guest_read_p99:slow_ratio_rate30m
+        expr: |
+          1 - sum(rate(ktor_http_server_requests_milliseconds_bucket{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)", le="500"}[30m]))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)"}[30m]))
+      - record: slo:guest_read_p99:slow_ratio_rate1h
+        expr: |
+          1 - sum(rate(ktor_http_server_requests_milliseconds_bucket{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)", le="500"}[1h]))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)"}[1h]))
+      - record: slo:guest_read_p99:slow_ratio_rate6h
+        expr: |
+          1 - sum(rate(ktor_http_server_requests_milliseconds_bucket{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)", le="500"}[6h]))
+          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="GET", route=~"/v1/guest/(menu|session|orders|orders/[^/]+|bill)"}[6h]))
+
+  - name: restaurant-backend-slo-alerts
+    interval: 1m
+    rules:
+      - alert: AvailabilityBurnFast
+        expr: slo:availability:error_ratio_rate1h > (14 * 0.001) and slo:availability:error_ratio_rate5m > (14 * 0.001)
+        for: 2m
+        labels: { severity: critical, slo: availability }
+        annotations:
+          summary: "Availability SLO (NFR-AVAIL-01): more than 1.4% of requests fail with 5xx; at this rate the 28-day budget lasts 2 days"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn
+      - alert: AvailabilityBurnSlow
+        expr: slo:availability:error_ratio_rate6h > (6 * 0.001) and slo:availability:error_ratio_rate30m > (6 * 0.001)
+        for: 15m
+        labels: { severity: warning, slo: availability }
+        annotations:
+          summary: "Availability SLO (NFR-AVAIL-01): more than 0.6% of requests fail with 5xx over 6 hours"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn
+
+      - alert: OrderFlowBurnFast
+        expr: slo:order_flow:error_ratio_rate1h > (14 * 0.001) and slo:order_flow:error_ratio_rate5m > (14 * 0.001)
+        for: 2m
+        labels: { severity: critical, slo: order_flow }
+        annotations:
+          summary: "Order flow SLO (NFR-AVAIL-02): more than 1.4% of placements fail or of events reach Ably later than 2 s"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn
+      - alert: OrderFlowBurnSlow
+        expr: slo:order_flow:error_ratio_rate6h > (6 * 0.001) and slo:order_flow:error_ratio_rate30m > (6 * 0.001)
+        for: 15m
+        labels: { severity: warning, slo: order_flow }
+        annotations:
+          summary: "Order flow SLO (NFR-AVAIL-02): more than 0.6% of placements fail or of events are late over 6 hours"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn
+
+      - alert: GuestReadLatencyBurnFast
+        expr: slo:guest_read_p95:slow_ratio_rate1h > (14 * 0.05) and slo:guest_read_p95:slow_ratio_rate5m > (14 * 0.05)
+        for: 2m
+        labels: { severity: critical, slo: guest_read_p95 }
+        annotations:
+          summary: "Guest-read latency SLO (NFR-PERF-01): more than 70% of guest reads take over 200 ms"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn
+      - alert: GuestReadLatencyBurnSlow
+        expr: slo:guest_read_p95:slow_ratio_rate6h > (6 * 0.05) and slo:guest_read_p95:slow_ratio_rate30m > (6 * 0.05)
+        for: 15m
+        labels: { severity: warning, slo: guest_read_p95 }
+        annotations:
+          summary: "Guest-read latency SLO (NFR-PERF-01): more than 30% of guest reads take over 200 ms over 6 hours"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn
+      - alert: GuestReadLatencyBurnFast
+        expr: slo:guest_read_p99:slow_ratio_rate1h > (14 * 0.01) and slo:guest_read_p99:slow_ratio_rate5m > (14 * 0.01)
+        for: 2m
+        labels: { severity: critical, slo: guest_read_p99 }
+        annotations:
+          summary: "Guest-read latency SLO (NFR-PERF-01): more than 14% of guest reads take over 500 ms"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn
+      - alert: GuestReadLatencyBurnSlow
+        expr: slo:guest_read_p99:slow_ratio_rate6h > (6 * 0.01) and slo:guest_read_p99:slow_ratio_rate30m > (6 * 0.01)
+        for: 15m
+        labels: { severity: warning, slo: guest_read_p99 }
+        annotations:
+          summary: "Guest-read latency SLO (NFR-PERF-01): more than 6% of guest reads take over 500 ms over 6 hours"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn
+
+  # Not SLOs: the checks the designs ask for. A job's gauges are read from the instance whose run is
+  # the latest (its `…_timestamp_seconds`), because every live instance keeps pushing the last value
+  # it saw. A rare-event counter is read as a value, not with increase(): a cron run often starts a
+  # new instance, whose first push already holds the count, and increase() can't see a series' first
+  # step. Each instance counts from 0, so the alert holds while that instance lives.
+  - name: restaurant-backend-ops
+    interval: 1m
+    rules:
+      - alert: OutboxBacklogOld
+        expr: |
+          max(
+            outbox_oldest_age_seconds{job="restaurant-backend"}
+            and on (instance)
+            (outbox_sweep_timestamp_seconds{job="restaurant-backend"} == scalar(max(outbox_sweep_timestamp_seconds{job="restaurant-backend"})))
+          ) > 120
+        labels: { severity: warning }
+        annotations:
+          summary: "The latest outbox sweep left an event unsent for over 2 minutes (realtime §11)"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#outbox-backlog
+      - alert: RealtimePublishFailing
+        expr: |
+          sum(rate(realtime_publish_total{job="restaurant-backend", result!="sent"}[10m]))
+          / sum(rate(realtime_publish_total{job="restaurant-backend"}[10m])) > 0.05
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Ably refuses more than 5% of publishes; clients fall back to polling (realtime §11)"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#pubsub-outage
+      - alert: ReconcileMismatch
+        expr: max(reports_reconcile_mismatches_total{job="restaurant-backend"}) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "The sales reconcile found a day whose tally didn't match its bills: a bug (reports §9)"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#reconcile
+      - alert: ReconcileFailed
+        expr: max(reports_reconcile_failures_total{job="restaurant-backend"}) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "The sales reconcile failed for a restaurant; it retries on its next run (reports §9)"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#reconcile
+      - alert: ReconcileLagging
+        expr: |
+          max(
+            reports_reconcile_lag_days{job="restaurant-backend"}
+            and on (instance)
+            (reports_reconcile_timestamp_seconds{job="restaurant-backend"} == scalar(max(reports_reconcile_timestamp_seconds{job="restaurant-backend"})))
+          ) > 2
+        labels: { severity: warning }
+        annotations:
+          summary: "A restaurant's daily sales are reconciled more than 2 days behind (reports §9)"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#reconcile
+      - alert: RateLimitFailingOpen
+        expr: sum(rate(rate_limit_fail_open_total{job="restaurant-backend"}[5m])) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Upstash isn't answering, so the service's rate limits are off; the WAF still limits sign-in per IP (ADR-0008)"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#rate-limits-off
+      - alert: DatabasePoolWaiting
+        expr: max(db_pool_connections_pending{job="restaurant-backend"}) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Requests have waited for a database connection for 5 minutes (architecture §9)"
+          runbook_url: https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#database-saturation

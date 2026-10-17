@@ -62,8 +62,8 @@ class OutboxSweep(
         }
         val pending = transactor.platformTransaction("outbox sweep: pending") { outbox.pending(this) }
         val oldest = pending.oldestCreatedAt?.let { Duration.between(it, clock.instant()).seconds }
-        // NFR-OBS-01: alert when the oldest unsent row is over 2 min old (the alert rules come in step 4c).
-        meters.outbox(pending.count, oldest)
+        // NFR-OBS-01: alert when the oldest unsent row is over 2 min old (`OutboxBacklogOld`).
+        meters.outbox(pending.count, oldest, clock.instant())
         log.info("outbox sweep: published={} failed={} pending={} oldest_pending_seconds={}", published, failed, pending.count, oldest)
         return SweepRun(published, failed, pending.count, oldest)
     }

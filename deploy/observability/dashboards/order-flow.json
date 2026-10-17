@@ -1,0 +1,591 @@
+{
+  "uid": "rb-order-flow",
+  "title": "Restaurant backend: order flow",
+  "description": "Placement → event → publish delay, the outbox and the nightly sales reconcile (architecture §13; realtime §11; reports §9).",
+  "tags": [
+    "restaurant-backend"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Data source",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Runbooks",
+      "type": "link",
+      "targetBlank": true,
+      "url": "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md"
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Orders and sessions",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Orders placed",
+      "description": "Orders committed per interval, by who placed them (a replayed key's answer isn't counted).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (by) (increase(orders_placed_total{job=\"restaurant-backend\"}[$__rate_interval]))",
+          "legendFormat": "{{by}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Table sessions opened",
+      "description": "Sessions opened by a scan; a scan that joins an open session isn't counted.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(sessions_opened_total{job=\"restaurant-backend\"}[$__rate_interval]))",
+          "legendFormat": "opened"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Order flow budget spent (error ratio)",
+      "description": "Failed placements plus events later than 2 s, as a share; the SLO allows 0.1%.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "slo:order_placement:error_ratio_rate5m",
+          "legendFormat": "placements failed (5m)"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "slo:feed_delay:slow_ratio_rate5m",
+          "legendFormat": "events later than 2 s (5m)"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "slo:order_flow:error_ratio_rate1h",
+          "legendFormat": "order flow (1h)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Writes within 300 ms (NFR-PERF-02, target 95%)",
+      "description": "Share of place, cancel, status-change and close-session requests answered within 300 ms; 800 ms is the p99 target.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", method=\"POST\", route=~\"/v1/guest/orders|/v1/guest/orders/[^/]+/cancel|/v1/staff/table-sessions/[^/]+/(orders|close)|/v1/staff/orders/[^/]+/status\", le=\"300\"}[$__rate_interval])) / sum(rate(ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", method=\"POST\", route=~\"/v1/guest/orders|/v1/guest/orders/[^/]+/cancel|/v1/staff/table-sessions/[^/]+/(orders|close)|/v1/staff/orders/[^/]+/status\"}[$__rate_interval]))",
+          "legendFormat": "≤ 300 ms"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", method=\"POST\", route=~\"/v1/guest/orders|/v1/guest/orders/[^/]+/cancel|/v1/staff/table-sessions/[^/]+/(orders|close)|/v1/staff/orders/[^/]+/status\", le=\"800\"}[$__rate_interval])) / sum(rate(ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", method=\"POST\", route=~\"/v1/guest/orders|/v1/guest/orders/[^/]+/cancel|/v1/staff/table-sessions/[^/]+/(orders|close)|/v1/staff/orders/[^/]+/status\"}[$__rate_interval]))",
+          "legendFormat": "≤ 800 ms"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Placement responses by status",
+      "description": "Guest and staff placements.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (status, group) (rate(ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", method=\"POST\", route=~\"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders\"}[$__rate_interval]))",
+          "legendFormat": "{{group}} {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Live updates (Ably)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Feed delay within 2 s and 5 s (NFR-PERF-03)",
+      "description": "From the change to Ably accepting its notification. Targets: 95% within 2 s, 99% within 5 s. Events the sweep sends late count here too.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", le=\"2000\"}[$__rate_interval])) / sum(rate(realtime_feed_delay_milliseconds_count{job=\"restaurant-backend\"}[$__rate_interval]))",
+          "legendFormat": "≤ 2 s"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", le=\"5000\"}[$__rate_interval])) / sum(rate(realtime_feed_delay_milliseconds_count{job=\"restaurant-backend\"}[$__rate_interval]))",
+          "legendFormat": "≤ 5 s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Publishes by path and result",
+      "description": "inline (after the commit), request (a later request sent it) or sweep (the outbox job). The inline share should stay above 99%.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (path, result) (increase(realtime_publish_total{job=\"restaurant-backend\"}[$__rate_interval]))",
+          "legendFormat": "{{path}} {{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Outbox after the latest sweep",
+      "description": "Events left unsent and the age of the oldest, as the newest sweep saw them. Alert: oldest over 2 minutes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max(outbox_pending{job=\"restaurant-backend\"} and on (instance) (outbox_sweep_timestamp_seconds{job=\"restaurant-backend\"} == scalar(max(outbox_sweep_timestamp_seconds{job=\"restaurant-backend\"}))))",
+          "legendFormat": "pending"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max(outbox_oldest_age_seconds{job=\"restaurant-backend\"} and on (instance) (outbox_sweep_timestamp_seconds{job=\"restaurant-backend\"} == scalar(max(outbox_sweep_timestamp_seconds{job=\"restaurant-backend\"}))))",
+          "legendFormat": "oldest age (s)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Last outbox sweep",
+      "description": "When the newest sweep ran.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max(outbox_sweep_timestamp_seconds{job=\"restaurant-backend\"}) * 1000",
+          "legendFormat": "",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeFromNow"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Sales reconcile (nightly)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Reconcile: days rebuilt, mismatches, failures",
+      "description": "Mismatches mean a bug (reports §9): each pages a look, though the rebuild already fixed the figures.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(reports_reconcile_days_total{job=\"restaurant-backend\"}[$__rate_interval]))",
+          "legendFormat": "days rebuilt"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max(reports_reconcile_mismatches_total{job=\"restaurant-backend\"})",
+          "legendFormat": "mismatches (instance total)"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max(reports_reconcile_failures_total{job=\"restaurant-backend\"})",
+          "legendFormat": "failures (instance total)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Reconcile lag (days)",
+      "description": "Today minus the oldest reconciled day, from the latest run. Alert above 2.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 35,
+        "w": 6,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max(reports_reconcile_lag_days{job=\"restaurant-backend\"} and on (instance) (reports_reconcile_timestamp_seconds{job=\"restaurant-backend\"} == scalar(max(reports_reconcile_timestamp_seconds{job=\"restaurant-backend\"}))))",
+          "legendFormat": "",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Last reconcile",
+      "description": "When the newest reconcile ran.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 35,
+        "w": 6,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max(reports_reconcile_timestamp_seconds{job=\"restaurant-backend\"}) * 1000",
+          "legendFormat": "",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeFromNow"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    }
+  ]
+}

@@ -51,7 +51,7 @@ fun authModule(
         single<RateLimiter> {
             rateLimits.upstash?.let { UpstashRateLimiter(it.restUrl, it.token) } ?: LocalRateLimiter(get())
         }
-        single { RateLimits(get(), get(), rateLimits.timeout) }
+        single { RateLimits(get(), get(), rateLimits.timeout, get()) }
 
         single<PasswordHasher> { Argon2Hasher(get()) }
         single { PasswordHashing(get(), get()) }

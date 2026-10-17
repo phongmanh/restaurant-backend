@@ -1,6 +1,7 @@
 package io.github.phongmanh.restaurant.core.application
 
 import io.github.phongmanh.restaurant.core.domain.DomainError
+import io.github.phongmanh.restaurant.core.observability.ServiceMeters
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
 import org.slf4j.LoggerFactory
@@ -30,12 +31,14 @@ fun interface RateLimiter {
 /**
  * Applies the limits (§11). Past a limit → `429 rate_limited` with `Retry-After` set to the seconds
  * left in the window. If the store fails or takes longer than [timeout], the request is served
- * (fail open): the WAF still guards the edge, and the per-account lock lives in PostgreSQL.
+ * (fail open): the WAF still guards the edge, and the per-account lock lives in PostgreSQL. Each
+ * fail-open is counted, for ADR-0008's alert (`RateLimitFailingOpen`).
  */
 class RateLimits(
     private val limiter: RateLimiter,
     private val clock: Clock,
     private val timeout: Duration,
+    private val meters: ServiceMeters = ServiceMeters.none(),
 ) {
     suspend fun check(
         policy: RateLimitPolicy,
@@ -55,10 +58,12 @@ class RateLimits(
             ) {
                 // The key holds the subject (an IP or a staff ID), so only the policy is logged.
                 log.warn("rate limit store failed, served without a limit: {} ({})", policy.name, e::class.simpleName)
+                meters.rateLimitFailedOpen(policy.name, "error")
                 return
             }
         if (count == null) {
             log.warn("rate limit store took over {}, served without a limit: {}", timeout, policy.name)
+            meters.rateLimitFailedOpen(policy.name, "timeout")
             return
         }
         if (count > policy.limit) throw DomainError.RateLimited(retryAfterSeconds = windowStart + windowSeconds - now)

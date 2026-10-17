@@ -69,6 +69,7 @@ dependencies {
     testImplementation(libs.json.schema.validator)
     testImplementation(platform(libs.testcontainers.bom))
     testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.opentelemetry.proto)
 }
 
 tasks.test {
@@ -76,6 +77,9 @@ tasks.test {
     // IT-CORE-10 reads the contract from the repository root.
     systemProperty("contract.path", rootProject.file("docs/api/openapi.yaml").absolutePath)
     inputs.file("docs/api/openapi.yaml")
+    // AlertRulesTest and MetricNamesTest read the alert rules and dashboards (Phase 5 step 4c).
+    systemProperty("observability.path", rootProject.file("deploy/observability").absolutePath)
+    inputs.dir("deploy/observability")
     // RouteLog writes one file per test JVM; a run starts empty so the matrix sees only this run,
     // and a cached or up-to-date run keeps the files of the run it stands for.
     val routeLog = layout.buildDirectory.dir("route-log")
@@ -165,6 +169,16 @@ tasks.register<JavaExec>("generateHistory") {
     description = "<deployment URL>: restaurant L and 49 smaller ones, with a scaled year of sales"
     classpath = systemTest.runtimeClasspath
     mainClass = "io.github.phongmanh.restaurant.staging.GenerateHistoryKt"
+    workingDir = rootDir
+}
+
+// deploy/README.md, ST-07: pushes request counts with an injected 5xx share to Grafana Cloud, so
+// staging's burn-rate alerts can be seen to fire. Reads OTEL_EXPORTER_OTLP_* from the environment.
+tasks.register<JavaExec>("injectErrors") {
+    group = "staging"
+    description = "[--minutes N] [--error-ratio X] [--rps N]: synthetic 5xx for ST-07's alerts"
+    classpath = systemTest.runtimeClasspath
+    mainClass = "io.github.phongmanh.restaurant.staging.InjectErrorsKt"
     workingDir = rootDir
 }
 

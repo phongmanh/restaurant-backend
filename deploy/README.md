@@ -65,7 +65,29 @@ Steps marked **you** are the owner's. The auto-mode safety check blocks Claude f
 1. **You:** at grafana.com, sign up for the free plan and create a stack, choosing the **Singapore** region if it's offered (TBD-10 may care where data lives). Otherwise pick the nearest.
 2. **You:** in the stack, open **Connections → OpenTelemetry (OTLP)** and create a token. The page then shows the endpoint (`https://otlp-gateway-….grafana.net/otlp`) and the header, `Authorization=Basic …`. Paste them after `OTEL_EXPORTER_OTLP_ENDPOINT=` and `OTEL_EXPORTER_OTLP_HEADERS=` in `deploy/staging/.env.staging`, adding the two lines if the file doesn't have them. The header holds the token: never paste it into chat.
 3. **You:** run steps 9 and 10 again (send the variables, deploy, remove the alias). Without both settings, a staging deployment refuses to start and names them.
-4. **Claude:** after some traffic, check in Grafana's **Explore** that `ktor_http_server_requests_seconds_count` arrives with `service_name="restaurant-backend"`.
+4. **Claude:** after some traffic, check in Grafana's **Explore** that `ktor_http_server_requests_milliseconds_count{job="restaurant-backend"}` arrives. Micrometer sends timers in milliseconds, and Grafana adds the unit to the name. If Grafana names it differently, the alerts would find no data and never fire: fix `MetricNamesTest`'s naming to match what Explore shows, then the rules and dashboards it then rejects.
+
+### Alerts and dashboards (architecture §13, ST-07)
+The SLOs, burn-rate alerts and dashboards are code in [`observability/`](observability): `rules.yaml` (Prometheus rule format), `rules-test.yaml` (promtool's tests, run by `AlertRulesTest` in the build), `dashboards/*.json` and [`runbooks.md`](observability/runbooks.md), which each alert links to. `./gradlew build` also checks that every series they read is one the service pushes (`MetricNamesTest`).
+
+The free plan keeps metrics for 14 days and up to 10k active series. The alerts look back 6 hours at most, so they work on it, but the SLOs' 28-day figures can't be computed: the dashboards show each SLO over the range you pick.
+
+1. **You:** create two tokens and put them, with three addresses, in `deploy/observability/.env.grafana` (git-ignored, like the other env files; never paste a token into chat):
+   - `GRAFANA_URL`: the stack's address, `https://<stack>.grafana.net`.
+   - `GRAFANA_SA_TOKEN`: in the stack, **Administration → Users and access → Service accounts**, add `restaurant-backend-load` with the **Editor** role, then add a token.
+   - `GRAFANA_PROM_URL` and `GRAFANA_PROM_USER`: at grafana.com, **My Account → your stack → Prometheus → Details**: the URL without any path (`https://prometheus-….grafana.net`) and the user (a number).
+   - `GRAFANA_RULES_TOKEN`: on the same page's **Access Policies**, create a policy for the stack with the scopes `rules:read` and `rules:write`, then a token.
+2. **You:** with Docker running, from the repository root:
+   ```
+   deploy/observability/load.sh deploy/observability/.env.grafana
+   ```
+   It prints `rules: synced namespace restaurant-backend` and `HTTP 200` for each of the three dashboards. Run it again after any change to `rules.yaml` or `dashboards/`; it updates in place.
+3. **You:** so firing alerts reach you, open **Alerting → Contact points**, choose the Grafana Cloud Alertmanager (not the Grafana one) in the selector at the top, and set its default contact point to your email. Without this, alerts still show as firing on the **Alert rules** page, which is enough for ST-07.
+4. **Claude: ST-07's live run.** With the environment exported from `.env.staging` as in step 5:
+   ```
+   ./gradlew --no-daemon injectErrors --args="--minutes 20 --error-ratio 0.05"
+   ```
+   It pushes 20 minutes of guest-read counts, 5% of them 5xx, through the service's own OTLP registry, tagged `client="st-07"`. It sends no request to the service. `AvailabilityBurnFast` should fire within about 5 minutes and `AvailabilityBurnSlow` after about 17. Once the run ends, the fast alert clears within about 5 minutes (its short window empties) and the slow one within about 30. A second run with `--error-ratio 0.0005` should fire nothing. The injected series spend staging's error budget, which is what they're for.
 
 ### Staging data (test-plan §6)
 Claude runs both, with the environment exported as in step 5 from **both** files (the seed needs the service's settings too):

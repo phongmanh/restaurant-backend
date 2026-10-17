@@ -1,0 +1,324 @@
+# promtool's unit tests for rules.yaml (AlertRulesTest runs them; ST-07's offline half). Each test
+# feeds synthetic series, with injected error rates or delays, and checks which alerts fire when.
+# promtool compares alert labels and annotations exactly, so a changed summary changes this file.
+# Series values: `0+95x60` starts at 0 and adds 95 per minute for 60 minutes; `600x59` holds 600.
+
+rule_files:
+- rules.yaml
+evaluation_interval: 1m
+tests:
+- name: "availability: 5% of requests fail"
+  interval: 1m
+  input_series:
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"2xx\", client=\"none\"}"
+    values: 0+95x60
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"5xx\", client=\"none\"}"
+    values: 0+5x60
+  alert_rule_test:
+  - eval_time: 10m
+    alertname: AvailabilityBurnFast
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        slo: availability
+      exp_annotations:
+        summary: "Availability SLO (NFR-AVAIL-01): more than 1.4% of requests fail with 5xx; at this rate the 28-day budget lasts 2 days"
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn"
+  - eval_time: 10m
+    alertname: AvailabilityBurnSlow
+    exp_alerts: []
+  - eval_time: 25m
+    alertname: AvailabilityBurnSlow
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        slo: availability
+      exp_annotations:
+        summary: "Availability SLO (NFR-AVAIL-01): more than 0.6% of requests fail with 5xx over 6 hours"
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn"
+  - eval_time: 25m
+    alertname: OrderFlowBurnFast
+    exp_alerts: []
+  - eval_time: 25m
+    alertname: GuestReadLatencyBurnFast
+    exp_alerts: []
+- name: "nothing fires at 0.05% errors, nor for health, jobs or catch-up"
+  interval: 1m
+  input_series:
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"2xx\", client=\"none\"}"
+    values: 0+1999x120
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"5xx\", client=\"none\"}"
+    values: 0+1x120
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"2xx\", client=\"none\", le=\"200\"\
+      }"
+    values: 0+1990x120
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"2xx\", client=\"none\", le=\"500\"\
+      }"
+    values: 0+1999x120
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"5xx\", client=\"none\", le=\"200\"\
+      }"
+    values: 0+1x120
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"5xx\", client=\"none\", le=\"500\"\
+      }"
+    values: 0+1x120
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"health\", method=\"GET\", route=\"/health\", status=\"5xx\", client=\"none\"}"
+    values: 0+100x120
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"jobs\", method=\"GET\", route=\"/internal/jobs/outbox-sweep\", status=\"5xx\", client=\"none\"\
+      }"
+    values: 0+100x120
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/events\", status=\"2xx\", client=\"none\", le=\"\
+      200\"}"
+    values: '0x120'
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/events\", status=\"2xx\", client=\"none\", le=\"\
+      500\"}"
+    values: '0x120'
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/events\", status=\"2xx\", client=\"none\"}"
+    values: 0+2000x120
+  alert_rule_test:
+  - eval_time: 30m
+    alertname: AvailabilityBurnFast
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: AvailabilityBurnSlow
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: OrderFlowBurnFast
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: OrderFlowBurnSlow
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: GuestReadLatencyBurnFast
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: GuestReadLatencyBurnSlow
+    exp_alerts: []
+  - eval_time: 120m
+    alertname: AvailabilityBurnFast
+    exp_alerts: []
+  - eval_time: 120m
+    alertname: AvailabilityBurnSlow
+    exp_alerts: []
+  - eval_time: 120m
+    alertname: OrderFlowBurnFast
+    exp_alerts: []
+  - eval_time: 120m
+    alertname: OrderFlowBurnSlow
+    exp_alerts: []
+  - eval_time: 120m
+    alertname: GuestReadLatencyBurnFast
+    exp_alerts: []
+  - eval_time: 120m
+    alertname: GuestReadLatencyBurnSlow
+    exp_alerts: []
+- name: "order flow: staff placements fail"
+  interval: 1m
+  input_series:
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"staff\", method=\"POST\", route=\"/v1/staff/table-sessions/{sessionId}/orders\", status=\"2xx\"\
+      , client=\"none\"}"
+    values: 0+97x60
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"staff\", method=\"POST\", route=\"/v1/staff/table-sessions/{sessionId}/orders\", status=\"5xx\"\
+      , client=\"none\"}"
+    values: 0+3x60
+  alert_rule_test:
+  - eval_time: 10m
+    alertname: OrderFlowBurnFast
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        slo: order_flow
+      exp_annotations:
+        summary: "Order flow SLO (NFR-AVAIL-02): more than 1.4% of placements fail or of events reach Ably later than 2 s"
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn"
+- name: "order flow: guest placements fail"
+  interval: 1m
+  input_series:
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"2xx\", client=\"none\"}"
+    values: 0+97x60
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"5xx\", client=\"none\"}"
+    values: 0+3x60
+  alert_rule_test:
+  - eval_time: 10m
+    alertname: OrderFlowBurnFast
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        slo: order_flow
+      exp_annotations:
+        summary: "Order flow SLO (NFR-AVAIL-02): more than 1.4% of placements fail or of events reach Ably later than 2 s"
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn"
+- name: "order flow: events published late"
+  interval: 1m
+  input_series:
+  - series: "realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", le=\"2000\"}"
+    values: 0+90x60
+  - series: "realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", le=\"5000\"}"
+    values: 0+98x60
+  - series: "realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", le=\"+Inf\"}"
+    values: 0+100x60
+  - series: "realtime_feed_delay_milliseconds_count{job=\"restaurant-backend\", instance=\"a\"}"
+    values: 0+100x60
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"2xx\", client=\"none\"}"
+    values: 0+50x60
+  alert_rule_test:
+  - eval_time: 10m
+    alertname: OrderFlowBurnFast
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        slo: order_flow
+      exp_annotations:
+        summary: "Order flow SLO (NFR-AVAIL-02): more than 1.4% of placements fail or of events reach Ably later than 2 s"
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn"
+  - eval_time: 10m
+    alertname: AvailabilityBurnFast
+    exp_alerts: []
+- name: guest reads slow
+  interval: 1m
+  input_series:
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
+      , le=\"200\"}"
+    values: 0+10x60
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"b\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
+      , le=\"200\"}"
+    values: 0+10x60
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
+      , le=\"500\"}"
+    values: 0+40x60
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"b\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
+      , le=\"500\"}"
+    values: 0+40x60
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
+      }"
+    values: 0+50x60
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"b\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
+      }"
+    values: 0+50x60
+  alert_rule_test:
+  - eval_time: 10m
+    alertname: GuestReadLatencyBurnFast
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        slo: guest_read_p95
+      exp_annotations:
+        summary: "Guest-read latency SLO (NFR-PERF-01): more than 70% of guest reads take over 200 ms"
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn"
+    - exp_labels:
+        severity: critical
+        slo: guest_read_p99
+      exp_annotations:
+        summary: "Guest-read latency SLO (NFR-PERF-01): more than 14% of guest reads take over 500 ms"
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn"
+  - eval_time: 10m
+    alertname: AvailabilityBurnFast
+    exp_alerts: []
+- name: outbox backlog is read from the latest sweep
+  interval: 1m
+  input_series:
+  - series: "outbox_sweep_timestamp_seconds{job=\"restaurant-backend\", instance=\"a\"}"
+    values: 1000x59
+  - series: "outbox_oldest_age_seconds{job=\"restaurant-backend\", instance=\"a\"}"
+    values: 600x59
+  - series: "outbox_sweep_timestamp_seconds{job=\"restaurant-backend\", instance=\"b\"}"
+    values: 2000x29 3000x29
+  - series: "outbox_oldest_age_seconds{job=\"restaurant-backend\", instance=\"b\"}"
+    values: 0x29 300x29
+  alert_rule_test:
+  - eval_time: 20m
+    alertname: OutboxBacklogOld
+    exp_alerts: []
+  - eval_time: 45m
+    alertname: OutboxBacklogOld
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+      exp_annotations:
+        summary: The latest outbox sweep left an event unsent for over 2 minutes (realtime §11)
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#outbox-backlog"
+- name: reconcile
+  interval: 1m
+  input_series:
+  - series: "reports_reconcile_mismatches_total{job=\"restaurant-backend\", instance=\"a\"}"
+    values: _x9 1x10
+  - series: "reports_reconcile_failures_total{job=\"restaurant-backend\", instance=\"a\"}"
+    values: '0x20'
+  - series: "reports_reconcile_timestamp_seconds{job=\"restaurant-backend\", instance=\"a\"}"
+    values: 1000x20
+  - series: "reports_reconcile_lag_days{job=\"restaurant-backend\", instance=\"a\"}"
+    values: 5x20
+  - series: "reports_reconcile_timestamp_seconds{job=\"restaurant-backend\", instance=\"b\"}"
+    values: 2000x20
+  - series: "reports_reconcile_lag_days{job=\"restaurant-backend\", instance=\"b\"}"
+    values: 1x9 3x10
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: ReconcileMismatch
+    exp_alerts: []
+  - eval_time: 15m
+    alertname: ReconcileMismatch
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+      exp_annotations:
+        summary: "The sales reconcile found a day whose tally didn't match its bills: a bug (reports §9)"
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#reconcile"
+  - eval_time: 15m
+    alertname: ReconcileFailed
+    exp_alerts: []
+  - eval_time: 5m
+    alertname: ReconcileLagging
+    exp_alerts: []
+  - eval_time: 15m
+    alertname: ReconcileLagging
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+      exp_annotations:
+        summary: A restaurant's daily sales are reconciled more than 2 days behind (reports §9)
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#reconcile"
+- name: "rate limits off, publishes refused, pool waiting"
+  interval: 1m
+  input_series:
+  - series: "rate_limit_fail_open_total{job=\"restaurant-backend\", instance=\"a\", policy=\"auth.sign_in\", reason=\"timeout\"}"
+    values: 0+2x20
+  - series: "realtime_publish_total{job=\"restaurant-backend\", instance=\"a\", path=\"inline\", result=\"sent\"}"
+    values: 0+80x30
+  - series: "realtime_publish_total{job=\"restaurant-backend\", instance=\"a\", path=\"inline\", result=\"failed\"}"
+    values: 0+20x30
+  - series: "db_pool_connections_pending{job=\"restaurant-backend\", instance=\"a\", pool=\"app\"}"
+    values: 0x2 3x20
+  alert_rule_test:
+  - eval_time: 3m
+    alertname: RateLimitFailingOpen
+    exp_alerts: []
+  - eval_time: 10m
+    alertname: RateLimitFailingOpen
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+      exp_annotations:
+        summary: "Upstash isn't answering, so the service's rate limits are off; the WAF still limits sign-in per IP (ADR-0008)"
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#rate-limits-off"
+  - eval_time: 5m
+    alertname: RealtimePublishFailing
+    exp_alerts: []
+  - eval_time: 15m
+    alertname: RealtimePublishFailing
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+      exp_annotations:
+        summary: Ably refuses more than 5% of publishes; clients fall back to polling (realtime §11)
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#pubsub-outage"
+  - eval_time: 5m
+    alertname: DatabasePoolWaiting
+    exp_alerts: []
+  - eval_time: 10m
+    alertname: DatabasePoolWaiting
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+      exp_annotations:
+        summary: Requests have waited for a database connection for 5 minutes (architecture §9)
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#database-saturation"

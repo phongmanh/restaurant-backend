@@ -115,8 +115,8 @@ class SalesReconcile(
                     .mapNotNull { z -> done[z.id]?.let { ReconcileRules.lagDays(ZoneId.of(z.timeZone), it.reconciledThrough, now) } }
                     .maxOrNull() ?: 0
             }
-        // NFR-OBS-01: alert on any mismatch, and on a lag above 2 days on Pro (the alert rules come in step 4c).
-        meters.reconcile(days, mismatches, failed, lag)
+        // NFR-OBS-01: alert on any mismatch, and on a lag above 2 days (`ReconcileMismatch`, `ReconcileLagging`).
+        meters.reconcile(days, mismatches, failed, lag, now)
         log.info(
             "sales reconcile: restaurants={} days={} mismatches={} failed={} lag_days={}",
             restaurants,
