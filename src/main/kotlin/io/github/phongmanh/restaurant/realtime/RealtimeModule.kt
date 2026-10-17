@@ -42,11 +42,11 @@ fun realtimeModule(settings: RealtimeSettings) =
         }
         single { TokenService(client?.let(::AblyTokenIssuer), get()) }
 
-        single { OutboxPublisher(get(), get(), get(), get(), get()) }
+        single { OutboxPublisher(get(), get(), get(), get(), get(), get()) }
         single<EventLog> { OutboxEventLog(get(), get(), get(), get()) }
         single { RealtimeRateLimits(get(), get()) }
         single { CatchUpService(get(), get(), getAll()) }
-        single { OutboxSweep(get(), get(), get(), get()) }
+        single { OutboxSweep(get(), get(), get(), get(), get()) }
         single { EventPurge(get(), get(), get()) }
 
         single { RealtimeRoutes(get(), get(), get()) }

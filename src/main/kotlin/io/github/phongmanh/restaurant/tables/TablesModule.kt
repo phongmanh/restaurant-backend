@@ -52,7 +52,7 @@ fun tablesModule(
     single { ScanLimits(get(), get()) }
     single { TableService(get(), get(), get(), get(), get(), get()) }
     single { QrService(get(), get(), get(), get(), get()) }
-    single { GuestSessionService(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
+    single { GuestSessionService(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
     single { StaffSessionService(get(), get(), get(), get(), get(), get(), get(), get()) }
     single { WaiterCallService(get(), get(), get(), get(), get(), get(), get(), get()) }
     single { FloorViewService(get(), get(), get(), get(), get(), get()) }

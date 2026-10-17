@@ -40,7 +40,7 @@ fun ordersModule() =
         single { BusinessDay(get()) }
         single { BillPorts(get(), get(), get(), get()) } binds arrayOf(SessionSummaries::class, EmptyBills::class)
         single { OrderQueryService(get(), get(), get()) }
-        single { PlaceOrderService(get(), get(), get(), get(), get(), get(), get(), get()) }
+        single { PlaceOrderService(get(), get(), get(), get(), get(), get(), get(), get(), get()) }
         single { OrderStatusService(get(), get(), get(), get(), get(), get(), get()) }
         single { BillService(get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
         single { NoteRetention(get(), get(), get()) } bind RetentionTask::class

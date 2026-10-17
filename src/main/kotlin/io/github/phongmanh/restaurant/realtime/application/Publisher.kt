@@ -2,6 +2,7 @@ package io.github.phongmanh.restaurant.realtime.application
 
 import io.github.phongmanh.restaurant.core.application.Transactor
 import io.github.phongmanh.restaurant.core.domain.RestaurantId
+import io.github.phongmanh.restaurant.core.observability.ServiceMeters
 import io.github.phongmanh.restaurant.realtime.domain.Channels
 import io.github.phongmanh.restaurant.realtime.domain.RealtimeRules
 import io.github.phongmanh.restaurant.realtime.persistence.LoggedEvent
@@ -10,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import kotlin.time.toJavaDuration
@@ -87,6 +89,7 @@ class OutboxPublisher(
     private val realtime: RealtimePublisher,
     private val breaker: CircuitBreaker,
     private val clock: Clock,
+    private val meters: ServiceMeters = ServiceMeters.none(),
 ) {
     /**
      * After [events]' transaction has committed, before the response (§14 Q2): publishes them, marks
@@ -144,6 +147,17 @@ class OutboxPublisher(
             result = send(notification)
         }
         breaker.record(result == PublishResult.Sent)
+        val label = path.name.lowercase()
+        when (result) {
+            PublishResult.Sent -> {
+                meters.published(label, "sent")
+                meters.feedDelay(Duration.between(event.occurredAt, clock.instant()))
+            }
+
+            is PublishResult.Failed -> {
+                meters.published(label, if (result.rateLimited) "rate_limited" else "failed")
+            }
+        }
         if (result is PublishResult.Failed) {
             // IDs and codes only: an event carries nothing personal (realtime §3).
             log.warn("realtime publish failed: path={} code={} restaurant={} seq={}", path, result.code, event.restaurantId, event.seq)

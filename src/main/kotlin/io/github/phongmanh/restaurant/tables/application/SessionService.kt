@@ -16,6 +16,7 @@ import io.github.phongmanh.restaurant.core.domain.RestaurantId
 import io.github.phongmanh.restaurant.core.domain.StaffId
 import io.github.phongmanh.restaurant.core.domain.TableId
 import io.github.phongmanh.restaurant.core.domain.TableSessionId
+import io.github.phongmanh.restaurant.core.observability.ServiceMeters
 import io.github.phongmanh.restaurant.realtime.application.EventAudience
 import io.github.phongmanh.restaurant.realtime.application.EventLog
 import io.github.phongmanh.restaurant.realtime.application.EventSubject
@@ -125,6 +126,7 @@ class GuestSessionService(
     private val directory: RestaurantDirectory,
     private val limits: ScanLimits,
     private val clock: Clock,
+    private val meters: ServiceMeters = ServiceMeters.none(),
 ) {
     /**
      * Every QR failure is the same `400 qr_token_invalid`: forged, of an unknown key, rotated, or of
@@ -147,7 +149,7 @@ class GuestSessionService(
             refusal(status, table, claims)?.let { throw it }
             val now = clock.instant()
             val (session, created) = opener.openOrJoin(this, rid, table!!, now)
-            if (!created) sessions.touch(this, rid, session.id, now)
+            if (created) afterCommit { meters.sessionOpened() } else sessions.touch(this, rid, session.id, now)
             val token = tokens.sign(GuestClaims(deviceId, session.id, rid))
             SessionGrant(token, session, rid, directory.profile(this, rid)!!)
         }

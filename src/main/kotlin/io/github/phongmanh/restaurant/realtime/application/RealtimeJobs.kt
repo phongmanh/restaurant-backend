@@ -1,6 +1,7 @@
 package io.github.phongmanh.restaurant.realtime.application
 
 import io.github.phongmanh.restaurant.core.application.Transactor
+import io.github.phongmanh.restaurant.core.observability.ServiceMeters
 import io.github.phongmanh.restaurant.core.persistence.tryAdvisoryLock
 import io.github.phongmanh.restaurant.realtime.domain.RealtimeRules
 import io.github.phongmanh.restaurant.realtime.persistence.EventRepository
@@ -34,6 +35,7 @@ class OutboxSweep(
     private val outbox: OutboxRepository,
     private val publisher: OutboxPublisher,
     private val clock: Clock,
+    private val meters: ServiceMeters = ServiceMeters.none(),
 ) {
     suspend fun run(): SweepRun {
         var published = 0
@@ -60,7 +62,8 @@ class OutboxSweep(
         }
         val pending = transactor.platformTransaction("outbox sweep: pending") { outbox.pending(this) }
         val oldest = pending.oldestCreatedAt?.let { Duration.between(it, clock.instant()).seconds }
-        // NFR-OBS-01 until metrics go out over OTLP (ADR-0009): alert when the oldest unsent row is over 2 min old.
+        // NFR-OBS-01: alert when the oldest unsent row is over 2 min old (the alert rules come in step 4c).
+        meters.outbox(pending.count, oldest)
         log.info("outbox sweep: published={} failed={} pending={} oldest_pending_seconds={}", published, failed, pending.count, oldest)
         return SweepRun(published, failed, pending.count, oldest)
     }

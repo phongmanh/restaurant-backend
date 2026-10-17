@@ -2,6 +2,7 @@ package io.github.phongmanh.restaurant.reports.application
 
 import io.github.phongmanh.restaurant.core.application.Transactor
 import io.github.phongmanh.restaurant.core.domain.RestaurantId
+import io.github.phongmanh.restaurant.core.observability.ServiceMeters
 import io.github.phongmanh.restaurant.core.persistence.tryAdvisoryLock
 import io.github.phongmanh.restaurant.reports.persistence.DailySalesRepository
 import io.github.phongmanh.restaurant.reports.persistence.ReconciliationRepository
@@ -76,6 +77,7 @@ class SalesReconcile(
     private val sales: DailySalesRepository,
     private val source: SalesSource,
     private val clock: Clock,
+    private val meters: ServiceMeters = ServiceMeters.none(),
 ) {
     suspend fun run(): ReconcileRun {
         val now = clock.instant()
@@ -113,7 +115,8 @@ class SalesReconcile(
                     .mapNotNull { z -> done[z.id]?.let { ReconcileRules.lagDays(ZoneId.of(z.timeZone), it.reconciledThrough, now) } }
                     .maxOrNull() ?: 0
             }
-        // NFR-OBS-01 until metrics go out over OTLP (ADR-0009): alert on any mismatch, and on a lag above 2 days on Pro.
+        // NFR-OBS-01: alert on any mismatch, and on a lag above 2 days on Pro (the alert rules come in step 4c).
+        meters.reconcile(days, mismatches, failed, lag)
         log.info(
             "sales reconcile: restaurants={} days={} mismatches={} failed={} lag_days={}",
             restaurants,
