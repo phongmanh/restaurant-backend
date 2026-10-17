@@ -115,7 +115,8 @@ class SalesFactsSource(
 
 /**
  * The orders part of the daily retention job (orders §6, requirements §5): guests' item notes and
- * staff reason notes are cleared 30 days after the session closes. Audit `details` never held them.
+ * staff reason notes are cleared 30 days after the session closes, and a manager's note on a
+ * correction 30 days after the correction (CR-009 option A). Audit `details` never held them.
  *
  * A platform transaction finds the restaurants with notes to clear; each restaurant's are then
  * cleared in its own transaction under `pg_try_advisory_xact_lock`, in bounded batches.
@@ -128,15 +129,15 @@ class NoteRetention(
     override val name: String = "order_notes"
 
     override suspend fun run(): Int {
-        val closedBefore = clock.instant().minus(Duration.ofDays(OrderLimits.NOTE_RETENTION_DAYS))
+        val before = clock.instant().minus(Duration.ofDays(OrderLimits.NOTE_RETENTION_DAYS))
         val restaurants =
             transactor.platformTransaction("retention: restaurants with order notes to clear") {
-                notes.restaurantsWithNotes(this, closedBefore, RESTAURANTS_PER_RUN)
+                notes.restaurantsWithNotes(this, before, RESTAURANTS_PER_RUN)
             }
         return restaurants.sumOf { rid ->
             transactor.inTransaction(rid) {
                 if (!tryAdvisoryLock(this, "job:retention:order-notes:$rid")) return@inTransaction 0
-                notes.clearNotes(this, rid, closedBefore, ROWS_PER_RESTAURANT)
+                notes.clearNotes(this, rid, before, ROWS_PER_RESTAURANT)
             }
         }
     }

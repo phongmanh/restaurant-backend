@@ -362,18 +362,20 @@ class OrderRepository {
 }
 
 /**
- * The retention job's reads and writes of `orders` and `order_lines` (orders §6): free text is
- * cleared 30 days after the bill closes. [restaurantsWithNotes] is the one platform-wide search of
+ * The retention job's reads and writes of `orders`, `order_lines` and `bill_adjustments` (orders §6):
+ * free text is cleared 30 days after the bill closes, a correction's note 30 days after the
+ * correction (CR-009 option A). [restaurantsWithNotes] is the one platform-wide search of
  * this feature; the notes are then cleared in each restaurant's own transaction.
  */
 class NoteRepository {
     /**
-     * The restaurants with notes to clear: on lines or orders of bills closed before [closedBefore]
-     * (orders §6). A platform transaction; the partial indexes keep it to rows that still have notes.
+     * The restaurants with notes to clear: on lines or orders of bills closed before [before], or on
+     * corrections made before it (orders §6). A platform transaction; the partial indexes keep it to
+     * rows that still have notes.
      */
     fun restaurantsWithNotes(
         tx: TxScope,
-        closedBefore: Instant,
+        before: Instant,
         limit: Int,
     ): List<RestaurantId> =
         connection(tx)
@@ -383,14 +385,18 @@ class NoteRepository {
                     "WHERE (l.note IS NOT NULL OR l.reason_note IS NOT NULL) AND b.status = 'closed' AND b.closed_at < ? " +
                     "UNION SELECT o.restaurant_id FROM orders o " +
                     "JOIN bills b ON b.restaurant_id = o.restaurant_id AND b.session_id = o.session_id " +
-                    "WHERE o.reason_note IS NOT NULL AND b.status = 'closed' AND b.closed_at < ? LIMIT ?",
-            ).use { it.bind(closedBefore, closedBefore, limit).list { rs -> RestaurantId(rs.uuid("restaurant_id")!!) } }
+                    "WHERE o.reason_note IS NOT NULL AND b.status = 'closed' AND b.closed_at < ? " +
+                    "UNION SELECT restaurant_id FROM bill_adjustments WHERE note IS NOT NULL AND created_at < ? LIMIT ?",
+            ).use { it.bind(before, before, before, limit).list { rs -> RestaurantId(rs.uuid("restaurant_id")!!) } }
 
-    /** Clears up to [limit] lines' and orders' notes of bills closed before [closedBefore]; returns the rows changed. */
+    /**
+     * Clears up to [limit] lines' and orders' notes of bills closed before [before], and up to [limit]
+     * notes of corrections made before it; returns the rows changed.
+     */
     fun clearNotes(
         tx: TxScope,
         restaurantId: RestaurantId,
-        closedBefore: Instant,
+        before: Instant,
         limit: Int,
     ): Int {
         val c = connection(tx)
@@ -402,15 +408,21 @@ class NoteRepository {
                         "JOIN bills b ON b.restaurant_id = o.restaurant_id AND b.session_id = o.session_id " +
                         "WHERE l.restaurant_id = ? AND (l.note IS NOT NULL OR l.reason_note IS NOT NULL) " +
                         "AND b.status = 'closed' AND b.closed_at < ? LIMIT ?)",
-                ).use { it.bind(restaurantId.value, restaurantId.value, closedBefore, limit).executeUpdate() }
+                ).use { it.bind(restaurantId.value, restaurantId.value, before, limit).executeUpdate() }
         val orders =
             c
                 .prepareStatement(
                     "UPDATE orders SET reason_note = NULL WHERE restaurant_id = ? AND id IN (" +
                         "SELECT o.id FROM orders o JOIN bills b ON b.restaurant_id = o.restaurant_id AND b.session_id = o.session_id " +
                         "WHERE o.restaurant_id = ? AND o.reason_note IS NOT NULL AND b.status = 'closed' AND b.closed_at < ? LIMIT ?)",
-                ).use { it.bind(restaurantId.value, restaurantId.value, closedBefore, limit).executeUpdate() }
-        return lines + orders
+                ).use { it.bind(restaurantId.value, restaurantId.value, before, limit).executeUpdate() }
+        val corrections =
+            c
+                .prepareStatement(
+                    "UPDATE bill_adjustments SET note = NULL WHERE restaurant_id = ? AND id IN (" +
+                        "SELECT id FROM bill_adjustments WHERE restaurant_id = ? AND note IS NOT NULL AND created_at < ? LIMIT ?)",
+                ).use { it.bind(restaurantId.value, restaurantId.value, before, limit).executeUpdate() }
+        return lines + orders + corrections
     }
 
     private fun connection(tx: TxScope) = ExposedTransactor.connection(tx)
