@@ -65,11 +65,14 @@ class ServiceMetersTest {
             assertEquals(200, client.job(Endpoints.Jobs.OUTBOX_SWEEP, TestKeys.CRON_SECRET).status.value)
             assertTrue(registry.gauge("outbox.pending") >= 1, "what Ably refused waits in the outbox")
             assertTrue(registry.gauge("outbox.oldest.age.seconds") >= 0)
+            // The alerts read the gauges of the instance whose run is the latest (rules.yaml).
+            assertTrue(registry.gauge("outbox.sweep.timestamp.seconds") > 0, "the sweep's time is kept with its gauges")
 
             assertEquals(200, client.job(Endpoints.Jobs.SALES_RECONCILE, TestKeys.CRON_SECRET).status.value)
             assertEquals(0.0, registry.count("reports.reconcile.failures"))
             assertEquals(0.0, registry.count("reports.reconcile.mismatches"))
             assertNotNull(registry.find("reports.reconcile.days").counter(), "the run is counted")
+            assertTrue(registry.gauge("reports.reconcile.timestamp.seconds") > 0, "the run's time is kept with its lag")
         }
 
         val tagKeys =

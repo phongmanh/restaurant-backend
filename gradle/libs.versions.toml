@@ -68,6 +68,8 @@ testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgr
 detekt-cli = { module = "io.gitlab.arturbosch.detekt:detekt-cli", version.ref = "detekt" }
 snakeyaml-engine = { module = "org.snakeyaml:snakeyaml-engine", version.ref = "snakeyamlEngine" }
 json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "jsonSchemaValidator" }
+# Phase 5 step 4c: reads the OTLP push in tests. The version micrometer-registry-otlp brings at runtime.
+opentelemetry-proto = { module = "io.opentelemetry.proto:opentelemetry-proto", version = "1.10.0-alpha" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

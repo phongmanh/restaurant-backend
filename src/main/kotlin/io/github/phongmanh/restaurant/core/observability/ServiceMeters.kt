@@ -5,6 +5,7 @@ import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -12,15 +13,18 @@ import java.util.concurrent.atomic.AtomicLong
  * and sessions, and the nightly sales reconcile. No meter is tagged with a restaurant, a session or
  * any other ID: IDs would multiply the series, and the logs already carry them.
  *
- * A gauge is the last value this instance saw. A job runs on whichever instance Vercel Cron reached,
- * so a dashboard takes the latest value across instances.
+ * A gauge is the last value this instance saw, and every live instance pushes its own. A job runs on
+ * whichever instance Vercel Cron reached, so each job's gauges come with the time of its run, and the
+ * alerts read the instance with the latest one (`deploy/observability/rules.yaml`).
  */
 class ServiceMeters(
     private val registry: MeterRegistry,
 ) {
     private val outboxPending = AtomicLong()
     private val outboxOldest = AtomicLong()
+    private val outboxSweptAt = AtomicLong()
     private val reconcileLag = AtomicLong()
+    private val reconciledAt = AtomicLong()
 
     private val feedDelay: Timer =
         Timer
@@ -33,7 +37,9 @@ class ServiceMeters(
     init {
         registry.gauge("outbox.pending", outboxPending)
         registry.gauge("outbox.oldest.age.seconds", outboxOldest)
+        registry.gauge("outbox.sweep.timestamp.seconds", outboxSweptAt)
         registry.gauge("reports.reconcile.lag.days", reconcileLag)
+        registry.gauge("reports.reconcile.timestamp.seconds", reconciledAt)
     }
 
     /** One notification sent (`sent`) or refused (`failed`, `rate_limited`), by the path that sent it. */
@@ -45,13 +51,15 @@ class ServiceMeters(
     /** The time from the change to Ably accepting its notification. */
     fun feedDelay(delay: Duration) = feedDelay.record(delay.coerceAtLeast(Duration.ZERO))
 
-    /** What the outbox sweep left unsent, and how old the oldest of it is (0 when none). */
+    /** What the outbox sweep run [at] left unsent, and how old the oldest of it is (0 when none). */
     fun outbox(
         pending: Int,
         oldestSeconds: Long?,
+        at: Instant,
     ) {
         outboxPending.set(pending.toLong())
         outboxOldest.set(oldestSeconds ?: 0)
+        outboxSweptAt.set(at.epochSecond)
     }
 
     /** An order committed, placed by a guest or by staff (FR-003, FR-014). */
@@ -60,18 +68,26 @@ class ServiceMeters(
     /** A table session opened by a scan (FR-001); joining one doesn't count. */
     fun sessionOpened() = counter("sessions.opened").increment()
 
-    /** One reconcile run: days rebuilt, mismatches found, restaurants that failed, and the worst lag. */
+    /** One reconcile run [at]: days rebuilt, mismatches found, restaurants that failed, and the worst lag. */
     fun reconcile(
         days: Int,
         mismatches: Int,
         failed: Int,
         lagDays: Long,
+        at: Instant,
     ) {
         counter("reports.reconcile.days").increment(days.toDouble())
         counter("reports.reconcile.mismatches").increment(mismatches.toDouble())
         counter("reports.reconcile.failures").increment(failed.toDouble())
         reconcileLag.set(lagDays)
+        reconciledAt.set(at.epochSecond)
     }
+
+    /** A rate limit served without its limit, because the store failed (`error`) or was slow (`timeout`). */
+    fun rateLimitFailedOpen(
+        policy: String,
+        reason: String,
+    ) = counter("rate.limit.fail.open", "policy", policy, "reason", reason).increment()
 
     private fun counter(
         name: String,

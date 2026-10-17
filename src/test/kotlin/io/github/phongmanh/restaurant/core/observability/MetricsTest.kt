@@ -4,6 +4,8 @@ import io.github.phongmanh.restaurant.service
 import io.github.phongmanh.restaurant.support.TestDatabase
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.server.routing.get
+import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
@@ -26,7 +28,10 @@ class MetricsTest {
             application {
                 service(TestDatabase.config)
                 registry = get()
+                // A failure, as the availability SLO counts it (deploy/observability/rules.yaml).
+                routing { get("/test/fails") { error("a bug") } }
             }
+            client.get("/test/fails")
             client.get("/health") { header("X-Client", "customer-android/1.2.3") }
             client.get("/v1/staff/members") { header("X-Client", "some-script/0.1") }
             client.get("/a/path/nobody/registered")
@@ -57,7 +62,9 @@ class MetricsTest {
         val staff = timers.single { it.id.getTag("group") == "staff" }
         assertEquals("other", staff.id.getTag("client"), "an unknown app is counted as other")
         assertEquals("4xx", staff.id.getTag("status"))
-        val unknown = timers.single { it.id.getTag("group") == "other" }
+        val unknown = timers.single { it.id.getTag("group") == "other" && it.id.getTag("route") == "n/a" }
+        val failed = timers.single { it.id.getTag("route") == "/test/fails" }
+        assertEquals("5xx", failed.id.getTag("status"), "an unhandled error counts as 5xx")
         assertEquals("n/a", unknown.id.getTag("route"), "an unregistered path adds no series of its own")
         assertEquals("none", unknown.id.getTag("client"))
         assertEquals(Metrics.SLO_BUCKETS.size, buckets(health), "latency is counted at the SLO thresholds only")

@@ -5,6 +5,7 @@ import io.github.phongmanh.restaurant.core.application.RateLimitPolicy
 import io.github.phongmanh.restaurant.core.application.RateLimiter
 import io.github.phongmanh.restaurant.core.application.RateLimits
 import io.github.phongmanh.restaurant.core.domain.DomainError
+import io.github.phongmanh.restaurant.core.observability.ServiceMeters
 import io.github.phongmanh.restaurant.core.persistence.LocalRateLimiter
 import io.github.phongmanh.restaurant.core.persistence.UpstashRateLimiter
 import io.github.phongmanh.restaurant.support.AuthFixtures
@@ -15,6 +16,7 @@ import io.github.phongmanh.restaurant.support.field
 import io.github.phongmanh.restaurant.support.signIn
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import java.io.IOException
@@ -57,10 +59,26 @@ class RateLimitTest {
         }
 
     @Test
-    fun `a store slower than the timeout fails open`() =
+    fun `a store slower than the timeout, or failing, fails open and is counted`() =
         runBlocking {
-            val slow = RateLimits({ _, _ -> delay(1.seconds).let { 999L } }, MutableClock(), 50.milliseconds)
+            val registry = SimpleMeterRegistry()
+            val meters = ServiceMeters(registry)
+            val slow = RateLimits({ _, _ -> delay(1.seconds).let { 999L } }, MutableClock(), 50.milliseconds, meters)
             slow.check(RateLimitPolicy("p", 1, 60.seconds), "s")
+            val failing = RateLimits({ _, _ -> throw IOException("down") }, MutableClock(), 1.seconds, meters)
+            failing.check(RateLimitPolicy("p", 1, 60.seconds), "s")
+            // ADR-0008's alert (RateLimitFailingOpen) reads this counter.
+            listOf("timeout", "error").forEach { reason ->
+                assertEquals(
+                    1.0,
+                    registry
+                        .find("rate.limit.fail.open")
+                        .tags("policy", "p", "reason", reason)
+                        .counter()
+                        ?.count(),
+                    reason,
+                )
+            }
         }
 
     @Test
