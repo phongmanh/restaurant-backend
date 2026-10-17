@@ -11,6 +11,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A small client for a staging deployment (deploy/README.md). Every request carries the
@@ -19,20 +20,32 @@ import java.time.Duration
  * edge WAF's carries none, so it waits for the next 60 s window.
  *
  * Error messages hold the method, the path, the status and the problem's `code` and `request_id`,
- * never a body: a body can hold a link or a token.
+ * never a body: a body can hold a link or a token. [onResponse] sees every response but a waited-out
+ * `429` (the system tests check each one against the contract).
  */
 class StagingApi(
     baseUrl: String,
     private val bypassSecret: String,
     private val budget: Int,
     private val out: PrintStream,
+    private val onResponse: (Exchange) -> Unit = {},
 ) {
     private val base = baseUrl.trimEnd('/')
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_S)).build()
 
-    /** Requests sent so far, retries included. */
-    var sent = 0
-        private set
+    private val count = AtomicInteger()
+
+    /** Requests sent so far, retries included. Safe to call from several threads. */
+    val sent: Int get() = count.get()
+
+    /** One response, as [onResponse] sees it: [path] without its query, [body] as sent. */
+    class Exchange(
+        val method: String,
+        val path: String,
+        val status: Int,
+        val contentType: String?,
+        val body: String,
+    )
 
     class Response(
         val status: Int,
@@ -51,8 +64,7 @@ class StagingApi(
         headers: Map<String, String> = emptyMap(),
     ): Response {
         repeat(MAX_TRIES) {
-            check(sent < budget) { "the run's request budget of $budget is spent (test-plan §9)" }
-            sent++
+            check(count.incrementAndGet() <= budget) { "the run's request budget of $budget is spent (test-plan §9)" }
             val request =
                 HttpRequest
                     .newBuilder(URI(base + path))
@@ -72,6 +84,13 @@ class StagingApi(
                     }.build()
             val response = http.send(request, HttpResponse.BodyHandlers.ofString())
             if (response.statusCode() != TOO_MANY_REQUESTS) {
+                val contentType =
+                    response
+                        .headers()
+                        .firstValue("Content-Type")
+                        .map { it.substringBefore(';').trim() }
+                        .orElse(null)
+                onResponse(Exchange(method, path.substringBefore('?'), response.statusCode(), contentType, response.body()))
                 return Response(response.statusCode(), response.body().takeIf { it.isNotBlank() }?.let(Json::parseToJsonElement))
             }
             val wait =
