@@ -91,6 +91,7 @@ object Endpoints {
         const val RETENTION = PREFIX + "retention"
         const val OUTBOX_SWEEP = PREFIX + "outbox-sweep"
         const val EVENT_PURGE = PREFIX + "event-purge"
+        const val SALES_RECONCILE = PREFIX + "sales-reconcile"
     }
 
     /** All entries, in declaration order. A group missing here is caught by IT-CORE-10. */

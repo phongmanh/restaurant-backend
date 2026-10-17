@@ -12,6 +12,7 @@ import io.github.phongmanh.restaurant.core.auth.crypto.EmailHmac
 import io.github.phongmanh.restaurant.core.auth.crypto.SecretBox
 import io.github.phongmanh.restaurant.orders.application.OrderLimitPolicies
 import io.github.phongmanh.restaurant.realtime.application.RealtimeLimits
+import io.github.phongmanh.restaurant.reports.application.ReportLimits
 import io.github.phongmanh.restaurant.restaurants.application.StaffLimits
 import io.github.phongmanh.restaurant.tables.application.TableLimits
 import java.math.BigInteger
@@ -125,6 +126,7 @@ object TestKeys {
                     RateLimitPolicy(RealtimeLimits.TOKEN_STAFF, 60, 3600.seconds),
                     RateLimitPolicy(RealtimeLimits.EVENTS_SESSION, 120, 60.seconds),
                     RateLimitPolicy(RealtimeLimits.EVENTS_STAFF, 240, 60.seconds),
+                    RateLimitPolicy(ReportLimits.READ, 30, 60.seconds),
                 ).associateBy { it.name },
         )
 

@@ -9,6 +9,7 @@ import io.github.phongmanh.restaurant.core.persistence.instant
 import io.github.phongmanh.restaurant.core.persistence.list
 import io.github.phongmanh.restaurant.core.persistence.strings
 import io.github.phongmanh.restaurant.core.persistence.uuid
+import io.github.phongmanh.restaurant.restaurants.application.RestaurantZone
 import io.github.phongmanh.restaurant.restaurants.domain.NewRestaurant
 import io.github.phongmanh.restaurant.restaurants.domain.OpeningHours
 import io.github.phongmanh.restaurant.restaurants.domain.OpeningInterval
@@ -105,6 +106,12 @@ class RestaurantRepository {
             .prepareStatement("$SELECT WHERE ${conditions.joinToString(" AND ")} ORDER BY name, id LIMIT ?")
             .use { it.bind(params).list(::restaurant) }
     }
+
+    /** Every restaurant's time zone, by ID. Platform transactions only: RLS shows a tenant its own row. */
+    fun zones(tx: TxScope): List<RestaurantZone> =
+        connection(tx).prepareStatement("SELECT id, time_zone FROM restaurants ORDER BY id").use {
+            it.list { rs -> RestaurantZone(RestaurantId(rs.uuid("id")!!), rs.getString("time_zone")) }
+        }
 
     /** Applies [changes] if the version is still [version]; returns the rows changed (0: gone or stale). */
     fun update(

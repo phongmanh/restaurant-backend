@@ -104,6 +104,9 @@ rateLimits:
       token_staff: "60/3600"
       events_session: "120/60"
       events_staff: "240/60"
+    # reports §7: report reads per staff member.
+    reports:
+      read: "30/60"
 
 # Live updates (realtime §8, ADR-0003). Secret: the Ably API key, limited to publish and subscribe on
 # restaurant.* and session.*; one Ably app per environment. Required outside dev and test.

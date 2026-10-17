@@ -314,8 +314,8 @@ class OrderRepository {
         }
     }
 
-    private companion object {
-        val OPTIONS = ListSerializer(StoredOption.serializer())
+    internal companion object {
+        private val OPTIONS = ListSerializer(StoredOption.serializer())
 
         const val SELECT =
             "SELECT id, session_id, status, placed_at, placed_by_staff, total, status_changed_at, reason_code, reason_note, version " +

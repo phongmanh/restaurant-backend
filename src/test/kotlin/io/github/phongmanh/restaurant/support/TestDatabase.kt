@@ -96,8 +96,8 @@ object TestDatabase {
                     "TRUNCATE idempotency_keys, audit_events, audit_chain_heads, staff_link_tokens, staff_mfa_challenges, " +
                         "staff_refresh_tokens, staff_sessions, staff_accounts, outbox, domain_events, event_counters, menu_options, " +
                         "menu_option_groups, menu_items, menu_categories, menu_state, bill_adjustments, order_lines, orders, bills, " +
-                        "daily_sales_item, daily_sales_table, daily_sales_payment, daily_sales, waiter_calls, table_sessions, " +
-                        "dining_tables, restaurants",
+                        "sales_reconciliation, daily_sales_item, daily_sales_table, daily_sales_payment, daily_sales, waiter_calls, " +
+                        "table_sessions, dining_tables, restaurants",
                 )
             }
         }

@@ -7,6 +7,7 @@ import io.github.phongmanh.restaurant.restaurants.application.PrivacyService
 import io.github.phongmanh.restaurant.restaurants.application.RestaurantDirectory
 import io.github.phongmanh.restaurant.restaurants.application.RestaurantPorts
 import io.github.phongmanh.restaurant.restaurants.application.RestaurantService
+import io.github.phongmanh.restaurant.restaurants.application.RestaurantZones
 import io.github.phongmanh.restaurant.restaurants.application.StaffService
 import io.github.phongmanh.restaurant.restaurants.application.SuspensionService
 import io.github.phongmanh.restaurant.restaurants.application.TenantStatus
@@ -26,6 +27,7 @@ fun restaurantsModule() =
         single { RestaurantPorts(get()) }
         single<TenantStatus> { get<RestaurantPorts>() }
         single<RestaurantDirectory> { get<RestaurantPorts>() }
+        single<RestaurantZones> { get<RestaurantPorts>() }
 
         single { RestaurantService(get(), get(), get(), get()) }
         single { SuspensionService(get(), get(), get(), get()) }
