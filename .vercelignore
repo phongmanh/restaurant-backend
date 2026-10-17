@@ -1,0 +1,11 @@
+# Upload only what Dockerfile.vercel needs (architecture §8); everything else stays local.
+/*
+!/gradlew
+!/settings.gradle.kts
+!/build.gradle.kts
+!/gradle
+!/src
+/src/test
+!/Dockerfile.vercel
+!/docker-entrypoint.vercel.sh
+!/vercel.json

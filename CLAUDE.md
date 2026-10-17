@@ -7,14 +7,15 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 2. Don't read whole documents. Find what you need with `grep -n '^## '` and read only that section with `sed -n`. Architecture sections: §8 deployment, §9 capacity, §17 spikes (exit criteria).
 3. Each spike has a README in `spikes/<id>/` with its questions, how to run it, exit criteria and results. Continue from there.
 4. Phase 4 code lives at the repository root, one Gradle module under `io.github.phongmanh.restaurant`. The build order (9 steps, one PR each) and its progress are in the STATUS Decisions table. `./gradlew build` runs ktlint, detekt, the tests, the Kover gate and the route-test matrix, as CI does; Gradle downloads JDK 25 if it's missing. From step 2 the integration tests need Docker running (Testcontainers).
+5. Deploying: `deploy/README.md` holds the staging runbook, the secrets and who runs each step. The image is `Dockerfile.vercel` at the root; CI's `image` job builds it.
 
 ## Document map (`docs/sdlc/restaurant-ordering/`)
 | File | Holds |
 |---|---|
 | requirements.md | v1.6 (baselined at G1, changed by CR-002 to CR-007). Changing it needs a CR |
-| architecture.md | v1.4: approved at G2 (2026-10-15) with the TBD-10 condition, then changed by CR-004 to CR-006 and CR-008. Changing it needs a CR |
+| architecture.md | v1.5: approved at G2 (2026-10-15) with the TBD-10 condition, then changed by CR-004 to CR-006, CR-008 and CR-011. Changing it needs a CR |
 | adr/0001–0009, 0011 | Decisions; ADR-0002 (Vercel) is Accepted with conditions (paid-plan cold-start check before G5); 0003 (live updates through Ably) is Accepted after S-3; 0004 (Neon PostgreSQL) and 0008 (rate limiting: WAF + Upstash) are Accepted; 0010 is reserved by CR-001; 0011 (built-in staff sign-in) is Accepted too |
-| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003, CR-004 (menu read and image limits), CR-005 (natural idempotency, no guest device data), CR-006 (orders decisions: closed-bill corrections, no FR-016 in release 1), CR-007 (no CSV export in release 1), CR-008 (architecture aligned at the G3 pass), CR-009 (designs aligned with the Phase 4 build, Q-10 to Q-15) and CR-010 (the contract documents the statuses H3 found) are Approved |
+| cr/ | Change requests. CR-001 (move off Vercel) is Deferred; CR-002 (built-in staff accounts), CR-003, CR-004 (menu read and image limits), CR-005 (natural idempotency, no guest device data), CR-006 (orders decisions: closed-bill corrections, no FR-016 in release 1), CR-007 (no CSV export in release 1), CR-008 (architecture aligned at the G3 pass), CR-009 (designs aligned with the Phase 4 build, Q-10 to Q-15) CR-010 (the contract documents the statuses H3 found) and CR-011 (free staging as its own project's production deployment) are Approved |
 | design/ | Feature designs, approved at G3 (2026-10-15) at v1.0: core-and-auth, restaurants, menu, tables, orders, realtime, reports. All but core-and-auth are v1.1 since CR-009 (2026-10-17). Changing one needs a CR |
 | `docs/api/openapi.yaml` (repo root) | The API contract, 1.0.0, frozen at G3 (2026-10-15); 1.0.1 since CR-010 (2026-10-17). Changing it needs a CR, and within `/v1` only additively |
 | rtm.md, test-plan.md | Traceability and test plan |
@@ -77,6 +78,7 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 - The client network drops idle TCP connections after ~40 s. Long-held requests need TCP keepalive at 10 s or less (see `spikes/s1-vercel/scripts/measure.mjs`).
 - Vercel's CDN never caches a request that carries an `Authorization` header (or a response with `set-cookie`, `private`, `no-cache` or `no-store`). Don't plan edge caching for anything a token protects (CR-004, from Vercel docs read 2026-10-15).
 - A Vercel Function's request or response body is at most 4.5 MB; larger gets Vercel's own `413 FUNCTION_PAYLOAD_TOO_LARGE` (CR-004).
+- Vercel Cron runs only on a project's **production** deployment, never on a preview, so a preview can't test the scheduled jobs. That's why the free staging is its own project's production deployment (CR-011).
 - Vercel Hobby runs a cron job at most **once a day** (±59 min); a more frequent schedule fails the deployment. Set schedules per environment; on Hobby, jobs that should run every minute or hour run daily (Vercel docs read 2026-10-15; realtime §10).
 - The auto-mode classifier blocks production deploys, reading secrets from APIs, and writing secrets to a secret store (`vercel env add`, even piped from `.env.spike`). Ask the owner to do those steps.
 
@@ -88,6 +90,7 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 - The route-test matrix (`RouteLog`, `scripts/route-matrix.py`) counts every status a test receives, checked or not. A test that sends requests without checking their status (e.g. the accepted-token calls in `AuthenticationMatrixTest`) adds the `RouteLog.UNRECORDED` header, or the G4 evidence overstates coverage (H1).
 - `./gradlew build` fails on a route-test matrix gap (the `routeMatrix` task): every 401, 400, 404 and success the contract documents for an operation needs a test that produces it, so a new endpoint or a newly documented status comes with its tests. `scripts/route-matrix-allowed.txt` lists the allowed gaps and only shrinks: a listed gap a test now covers fails the build too, until its line goes. Add a line only with the owner's waiver (H4).
 - Every response a test gets through `testApp` is checked against the contract (`ContractCheck`): an undocumented status, media type or field fails the test, even when its own assertions pass. A new status or field is a contract change first. Only core-and-auth §3's shared codes (413/415 with a body, 426, 500, 503 `service_unavailable`) pass undocumented, as a `Problem` with their `code`. JSON Schema's `email` format in networknt accepts only IANA top-level domains, so the check uses `StaffRules.email` instead (H3).
+- **Only one function may be named `module`** in `Application.kt`. `application.yaml` names it, and when there are two, Ktor 3 picks the one with parameters and tries to inject them, so the jar doesn't start while every test passes. Tests start the app through `service(config, overrides)`; `StartupTest` starts it the way the image does (Phase 5 step 2).
 - macOS has no `timeout` command: `timeout 300 ./gradlew test` fails at once and prints nothing, which reads like a passing run. Run long Gradle tasks with the Bash tool's background mode and read `build/test-results` (step 3).
 
 ## Saving context (automated in `.claude/settings.json`)

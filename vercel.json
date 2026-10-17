@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["sin1"],
+  "services": {
+    "api": {
+      "root": ".",
+      "runtime": "container",
+      "entrypoint": "Dockerfile.vercel"
+    }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": { "service": "api" } }
+  ],
+  "crons": [
+    { "path": "/internal/jobs/sales-reconcile", "schedule": "0 20 * * *" },
+    { "path": "/internal/jobs/retention", "schedule": "15 20 * * *" },
+    { "path": "/internal/jobs/event-purge", "schedule": "30 20 * * *" },
+    { "path": "/internal/jobs/session-auto-close", "schedule": "45 20 * * *" },
+    { "path": "/internal/jobs/outbox-sweep", "schedule": "0 21 * * *" }
+  ]
+}

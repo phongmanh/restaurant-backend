@@ -147,6 +147,15 @@ tasks.register<JavaExec>("migrate") {
     mainClass = "io.github.phongmanh.restaurant.core.persistence.MigrationsKt"
 }
 
+// deploy/README.md: a new environment's secrets, written to a git-ignored env file; prints names only.
+tasks.register<JavaExec>("generateSecrets") {
+    group = "operations"
+    description = "<file> --db-host <pooled database host> [--db-name <database>]"
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass = "io.github.phongmanh.restaurant.core.ops.GenerateSecretsKt"
+    workingDir = rootDir
+}
+
 // restaurants §5, §8: the operator's commands for the first platform admin and the last admin's lost
 // authenticator. Reads the service's environment variables; prints the link once and nowhere else.
 tasks.register<JavaExec>("operator") {
