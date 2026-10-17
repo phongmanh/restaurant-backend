@@ -4,18 +4,18 @@
 |---|---|
 | Prepared | 2026-10-17, for the owner's gate decision (the gate is the owner's; this review only gathers the evidence) |
 | Code reviewed | `main` at `cc002b9` (PRs #3 to #13 merged): Phase 4 build steps 1–9, the RTM, CR-009 and its option A |
-| Recommendation | **Not ready yet.** Run one hardening step (H1–H4 below), then approve G4 with one waiver (FR-022's two image routes) |
+| Recommendation | **Not ready yet.** Run one hardening step (H1–H4 below), then approve G4 with one waiver (FR-022's two image routes). Progress: H1, H2 and H4 done; H3 left |
 
 **In plain words:** G4 asks "is the code finished and tested well enough to start testing it as a whole system?" The features are all built, every Must requirement has passing tests, and the code is clean. What isn't finished is the *systematic* testing the test plan promised: every endpoint checked for each kind of failure, and every response checked against the API contract. Those checks find the kind of bug a feature-by-feature test misses, such as an endpoint that forgets a check the others make.
 
 ## 1. Criteria
 | # | Criterion | Source | Result | Evidence |
 |---|---|---|---|---|
-| 1 | Unit, integration and contract tests pass | test-plan §7 (exit) | **Met** | `./gradlew build`: 244 tests pass, 2 skipped (the live Ably tests, which need a key) |
+| 1 | Unit, integration and contract tests pass | test-plan §7 (exit) | **Met** | `./gradlew build`: 244 tests pass, 2 skipped (the live Ably tests, which need a key). After H2: 251 pass, 2 skipped |
 | 2 | Coverage ≥ 80 % in services and domain | test-plan §7; NFR-MAINT-01 | **Met** | Kover on `*.domain.*` and `*.application.*`: 98.9 % of lines, 82.5 % of branches; no package below 96.9 % |
 | 3 | No ktlint or detekt findings | test-plan §7; NFR-MAINT-01 | **Met** | Both run in `./gradlew build`, in CI on every PR |
 | 4 | Every Must requirement built, with passing integration tests | RTM | **Met** | rtm.md: every Must FR has code and "IT pass". Must NFRs proved by load, resilience or operations tests are Phase 5 or 6 by design |
-| 5 | Route-test matrix (401 / 400 / 404 / success) for every endpoint | RTM coverage checks ("0 at G4"); test-plan §2 | **Not met** | 60 of 93 operations complete (14 before H1); missing per column: 401 2 (the two unbuilt image routes), 400 19, 404 20, 2xx 8. A status counts only where the contract documents it for that operation. Appendix A lists the gaps |
+| 5 | Route-test matrix (401 / 400 / 404 / success) for every endpoint | RTM coverage checks ("0 at G4"); test-plan §2 | **Met, with the waiver** | After H2: 91 of 93 operations complete; the two left are the unbuilt image routes (7 cells, criterion 8's waiver), the only lines in `scripts/route-matrix-allowed.txt`. `./gradlew build` fails on any other gap (H4). At review: 60 of 93 (14 before H1), missing per column 401 2, 400 19, 404 20, 2xx 8. A status counts only where the contract documents it for that operation. Appendix A lists the gaps found at review |
 | 6 | Authorisation matrix: every operation × {no token, wrong token kind, each role, another restaurant, another guest session} | test-plan §2 | **Partly met** | Token rows met by H1 (`AuthenticationMatrixTest`: every bearer operation × no token, staff, admin and guest token). Role and tenant checks are tested feature by feature (IT-…-xx with 403 and 404 cases; IT-CORE-06/07 for RLS), but there is no table-driven matrix over all operations |
 | 7 | Contract tests: responses validated against `openapi.yaml`; no breaking change against the last released contract | test-plan §2 | **Partly met** | CI lints the contract (Redocly) and IT-CORE-10 checks routes = registry = contract. No test validates response bodies against the schemas, and no `oasdiff` check runs |
 | 8 | Every registry entry routed (`notYetRouted` empty) | `support/Api.kt` ("must be empty at G4") | **Not met, waiver proposed** | 2 entries: `PUT` and `DELETE /v1/staff/menu/items/{itemId}/image`. FR-022 is a Should that waits for TBD-13 (image store) |
@@ -26,7 +26,7 @@
 | # | Gap | Proposed | Size |
 |---|---|---|---|
 | H1 | 401 not checked on 75 operations (criterion 5) | One table-driven test over the contract: for every operation secured by a bearer token, no token → `401`, and each kind of token the operation doesn't accept → `401`, except a staff token on an admin-only operation → `404 not_found` (core-and-auth §6). Closes the 401 column and the token rows of criterion 6. **Done:** `AuthenticationMatrixTest` (H1, 2026-10-17) | Small |
-| H2 | Success never reached on 6 built operations; 400 or 404 missing in 39 places | Tests for each, mostly the admin-side member routes of step 4 (`GET /v1/admin/restaurants/{restaurantId}`, `POST /v1/admin/restaurants/{restaurantId}/members`, `GET /v1/admin/restaurants/{restaurantId}/members/{staffId}`, `PATCH /v1/admin/restaurants/{restaurantId}/members/{staffId}`, `POST /v1/admin/restaurants/{restaurantId}/members/{staffId}/reactivate`, `POST /v1/admin/restaurants/{restaurantId}/members/{staffId}/invitation`), unknown IDs (404) and bad bodies or queries (400) | Medium |
+| H2 | Success never reached on 6 built operations; 400 or 404 missing in 39 places | Tests for each, mostly the admin-side member routes of step 4 (`GET /v1/admin/restaurants/{restaurantId}`, `POST /v1/admin/restaurants/{restaurantId}/members`, `GET /v1/admin/restaurants/{restaurantId}/members/{staffId}`, `PATCH /v1/admin/restaurants/{restaurantId}/members/{staffId}`, `POST /v1/admin/restaurants/{restaurantId}/members/{staffId}/reactivate`, `POST /v1/admin/restaurants/{restaurantId}/members/{staffId}/invitation`), unknown IDs (404) and bad bodies or queries (400). **Done:** 6 new tests and 7 extended ones close all 42 gaps; the allowed list holds only the image routes. Admin member routes end to end (`StaffMembersTest`), a staff token on `/v1/admin/admins` → `404 not_found` (IT-REST-03), and 400s and 404s across auth links, restaurants, admins, menu, tables, orders and catch-up (H2, 2026-10-17) | Medium |
 | H3 | Responses not checked against the contract (criterion 7) | Validate every JSON response the tests receive against `openapi.yaml` (a schema validator in `testApp`, so all 244 tests check their answers); add `oasdiff breaking` in CI against the G3 contract | Medium |
 | H4 | `scripts/route-matrix.py` is a report, not a rule | Run it in CI after the tests, failing when a documented status isn't seen, with the two image routes as the only allowed gaps. **Done:** the `routeMatrix` task runs `route-matrix.py --check` in `./gradlew build` after the tests; it fails on a gap not in `scripts/route-matrix-allowed.txt` and on a listed gap a test now covers. The list holds the image routes plus the 42 gaps H2 closes, and H2 empties that second part (H4, 2026-10-17) | Small |
 
@@ -47,6 +47,8 @@ Criterion 6's role rows (each role × each operation) stay as feature tests unle
 - Coverage: `./gradlew koverXmlReport` (the same filters as the build's Kover gate).
 
 ## Appendix A. Operations with a documented status no test produced
+At review (before H1 and H2). H2 closed every row but the two image routes; `python3 scripts/route-matrix.py --markdown` prints the current table after `./gradlew test`.
+
 `n/a`: the contract doesn't document that status for the operation.
 
 | Operation | 401 | 400 | 404 | 2xx | Statuses seen |

@@ -71,6 +71,11 @@ class TableTest {
                 "precondition_failed",
                 client.api(e.UPDATE_TABLE, t, "tableId" to id, body = """{"seats": 6}""", configure = ifMatch(3)).problem(),
             )
+            for ((body, fields) in mapOf("{}" to listOf(""), """{"number": " ", "seats": 0}""" to listOf("/number", "/seats"))) {
+                val bad = client.api(e.UPDATE_TABLE, t, "tableId" to id, body = body, configure = ifMatch(0))
+                assertEquals(HttpStatusCode.BadRequest, bad.status, body)
+                assertEquals(fields, bad.errorFields(), body)
+            }
             val edited = client.api(e.UPDATE_TABLE, t, "tableId" to id, body = """{"seats": 6, "area": ""}""", configure = ifMatch(0))
             assertEquals("\"1\"", edited.headers[HttpHeaders.ETag])
             val editedBody = edited.json()
@@ -123,6 +128,14 @@ class TableTest {
             )
             assertEquals("not_found", client.api(e.GET_QR_CODE, a.managerToken, "tableId" to bTable).problem())
             assertEquals("not_found", client.api(e.ROTATE_QR_CODE, a.managerToken, "tableId" to bTable).problem())
+            val deleted = client.api(e.DELETE_TABLE, a.managerToken, "tableId" to bTable, configure = ifMatch(0))
+            assertEquals(HttpStatusCode.NotFound, deleted.status)
+            assertEquals("not_found", deleted.problem())
+            val opened = client.api(e.OPEN_SESSION_BY_STAFF, a.managerToken, "tableId" to bTable)
+            assertEquals(HttpStatusCode.NotFound, opened.status)
+            assertEquals("not_found", opened.problem())
+            assertEquals(0, count("SELECT count(*) FROM table_sessions"), "B's table stays free")
+            assertEquals(HttpStatusCode.OK, client.api(e.GET_TABLE, b.managerToken, "tableId" to bTable).status, "and in place")
 
             AuthFixtures.sql(
                 "INSERT INTO dining_tables (id, restaurant_id, number, created_at, updated_at) " +

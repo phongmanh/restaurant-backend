@@ -106,6 +106,38 @@ class RestaurantProfileTest {
         }
 
     @Test
+    fun `an admin reads and edits one restaurant, a bad edit is 400, and an unknown restaurant is 404`() =
+        authApp {
+            val a = Tenants.create("A", "lan@a.example")
+            val (_, admin) = Tenants.admin("admin@platform.example")
+            val read = client.api(Endpoints.Admin.GET_RESTAURANT, admin, "restaurantId" to a.id)
+            assertEquals(HttpStatusCode.OK, read.status)
+            assertEquals("\"0\"", read.headers[HttpHeaders.ETag])
+            assertEquals(a.id.toString(), read.json().str("id"))
+
+            for (body in listOf("""{}""", """{"time_zone": "Mars/Base"}""")) {
+                val bad =
+                    client.api(Endpoints.Admin.UPDATE_RESTAURANT, admin, "restaurantId" to a.id, body = body) {
+                        header(HttpHeaders.IfMatch, "\"0\"")
+                    }
+                assertEquals(HttpStatusCode.BadRequest, bad.status, body)
+                assertEquals("validation_failed", bad.problem(), body)
+            }
+            assertEquals("\"0\"", client.api(Endpoints.Admin.GET_RESTAURANT, admin, "restaurantId" to a.id).headers[HttpHeaders.ETag])
+
+            val nowhere = "restaurantId" to "0192aaaa-0000-7000-8000-000000000000"
+            val edit =
+                client.api(Endpoints.Admin.UPDATE_RESTAURANT, admin, nowhere, body = """{"name": "B"}""") {
+                    header(HttpHeaders.IfMatch, "\"0\"")
+                }
+            assertEquals(HttpStatusCode.NotFound, edit.status)
+            assertEquals("not_found", edit.problem())
+            val suspend = client.api(Endpoints.Admin.SUSPEND_RESTAURANT, admin, nowhere, body = """{"reason": "unpaid"}""")
+            assertEquals(HttpStatusCode.NotFound, suspend.status)
+            assertEquals("not_found", suspend.problem())
+        }
+
+    @Test
     fun `admins list restaurants by name, with a status filter, a name prefix and pages`() =
         authApp {
             listOf("Bún Chả", "bánh mì", "Cơm Tấm", "Phở").forEach { AuthFixtures.restaurant(it) }
