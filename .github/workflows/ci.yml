@@ -1,6 +1,7 @@
 # The service's CI (architecture §14). It runs steps 1–4 and 6 of that list: build, ktlint and
 # detekt, the unit tests, the integration tests (testApplication on Testcontainers PostgreSQL; the
-# runner's Docker serves it), the Kover gate. It also lints the contract. Later Phase 4 steps add
+# runner's Docker serves it), the Kover gate and the route-test matrix (`routeMatrix`, G4 hardening
+# H4). It also lints the contract. Later Phase 4 steps add
 # contract tests and oasdiff, the dependency and secret scans, the Vercel bundle, and preview deploys.
 name: ci
 

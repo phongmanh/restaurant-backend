@@ -63,6 +63,22 @@ tasks.test {
     // IT-CORE-10 reads the contract from the repository root.
     systemProperty("contract.path", rootProject.file("docs/api/openapi.yaml").absolutePath)
     inputs.file("docs/api/openapi.yaml")
+    // RouteLog writes one file per test JVM; a run starts empty so the matrix sees only this run,
+    // and a cached or up-to-date run keeps the files of the run it stands for.
+    val routeLog = layout.buildDirectory.dir("route-log")
+    outputs.dir(routeLog)
+    doFirst { routeLog.get().asFile.deleteRecursively() }
+}
+
+// G4 hardening H4: the route-test matrix is a rule. It fails on a 401, 400, 404 or success the
+// contract documents and no test produces, unless scripts/route-matrix-allowed.txt lists it.
+val routeMatrix by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Fails on a route-test matrix gap not in scripts/route-matrix-allowed.txt."
+    dependsOn(tasks.test)
+    inputs.files("scripts/route-matrix.py", "scripts/route-matrix-allowed.txt", "docs/api/openapi.yaml")
+    inputs.dir(layout.buildDirectory.dir("route-log"))
+    commandLine("python3", "scripts/route-matrix.py", "--check")
 }
 
 ktlint {
@@ -118,7 +134,7 @@ kover {
 }
 
 tasks.check {
-    dependsOn(detekt, tasks.named("koverVerify"))
+    dependsOn(detekt, tasks.named("koverVerify"), routeMatrix)
 }
 
 // ADR-0004: migrations run from CI (or locally) over a direct connection as the migrator, never at
