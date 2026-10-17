@@ -21,7 +21,7 @@ fun reportsModule() =
         single { ReconciliationRepository() }
         single<SalesLedger> { DatabaseSalesLedger(get()) }
         single { ReportService(get(), get(), get(), get(), get()) }
-        single { SalesReconcile(get(), get(), get(), get(), get(), get()) }
+        single { SalesReconcile(get(), get(), get(), get(), get(), get(), get()) }
 
         single { StaffReportRoutes(get()) }
         single { ReportJobRoutes(get()) }

@@ -8,6 +8,7 @@ import io.github.phongmanh.restaurant.core.domain.DomainError
 import io.github.phongmanh.restaurant.core.domain.FieldError
 import io.github.phongmanh.restaurant.core.domain.IdGenerator
 import io.github.phongmanh.restaurant.core.domain.Rfc3339
+import io.github.phongmanh.restaurant.core.observability.ServiceMeters
 import io.github.phongmanh.restaurant.menu.application.LineProblem
 import io.github.phongmanh.restaurant.menu.application.LineProblemCode
 import io.github.phongmanh.restaurant.menu.application.LineRequest
@@ -57,6 +58,7 @@ class PlaceOrderService(
     private val audit: AuditLog,
     private val ids: IdGenerator,
     private val clock: Clock,
+    private val meters: ServiceMeters = ServiceMeters.none(),
 ) {
     fun place(
         tx: TxScope,
@@ -77,6 +79,8 @@ class PlaceOrderService(
         bills.lock(tx, rid, sid)
         bills.change(tx, rid, sid, order.total, 1)
         orders.insert(tx, rid, order)
+        // Counted once it's saved: a rolled-back order (or a replayed key's answer) isn't an order placed.
+        tx.afterCommit { meters.orderPlaced(byStaff = placer.staffId != null) }
         access.touch(tx, rid, sid, now)
         val subject = EventSubject(OrderEvents.ORDER_AGGREGATE, order.id.value, 0)
         events.append(tx, rid, OrderEvents.ORDER_PLACED, subject, EventAudience.STAFF_AND_SESSION, sid)

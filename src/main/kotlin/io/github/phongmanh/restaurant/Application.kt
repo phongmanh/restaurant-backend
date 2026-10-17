@@ -9,6 +9,7 @@ import io.github.phongmanh.restaurant.core.http.Endpoints
 import io.github.phongmanh.restaurant.core.http.RetentionJobRoutes
 import io.github.phongmanh.restaurant.core.http.installHttp
 import io.github.phongmanh.restaurant.core.observability.Metrics
+import io.github.phongmanh.restaurant.core.observability.ServiceMeters
 import io.github.phongmanh.restaurant.core.observability.installMetrics
 import io.github.phongmanh.restaurant.core.persistence.DatabasePools
 import io.github.phongmanh.restaurant.core.persistence.UpstashRateLimiter
@@ -125,7 +126,10 @@ fun appModule(
     metrics: MeterRegistry = SimpleMeterRegistry(),
 ): List<Module> =
     listOf(
-        module { single<MeterRegistry> { metrics } },
+        module {
+            single<MeterRegistry> { metrics }
+            single { ServiceMeters(get()) }
+        },
         coreModule(pools, config.jobs),
         authModule(config.auth, config.rateLimits),
         restaurantsModule(),
