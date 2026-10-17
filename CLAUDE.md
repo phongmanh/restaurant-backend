@@ -6,7 +6,7 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 1. Read `docs/sdlc/restaurant-ordering/STATUS.md` first. It is the single source of truth for the phase, gates, decisions, risks, open items and spikes.
 2. Don't read whole documents. Find what you need with `grep -n '^## '` and read only that section with `sed -n`. Architecture sections: §8 deployment, §9 capacity, §17 spikes (exit criteria).
 3. Each spike has a README in `spikes/<id>/` with its questions, how to run it, exit criteria and results. Continue from there.
-4. Phase 4 code lives at the repository root, one Gradle module under `io.github.phongmanh.restaurant`. The build order (9 steps, one PR each) and its progress are in the STATUS Decisions table. `./gradlew build` runs ktlint, detekt, the tests and the Kover gate, as CI does; Gradle downloads JDK 25 if it's missing. From step 2 the integration tests need Docker running (Testcontainers).
+4. Phase 4 code lives at the repository root, one Gradle module under `io.github.phongmanh.restaurant`. The build order (9 steps, one PR each) and its progress are in the STATUS Decisions table. `./gradlew build` runs ktlint, detekt, the tests, the Kover gate and the route-test matrix, as CI does; Gradle downloads JDK 25 if it's missing. From step 2 the integration tests need Docker running (Testcontainers).
 
 ## Document map (`docs/sdlc/restaurant-ordering/`)
 | File | Holds |
@@ -85,6 +85,7 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 - A `/*` inside a KDoc or comment (e.g. a path like `/v1/auth/*` in backticks) opens a nested comment in Kotlin, and the compiler reports "Unclosed comment" at the end of the file. Write the path without the `*` (step 3).
 - Tests never reach Ably: `testApp` binds a `FakeAbly` (down, rate-limited, publish hook). A test that inspects it passes its own in `overrides`. The real adapter is checked by `AblyLiveTest`, which runs only when `ABLY_API_KEY` is set in the shell (step 8).
 - The route-test matrix (`RouteLog`, `scripts/route-matrix.py`) counts every status a test receives, checked or not. A test that sends requests without checking their status (e.g. the accepted-token calls in `AuthenticationMatrixTest`) adds the `RouteLog.UNRECORDED` header, or the G4 evidence overstates coverage (H1).
+- `./gradlew build` fails on a route-test matrix gap (the `routeMatrix` task): every 401, 400, 404 and success the contract documents for an operation needs a test that produces it, so a new endpoint or a newly documented status comes with its tests. `scripts/route-matrix-allowed.txt` lists the allowed gaps and only shrinks: a listed gap a test now covers fails the build too, until its line goes. Add a line only with the owner's waiver (H4).
 - macOS has no `timeout` command: `timeout 300 ./gradlew test` fails at once and prints nothing, which reads like a passing run. Run long Gradle tasks with the Bash tool's background mode and read `build/test-results` (step 3).
 
 ## Saving context (automated in `.claude/settings.json`)

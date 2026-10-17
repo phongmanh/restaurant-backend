@@ -1,0 +1,57 @@
+# Gaps the route-test matrix allows: an operation × column (401, 400, 404, 2xx) no test produces.
+# `python3 scripts/route-matrix.py --check` (the routeMatrix task in ./gradlew build) fails on a gap
+# not listed here, and on a line here that's no longer a gap, so the list only shrinks.
+# Format: METHOD /path column. Add a line only with the owner's waiver (G4 readiness §3).
+
+# FR-022 (Should): the image routes stay unbuilt until TBD-13 (image store). Waiver proposed for G4.
+PUT /v1/staff/menu/items/{itemId}/image 401
+PUT /v1/staff/menu/items/{itemId}/image 400
+PUT /v1/staff/menu/items/{itemId}/image 404
+PUT /v1/staff/menu/items/{itemId}/image 2xx
+DELETE /v1/staff/menu/items/{itemId}/image 401
+DELETE /v1/staff/menu/items/{itemId}/image 404
+DELETE /v1/staff/menu/items/{itemId}/image 2xx
+
+# G4 hardening H2 closes these (missing success, 400 and 404 tests). Empty before G4.
+POST /v1/auth/mfa 400
+POST /v1/auth/links/inspect 400
+POST /v1/auth/password-resets/complete 400
+POST /v1/auth/password-resets/complete 404
+POST /v1/staff/members 400
+PATCH /v1/staff/members/{staffId} 400
+GET /v1/admin/restaurants/{restaurantId} 2xx
+PATCH /v1/admin/restaurants/{restaurantId} 400
+PATCH /v1/admin/restaurants/{restaurantId} 404
+POST /v1/admin/restaurants/{restaurantId}/suspend 404
+GET /v1/admin/restaurants/{restaurantId}/members 400
+GET /v1/admin/restaurants/{restaurantId}/members 404
+POST /v1/admin/restaurants/{restaurantId}/members 400
+POST /v1/admin/restaurants/{restaurantId}/members 404
+POST /v1/admin/restaurants/{restaurantId}/members 2xx
+GET /v1/admin/restaurants/{restaurantId}/members/{staffId} 404
+GET /v1/admin/restaurants/{restaurantId}/members/{staffId} 2xx
+PATCH /v1/admin/restaurants/{restaurantId}/members/{staffId} 400
+PATCH /v1/admin/restaurants/{restaurantId}/members/{staffId} 404
+PATCH /v1/admin/restaurants/{restaurantId}/members/{staffId} 2xx
+POST /v1/admin/restaurants/{restaurantId}/members/{staffId}/deactivate 404
+POST /v1/admin/restaurants/{restaurantId}/members/{staffId}/reactivate 404
+POST /v1/admin/restaurants/{restaurantId}/members/{staffId}/reactivate 2xx
+POST /v1/admin/restaurants/{restaurantId}/members/{staffId}/invitation 404
+POST /v1/admin/restaurants/{restaurantId}/members/{staffId}/invitation 2xx
+POST /v1/admin/restaurants/{restaurantId}/members/{staffId}/password-reset 404
+GET /v1/admin/admins 400
+GET /v1/admin/admins 404
+POST /v1/admin/admins 404
+POST /v1/admin/admins/{staffId}/password-reset 404
+POST /v1/admin/admins/{staffId}/totp-reset 404
+POST /v1/staff/menu/categories 400
+PATCH /v1/staff/menu/categories/{categoryId} 400
+PATCH /v1/staff/tables/{tableId} 400
+DELETE /v1/staff/tables/{tableId} 404
+POST /v1/staff/tables/{tableId}/session 404
+POST /v1/staff/table-sessions/{sessionId}/move 404
+GET /v1/guest/orders 400
+POST /v1/staff/table-sessions/{sessionId}/orders 400
+GET /v1/staff/orders 400
+POST /v1/staff/orders/{orderId}/lines/{lineId}/reject 400
+GET /v1/guest/events 400
