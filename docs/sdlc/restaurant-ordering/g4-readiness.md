@@ -3,15 +3,16 @@
 | Field | Value |
 |---|---|
 | Prepared | 2026-10-17, for the owner's gate decision (the gate is the owner's; this review only gathers the evidence) |
+| Decision | **G4 approved with conditions** by the owner, 2026-10-17: the FR-022 waiver (§3); criterion 6 accepted as partly met; L1 kept logged; the `malformed_request` wording goes into the next contract CR (STATUS Gate log) |
 | Code reviewed | `main` at `cc002b9` (PRs #3 to #13 merged): Phase 4 build steps 1–9, the RTM, CR-009 and its option A |
-| Recommendation | **Not ready yet.** Run one hardening step (H1–H4 below), then approve G4 with one waiver (FR-022's two image routes). Progress: H1–H4 done; H3's contract gaps closed by CR-010 (approved 2026-10-17); security review done, no exploitable flaw (§4 item 3) |
+| Recommendation | **Ready for the gate** (updated 2026-10-17 at `main` `b8b30b7`): approve G4 with one waiver (FR-022's two image routes, §3). At review it was "not ready yet": H1–H4 (below) are done, H3's contract gaps closed by CR-010 (approved 2026-10-17), the security review found no exploitable flaw (§4 item 3), and the live Ably test passes (§4 item 1). Criterion 6 stays partly met, for the owner to accept or not (§2) |
 
 **In plain words:** G4 asks "is the code finished and tested well enough to start testing it as a whole system?" The features are all built, every Must requirement has passing tests, and the code is clean. What isn't finished is the *systematic* testing the test plan promised: every endpoint checked for each kind of failure, and every response checked against the API contract. Those checks find the kind of bug a feature-by-feature test misses, such as an endpoint that forgets a check the others make.
 
 ## 1. Criteria
 | # | Criterion | Source | Result | Evidence |
 |---|---|---|---|---|
-| 1 | Unit, integration and contract tests pass | test-plan §7 (exit) | **Met** | `./gradlew build`: 244 tests pass, 2 skipped (the live Ably tests, which need a key). After H2: 251 pass, 2 skipped. After H3: 259 pass, 2 skipped. After the security review: 264 pass, 2 skipped |
+| 1 | Unit, integration and contract tests pass | test-plan §7 (exit) | **Met** | `./gradlew build`: 244 tests pass, 2 skipped (the live Ably tests, which need a key). After H2: 251 pass, 2 skipped. After H3: 259 pass, 2 skipped. After the security review: 264 pass, 2 skipped. The 2 live Ably tests pass against real Ably with the S-3 key (2026-10-17) |
 | 2 | Coverage ≥ 80 % in services and domain | test-plan §7; NFR-MAINT-01 | **Met** | Kover on `*.domain.*` and `*.application.*`: 98.9 % of lines, 82.5 % of branches; no package below 96.9 % |
 | 3 | No ktlint or detekt findings | test-plan §7; NFR-MAINT-01 | **Met** | Both run in `./gradlew build`, in CI on every PR |
 | 4 | Every Must requirement built, with passing integration tests | RTM | **Met** | rtm.md: every Must FR has code and "IT pass". Must NFRs proved by load, resilience or operations tests are Phase 5 or 6 by design |
@@ -38,7 +39,7 @@ Criterion 6's role rows (each role × each operation) stay as feature tests unle
 - **Accepted risks carried on:** R-11 to R-14 (free-plan limits).
 
 ## 4. Owner actions before the gate
-1. **Run the live Ably test once** (your choice at step 8): `ABLY_API_KEY=… ./gradlew test --tests '*AblyLiveTest*'` in your own terminal. STATUS has no record of a run.
+1. ~~**Run the live Ably test once.**~~ Done 2026-10-17 at the owner's request, with the S-3 spike's key loaded from `spikes/s3-pubsub/.env.spike`: `AblyLiveTest`, 2 tests, both pass (1.9 s), none skipped. Real Ably accepts the publish on both channels and a repeat of the same message ID, and the signed token request grants only the one channel.
 2. ~~**Decide the hardening scope.**~~ Decided 2026-10-17: H1–H4 in full (STATUS Decisions).
 3. ~~**Consider a security review of the code before G4.**~~ Done 2026-10-17 at the owner's request: [security-review.md](security-review.md). No exploitable flaw found against R-03 (a missed tenant check) or R-10 (a flaw in our own sign-in); 3 hardening fixes and a schema test that every tenant table keeps forced RLS. Two items logged for later: L1 (guest idempotency scope, a CR if wanted) and L2 (`x-real-ip` off Vercel, Phase 5). The ZAP scan and ASVS checklist stay in Phase 5.
 
