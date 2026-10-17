@@ -40,7 +40,7 @@ object TestKeys {
     const val STAFF_APP = "https://staff.example.test"
     const val ADMIN_APP = "https://admin.example.test"
     const val CUSTOMER_APP = "https://order.example.test"
-    const val CRON_SECRET = "test-cron-secret-0123456789"
+    const val CRON_SECRET = "test-cron-secret-0123456789abcdef"
 
     /** An Ably key in Ably's format, `<app>.<key id>:<secret>`; it signs token requests locally and never reaches Ably. */
     const val ABLY_KEY = "testapp.testkey:test-ably-secret-0123456789"

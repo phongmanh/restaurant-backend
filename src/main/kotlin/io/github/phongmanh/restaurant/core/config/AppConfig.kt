@@ -42,6 +42,9 @@ data class AppConfig(
         private val LOCAL_ENVIRONMENTS = setOf("dev", "test")
         private const val MIN_HMAC_KEY_BYTES = 32
 
+        /** `openssl rand -hex 16` makes one: 128 random bits, so the bearer can't be guessed. */
+        private const val MIN_CRON_SECRET_CHARS = 32
+
         /**
          * Reads and checks the settings. The service refuses to start if a secret is missing, or if a
          * production config allows a `localhost` origin (§13). Error messages name the setting,
@@ -91,6 +94,7 @@ data class AppConfig(
             val upstashToken = outsideDev("rateLimits.upstashToken", "UPSTASH_REDIS_REST_TOKEN")
             val ablyKey = outsideDev("realtime.ablyApiKey", "ABLY_API_KEY")
             check(missing.isEmpty()) { "missing settings: ${missing.joinToString()}" }
+            check(cronSecret.length >= MIN_CRON_SECRET_CHARS) { "CRON_SECRET must be at least $MIN_CRON_SECRET_CHARS characters" }
 
             val origins =
                 config

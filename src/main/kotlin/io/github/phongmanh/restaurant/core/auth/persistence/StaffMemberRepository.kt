@@ -38,7 +38,8 @@ data class SeatCounts(
  * `staff_accounts` as staff management sees it (restaurants §7, §10). Every method that a
  * restaurant's manager can reach takes the restaurant's ID and filters by it (IT-CORE-07).
  * Anonymised accounts are left out everywhere: to staff management they're gone. The lifecycle
- * changes ([insert], [deactivate], [reactivate]) serve platform admins' accounts too.
+ * changes ([insert], [deactivate], [reactivate]) serve platform admins' accounts too; they take the
+ * member found earlier and match its restaurant, which for an admin is none.
  */
 class StaffMemberRepository {
     /** Inserts the account, or returns `null` if an account with that email exists (one `ON CONFLICT`, no error to log). */
@@ -151,27 +152,29 @@ class StaffMemberRepository {
 
     fun deactivate(
         tx: TxScope,
-        id: StaffId,
+        member: StaffMember,
         now: Instant,
     ) = execute(
         tx,
-        "UPDATE staff_accounts SET status = 'deactivated', deactivated_at = ?, updated_at = ?, version = version + 1 WHERE id = ?",
+        "UPDATE staff_accounts SET status = 'deactivated', deactivated_at = ?, updated_at = ?, version = version + 1 WHERE $SAME_ACCOUNT",
         now,
         now,
-        id.value,
+        member.id.value,
+        member.restaurantId?.value,
     )
 
     /** Back to `active`, or to `invited` if the account never set a password (§7: the old password still works). */
     fun reactivate(
         tx: TxScope,
-        id: StaffId,
+        member: StaffMember,
         now: Instant,
     ) = execute(
         tx,
         "UPDATE staff_accounts SET status = CASE WHEN password_hash IS NULL THEN 'invited' ELSE 'active' END, " +
-            "deactivated_at = NULL, updated_at = ?, version = version + 1 WHERE id = ?",
+            "deactivated_at = NULL, updated_at = ?, version = version + 1 WHERE $SAME_ACCOUNT",
         now,
-        id.value,
+        member.id.value,
+        member.restaurantId?.value,
     )
 
     /**
@@ -180,7 +183,7 @@ class StaffMemberRepository {
      */
     fun anonymise(
         tx: TxScope,
-        id: StaffId,
+        member: StaffMember,
         now: Instant,
     ) = execute(
         tx,
@@ -189,14 +192,15 @@ class StaffMemberRepository {
           totp_secret = NULL, totp_pending_secret = NULL, totp_last_step = NULL, failed_count = 0, failed_window_start = NULL,
           locked_until = NULL, status = 'deactivated', deactivated_at = coalesce(deactivated_at, ?), anonymised_at = ?,
           updated_at = ?, version = version + 1
-        WHERE id = ?
+        WHERE $SAME_ACCOUNT
         """.trimIndent(),
-        Anonymised.email(id),
+        Anonymised.email(member.id),
         Anonymised.DISPLAY_NAME,
         now,
         now,
         now,
-        id.value,
+        member.id.value,
+        member.restaurantId?.value,
     )
 
     private fun execute(
@@ -259,6 +263,12 @@ private const val SELECT_MEMBER = "SELECT $MEMBER_COLUMNS FROM staff_accounts"
 
 /** Not anonymised. */
 private const val LIVE = "anonymised_at IS NULL"
+
+/**
+ * The member's own row and restaurant (IT-CORE-07): a platform admin's has none. Callers have found
+ * the member in its restaurant already; this keeps the update itself from reaching another's.
+ */
+private const val SAME_ACCOUNT = "id = ? AND restaurant_id IS NOT DISTINCT FROM ?::uuid"
 private const val ADMIN = "is_platform_admin AND restaurant_id IS NULL"
 
 private fun connection(tx: TxScope): Connection = ExposedTransactor.connection(tx)

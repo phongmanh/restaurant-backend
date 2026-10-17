@@ -87,16 +87,24 @@ fun Application.installHttp(settings: HttpSettings) {
         json(ApiJson)
     }
     install(clientVersionPlugin(settings.minClientVersions))
-    install(NoStore)
+    install(ResponseHeaders)
 }
 
+/** HTTPS only, for two years (architecture §8 edge, §11 HTTP hardening); browsers ignore it over plain HTTP. */
+const val HSTS_VALUE = "max-age=63072000; includeSubDomains"
+
 /**
+ * The headers every response carries (architecture §11, HTTP hardening): `Strict-Transport-Security`
+ * and `X-Content-Type-Options: nosniff`, so a browser never reads a JSON body as another type. And
  * `Cache-Control: no-store` on every API response, unless the route set its own (the menu reads
- * send `private, no-cache` with an `ETag`; §2, CR-004).
+ * send `private, no-cache` with an `ETag`; §2, CR-004). Not Ktor's `DefaultHeaders`, whose
+ * `Server` header would name the framework and its version.
  */
-private val NoStore =
-    createApplicationPlugin("NoStore") {
+private val ResponseHeaders =
+    createApplicationPlugin("ResponseHeaders") {
         onCallRespond { call, _ ->
+            call.response.header(HttpHeaders.StrictTransportSecurity, HSTS_VALUE)
+            call.response.header("X-Content-Type-Options", "nosniff")
             if (call.request.path().startsWith("/v1/") && call.response.headers[HttpHeaders.CacheControl] == null) {
                 call.response.header(HttpHeaders.CacheControl, "no-store")
             }
