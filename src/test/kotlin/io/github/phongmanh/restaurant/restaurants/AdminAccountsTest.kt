@@ -1,6 +1,7 @@
 package io.github.phongmanh.restaurant.restaurants
 
 import io.github.phongmanh.restaurant.core.auth.crypto.Totp
+import io.github.phongmanh.restaurant.core.domain.UuidV7
 import io.github.phongmanh.restaurant.core.http.Endpoints
 import io.github.phongmanh.restaurant.restaurants.ops.runOperator
 import io.github.phongmanh.restaurant.support.AuthFixtures
@@ -20,6 +21,7 @@ import io.github.phongmanh.restaurant.support.problem
 import io.github.phongmanh.restaurant.support.signIn
 import io.github.phongmanh.restaurant.support.str
 import io.ktor.client.HttpClient
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -160,11 +162,18 @@ class AdminAccountsTest {
             assertEquals("member_state_conflict", client.api(e.TOTP_RESET_ADMIN, token, "staffId" to other).problem())
 
             val restaurantStaff = AuthFixtures.staff(AuthFixtures.restaurant(), "lan@a.example")
-            assertEquals(
-                HttpStatusCode.NotFound,
-                client.api(e.DEACTIVATE_ADMIN, token, "staffId" to restaurantStaff).status,
-                "not an admin",
-            )
+            for (endpoint in listOf(e.DEACTIVATE_ADMIN, e.PASSWORD_RESET_ADMIN, e.TOTP_RESET_ADMIN)) {
+                for ((case, id) in listOf("not an admin" to restaurantStaff, "nobody" to UuidV7.next())) {
+                    val response = client.api(endpoint, token, "staffId" to id)
+                    assertEquals(HttpStatusCode.NotFound, response.status, "$endpoint: $case")
+                    assertEquals("not_found", response.problem(), "$endpoint: $case")
+                }
+            }
+            for (query in listOf("?limit=0", "?limit=201", "?cursor=nope")) {
+                val bad = client.api(HttpMethod.Get, e.LIST_ADMINS.path + query, token)
+                assertEquals(HttpStatusCode.BadRequest, bad.status, query)
+                assertEquals("validation_failed", bad.problem(), query)
+            }
         }
 
     @Test

@@ -92,6 +92,23 @@ class MenuEditTest {
         }
 
     @Test
+    fun `IT-MENU-05 a category's bad fields are 400 per field, on create and edit, and change nothing`() =
+        menuApp {
+            val a = Tenants.create("A", "manager@a.example")
+            val rice = client.category(a.managerToken, "Cơm")
+            val badCategory = client.newCategory(a.managerToken, "x".repeat(101), """, "name_en": "${"e".repeat(101)}"""")
+            assertEquals(HttpStatusCode.BadRequest, badCategory.status)
+            assertEquals(listOf("/name_vi", "/name_en"), badCategory.errorFields())
+            assertEquals(listOf("/name_vi"), client.api(e.CREATE_MENU_CATEGORY, a.managerToken, body = "{}").errorFields())
+            for ((body, fields) in mapOf("{}" to listOf(""), """{"name_vi": "  "}""" to listOf("/name_vi"))) {
+                val edit = client.api(e.UPDATE_MENU_CATEGORY, a.managerToken, "categoryId" to rice, body = body, configure = ifMatch(0))
+                assertEquals(HttpStatusCode.BadRequest, edit.status, body)
+                assertEquals(fields, edit.errorFields(), body)
+            }
+            assertEquals(listOf("menu.category.created"), menuAudit(a.id))
+        }
+
+    @Test
     fun `IT-MENU-06 an edit without If-Match is 428 and a stale one 412`() =
         menuApp {
             val a = Tenants.create("A", "manager@a.example")

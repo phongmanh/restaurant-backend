@@ -1,6 +1,7 @@
 package io.github.phongmanh.restaurant.restaurants
 
 import io.github.phongmanh.restaurant.core.domain.StaffId
+import io.github.phongmanh.restaurant.core.domain.UuidV7
 import io.github.phongmanh.restaurant.core.http.Endpoints
 import io.github.phongmanh.restaurant.support.AuthFixtures
 import io.github.phongmanh.restaurant.support.Tenants
@@ -9,6 +10,7 @@ import io.github.phongmanh.restaurant.support.TestKeys
 import io.github.phongmanh.restaurant.support.accessToken
 import io.github.phongmanh.restaurant.support.api
 import io.github.phongmanh.restaurant.support.authApp
+import io.github.phongmanh.restaurant.support.errorFields
 import io.github.phongmanh.restaurant.support.items
 import io.github.phongmanh.restaurant.support.json
 import io.github.phongmanh.restaurant.support.obj
@@ -312,6 +314,88 @@ class StaffMembersTest {
             assertEquals(HttpStatusCode.TooManyRequests, limited.status)
             assertEquals("rate_limited", limited.problem())
             assertTrue(limited.headers[HttpHeaders.RetryAfter]!!.toLong() in 1..3600)
+        }
+
+    @Test
+    fun `a manager's malformed invite or edit is 400 and changes nothing`() =
+        authApp {
+            val a = Tenants.create("A", "lan@a.example")
+            val (waiter, _) = a.member("waiter@a.example", "waiter")
+            val chef = """{"email": "mai@a.example", "display_name": "Mai", "role": "chef"}"""
+            val invite = client.api(e.INVITE_MEMBER, a.managerToken, body = chef)
+            assertEquals(HttpStatusCode.BadRequest, invite.status)
+            assertEquals(listOf("/role"), invite.errorFields())
+            for (body in listOf("""{}""", """{"role": "chef"}""", """{"phone": "not a phone"}""")) {
+                val edit = client.api(e.UPDATE_MEMBER, a.managerToken, "staffId" to waiter, body = body) { ifMatch(0) }
+                assertEquals(HttpStatusCode.BadRequest, edit.status, body)
+                assertEquals("validation_failed", edit.problem(), body)
+            }
+            assertEquals(2, client.api(e.LIST_MEMBERS, a.managerToken).items().size)
+            assertTrue(auditActions(a.id.toString()).none { it.startsWith("staff.") })
+        }
+
+    @Test
+    fun `an admin manages a restaurant's members through the admin routes, and an unknown restaurant or member is 404`() =
+        authApp {
+            val a = Tenants.create("A", "lan@a.example")
+            val (_, admin) = Tenants.admin("admin@platform.example")
+            val at = arrayOf<Pair<String, Any>>("restaurantId" to a.id)
+
+            val mai = """{"email": "Mai@A.example", "display_name": "Mai", "role": "waiter"}"""
+            val invited = client.api(e.INVITE_RESTAURANT_MEMBER, admin, *at, body = mai)
+            assertEquals(HttpStatusCode.Created, invited.status)
+            val maiId = invited.json().obj("member").str("id")
+            assertEquals(e.GET_RESTAURANT_MEMBER.pathOf("restaurantId" to a.id, "staffId" to maiId), invited.headers[HttpHeaders.Location])
+            val member = arrayOf<Pair<String, Any>>("restaurantId" to a.id, "staffId" to maiId)
+            val read = client.api(e.GET_RESTAURANT_MEMBER, admin, *member)
+            assertEquals(HttpStatusCode.OK, read.status)
+            assertEquals("invited", read.json().str("status"))
+            assertEquals(HttpStatusCode.Created, client.api(e.INVITATION_RESTAURANT_MEMBER, admin, *member).status)
+            val edited = client.api(e.UPDATE_RESTAURANT_MEMBER, admin, *member, body = """{"role": "kitchen"}""") { ifMatch(0) }
+            assertEquals(HttpStatusCode.OK, edited.status)
+            assertEquals("kitchen", edited.json().str("role"))
+            assertEquals("deactivated", client.api(e.DEACTIVATE_RESTAURANT_MEMBER, admin, *member).json().str("status"))
+            val back = client.api(e.REACTIVATE_RESTAURANT_MEMBER, admin, *member)
+            assertEquals(HttpStatusCode.OK, back.status)
+            assertEquals("invited", back.json().str("status"), "never accepted: invited again")
+            val listed = client.api(io.ktor.http.HttpMethod.Get, e.LIST_RESTAURANT_MEMBERS.pathOf(*at) + "?role=kitchen", admin)
+            assertEquals(listOf("Mai"), listed.items().map { it.jsonObject["display_name"]!!.jsonPrimitive.content })
+
+            for (query in listOf("?limit=0", "?status=gone", "?cursor=nope")) {
+                val bad = client.api(io.ktor.http.HttpMethod.Get, e.LIST_RESTAURANT_MEMBERS.pathOf(*at) + query, admin)
+                assertEquals(HttpStatusCode.BadRequest, bad.status, query)
+            }
+            val badInvite = client.api(e.INVITE_RESTAURANT_MEMBER, admin, *at, body = """{"email": "x", "role": "waiter"}""")
+            assertEquals(listOf("/email", "/display_name"), badInvite.errorFields())
+            val emptyEdit = client.api(e.UPDATE_RESTAURANT_MEMBER, admin, *member, body = "{}") { ifMatch(1) }
+            assertEquals(HttpStatusCode.BadRequest, emptyEdit.status)
+
+            // Every route with a restaurant that doesn't exist, then a member that isn't the restaurant's.
+            val (bWaiter, _) = Tenants.create("B", "lan@b.example").member("waiter@b.example", "waiter")
+            val nowhere = arrayOf<Pair<String, Any>>("restaurantId" to UuidV7.next())
+            val strangers =
+                listOf(
+                    arrayOf<Pair<String, Any>>(*nowhere, "staffId" to maiId),
+                    arrayOf<Pair<String, Any>>(*at, "staffId" to bWaiter),
+                )
+            assertEquals(HttpStatusCode.NotFound, client.api(e.LIST_RESTAURANT_MEMBERS, admin, *nowhere).status)
+            val newcomer = """{"email": "new@a.example", "display_name": "Nam", "role": "waiter"}"""
+            assertEquals(HttpStatusCode.NotFound, client.api(e.INVITE_RESTAURANT_MEMBER, admin, *nowhere, body = newcomer).status)
+            for (path in strangers) {
+                for (endpoint in listOf(
+                    e.GET_RESTAURANT_MEMBER,
+                    e.UPDATE_RESTAURANT_MEMBER,
+                    e.DEACTIVATE_RESTAURANT_MEMBER,
+                    e.REACTIVATE_RESTAURANT_MEMBER,
+                    e.INVITATION_RESTAURANT_MEMBER,
+                    e.PASSWORD_RESET_RESTAURANT_MEMBER,
+                )) {
+                    val response = client.api(endpoint, admin, *path, body = """{"display_name": "X"}""") { ifMatch(0) }
+                    assertEquals(HttpStatusCode.NotFound, response.status, "$endpoint ${path.toList()}")
+                    assertEquals("not_found", response.problem(), "$endpoint ${path.toList()}")
+                }
+            }
+            assertTrue(AuthFixtures.query("SELECT 1 FROM staff_accounts WHERE email = 'new@a.example'") { it.getInt(1) }.isEmpty())
         }
 
     @Test

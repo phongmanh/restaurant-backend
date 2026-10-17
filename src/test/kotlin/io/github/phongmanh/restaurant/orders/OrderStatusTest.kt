@@ -204,6 +204,14 @@ class OrderStatusTest {
             assertEquals("line_not_rejectable", reject(f.kitchen, pho, 0).problem(), "a placed order is rejected whole")
             client.step(f.kitchen, id, "accepted", 0)
             assertEquals("forbidden", reject(f.waiter, pho, 1).problem())
+            for (body in listOf("""{}""", """{"reason": {"code": "closed_with_session"}}""")) {
+                val bad =
+                    client.api(e.REJECT_ORDER_LINE, f.kitchen, "orderId" to id, "lineId" to pho, body = body) {
+                        header(HttpHeaders.IfMatch, "\"1\"")
+                    }
+                assertEquals(HttpStatusCode.BadRequest, bad.status, body)
+                assertEquals("validation_failed", bad.problem(), body)
+            }
             val first = reject(f.kitchen, pho, 1)
             assertEquals(HttpStatusCode.OK, first.status)
             val after = first.json()

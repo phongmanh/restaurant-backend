@@ -205,6 +205,29 @@ class PlaceOrderTest {
         }
 
     @Test
+    fun `a malformed list query or staff order is 400, and nothing is ordered`() =
+        ordersApp {
+            val f = client.floor()
+            for (query in listOf("?limit=0", "?cursor=nope")) {
+                val guest = client.api(e.LIST_GUEST_ORDERS.method, e.LIST_GUEST_ORDERS.path + query, f.guest)
+                assertEquals(HttpStatusCode.BadRequest, guest.status, query)
+                assertEquals("validation_failed", guest.problem(), query)
+            }
+            for (query in listOf("?status=eaten", "?session_id=nope", "?limit=201")) {
+                val feed = client.api(e.LIST_STAFF_ORDERS.method, e.LIST_STAFF_ORDERS.path + query, f.waiter)
+                assertEquals(HttpStatusCode.BadRequest, feed.status, query)
+                assertEquals("validation_failed", feed.problem(), query)
+            }
+            val empty =
+                client.api(e.PLACE_STAFF_ORDER, f.waiter, "sessionId" to f.session, body = orderBody()) {
+                    header(IDEMPOTENCY_KEY_HEADER, UuidV7.next().toString())
+                }
+            assertEquals(HttpStatusCode.BadRequest, empty.status)
+            assertEquals(listOf("/lines"), empty.errorFields())
+            assertEquals(0, count("SELECT count(*) FROM orders"))
+        }
+
+    @Test
     fun `IT-ORD-18 staff order for a table, audited, and the kitchen may not place one`() =
         ordersApp {
             val f = client.floor()

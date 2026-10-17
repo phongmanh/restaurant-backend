@@ -182,4 +182,37 @@ class LinksTest {
             assertEquals(HttpStatusCode.NoContent, client.accept(token, password).status)
             assertEquals(HttpStatusCode.OK, client.signIn("longname@pho.example", password).status)
         }
+
+    @Test
+    fun `a password reset completes once, an unknown link is link_invalid, and malformed link bodies are 400`() =
+        authApp {
+            val member = AuthFixtures.staff(AuthFixtures.restaurant(), email)
+            val token = AuthFixtures.link(member, "password_reset")
+            val complete = { link: String, password: String ->
+                """{"token": "$link", "password": ${ApiJson.encodeToString(password)}}"""
+            }
+            val short = client.postJson("/v1/auth/password-resets/complete", complete(token, "abcdefg"))
+            assertEquals(HttpStatusCode.BadRequest, short.status)
+            assertEquals("too_short", short.rejection())
+            val done = client.postJson("/v1/auth/password-resets/complete", complete(token, "a new reset passphrase"))
+            assertEquals(HttpStatusCode.NoContent, done.status)
+            assertEquals(HttpStatusCode.OK, client.signIn(email, "a new reset passphrase").status)
+            for (link in listOf(token, "no-such-link")) {
+                val void = client.postJson("/v1/auth/password-resets/complete", complete(link, "another reset passphrase"))
+                assertEquals(HttpStatusCode.NotFound, void.status, link)
+                assertEquals("link_invalid", void.field("code"), link)
+            }
+
+            for (path in listOf("/v1/auth/links/inspect", "/v1/auth/password-resets/complete")) {
+                val missing = client.postJson(path, """{}""")
+                assertEquals(HttpStatusCode.BadRequest, missing.status, path)
+                assertEquals("malformed_request", missing.field("code"), "$path: a required field is missing")
+                val long = client.postJson(path, """{"token": "${"x".repeat(1000)}", "password": "a long passphrase"}""")
+                assertEquals(HttpStatusCode.BadRequest, long.status, path)
+            }
+            val mfa = client.postJson("/v1/auth/mfa", """{"mfa_token": "anything", "code": "12ab56"}""")
+            assertEquals(HttpStatusCode.BadRequest, mfa.status)
+            assertEquals("validation_failed", mfa.field("code"))
+            assertEquals("malformed_request", client.postJson("/v1/auth/mfa", """{"code": "123456"}""").field("code"))
+        }
 }

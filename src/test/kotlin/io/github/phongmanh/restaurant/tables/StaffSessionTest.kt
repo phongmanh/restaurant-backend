@@ -1,6 +1,7 @@
 package io.github.phongmanh.restaurant.tables
 
 import io.github.phongmanh.restaurant.core.domain.TableSessionId
+import io.github.phongmanh.restaurant.core.domain.UuidV7
 import io.github.phongmanh.restaurant.core.http.Endpoints
 import io.github.phongmanh.restaurant.support.AuthFixtures
 import io.github.phongmanh.restaurant.support.Guests
@@ -120,6 +121,17 @@ class StaffSessionTest {
 
             Guests.closeSession(TableSessionId(UUID.fromString(sessionId)))
             assertEquals("session_not_open", move(three, 1).problem())
+
+            val nowhere =
+                client.api(
+                    e.MOVE_TABLE_SESSION,
+                    waiter,
+                    "sessionId" to UuidV7.next(),
+                    body = """{"to_table_id": "$three"}""",
+                    configure = ifMatch(0),
+                )
+            assertEquals(HttpStatusCode.NotFound, nowhere.status, "an unknown session")
+            assertEquals("not_found", nowhere.problem())
         }
 
     @Test

@@ -186,9 +186,11 @@ class CatchUpTest {
             val f = client.floor()
             listOf("after=-1" to "query.after", "after=x" to "query.after", "limit=0" to "query.limit", "limit=201" to "query.limit")
                 .forEach { (query, field) ->
-                    val response = client.api(staffEvents.method, staffEvents.path + "?" + query, f.waiter)
-                    assertEquals(HttpStatusCode.BadRequest, response.status, query)
-                    assertEquals(listOf(field), response.errorFields())
+                    for ((events, token) in listOf(staffEvents to f.waiter, guestEvents to f.guest)) {
+                        val response = client.api(events.method, events.path + "?" + query, token)
+                        assertEquals(HttpStatusCode.BadRequest, response.status, "$events $query")
+                        assertEquals(listOf(field), response.errorFields(), "$events $query")
+                    }
                 }
             AuthFixtures.suspend(f.id)
             assertEquals(HttpStatusCode.OK, client.api(guestEvents, f.guest).status, "guests keep reading (restaurants §6)")

@@ -125,12 +125,16 @@ class OnboardingTest {
     fun `IT-REST-03 a staff token on the admin routes is 404 and no token is 401`() =
         authApp {
             val a = Tenants.create("A", "manager@a.example")
-            for (method in listOf(HttpMethod.Get, HttpMethod.Post)) {
-                val withStaff = client.api(method, "/v1/admin/restaurants", a.managerToken, body = body) { header("Idempotency-Key", "k") }
-                assertEquals(HttpStatusCode.NotFound, withStaff.status, "$method with a staff token")
-                assertEquals(HttpStatusCode.Unauthorized, client.api(method, "/v1/admin/restaurants", null, body = body).status)
+            for (path in listOf("/v1/admin/restaurants", "/v1/admin/admins")) {
+                for (method in listOf(HttpMethod.Get, HttpMethod.Post)) {
+                    val withStaff = client.api(method, path, a.managerToken, body = body) { header("Idempotency-Key", "k") }
+                    assertEquals(HttpStatusCode.NotFound, withStaff.status, "$method $path with a staff token")
+                    assertEquals("not_found", withStaff.problem(), "$method $path with a staff token")
+                    assertEquals(HttpStatusCode.Unauthorized, client.api(method, path, null, body = body).status)
+                }
             }
             assertEquals(1, AuthFixtures.query("SELECT count(*) FROM restaurants") { it.getInt(1) }.single())
+            assertEquals(0, AuthFixtures.query("SELECT count(*) FROM staff_accounts WHERE is_platform_admin") { it.getInt(1) }.single())
         }
 
     @Test
