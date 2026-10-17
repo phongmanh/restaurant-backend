@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Restaurant ordering API
-  version: 1.0.0
+  version: 1.0.1
   description: |
     Contract for the restaurant ordering service (`docs/sdlc/restaurant-ordering/`).
     Hand-written in Phase 3 and frozen at G3 on 2026-10-15 (architecture §5, ADR-0007). Changes need a CR;
@@ -14,6 +14,10 @@ info:
     Conventions (core-and-auth §2): snake_case fields; UUID v7 IDs; RFC 3339 UTC times;
     money as `{"amount": "<whole đồng>", "currency": "VND"}`; errors as
     `application/problem+json` with a stable `code` (catalogue in `x-error-catalogue`).
+    Any operation may also answer the shared codes of core-and-auth §3 without listing them:
+    `413 payload_too_large` and `415 unsupported_media_type` (operations with a body),
+    `426 client_upgrade_required`, `500 internal_error` and `503 service_unavailable`.
+    An operation lists one of them only when it has its own reason to (CR-010).
 servers:
   - url: https://api.example.invalid
     description: Placeholder until the environments' URLs are fixed
@@ -477,6 +481,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /v1/staff/members/{staffId}/invitation:
     parameters:
@@ -862,6 +867,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /v1/admin/restaurants/{restaurantId}/members/{staffId}/invitation:
     parameters:
@@ -1868,6 +1874,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/WaiterCallList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 

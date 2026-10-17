@@ -1,8 +1,9 @@
 # The service's CI (architecture §14). It runs steps 1–4 and 6 of that list: build, ktlint and
 # detekt, the unit tests, the integration tests (testApplication on Testcontainers PostgreSQL; the
-# runner's Docker serves it), the Kover gate and the route-test matrix (`routeMatrix`, G4 hardening
-# H4). It also lints the contract. Later Phase 4 steps add
-# contract tests and oasdiff, the dependency and secret scans, the Vercel bundle, and preview deploys.
+# runner's Docker serves it), the Kover gate, the route-test matrix (`routeMatrix`, G4 hardening
+# H4) and the contract tests (every test response validated against the contract, H3). It also lints
+# the contract and checks it for breaking changes against the G3 contract (oasdiff, H3). Later
+# Phase 4 steps add the dependency and secret scans, the Vercel bundle, and preview deploys.
 name: ci
 
 on:
@@ -47,3 +48,7 @@ jobs:
         # Run outside the repository so npx leaves no files in it (CLAUDE.md).
         working-directory: ${{ runner.temp }}
         run: npx --yes @redocly/cli@1.34.5 lint "$GITHUB_WORKSPACE/docs/api/openapi.yaml"
+      - name: Fetch the G3 contract's tag
+        run: git fetch --no-tags --depth=1 origin refs/tags/sdlc/restaurant-ordering/G3:refs/tags/sdlc/restaurant-ordering/G3
+      - name: No breaking change against the G3 contract
+        run: scripts/contract-breaking.sh sdlc/restaurant-ordering/G3
