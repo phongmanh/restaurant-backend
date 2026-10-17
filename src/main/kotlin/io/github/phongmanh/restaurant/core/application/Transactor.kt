@@ -54,6 +54,14 @@ interface TxScope {
      */
     fun beforeCommit(action: suspend () -> Unit)
 
+    /**
+     * Runs [action] once the transaction has committed, outside it, in the order registered; never
+     * after a rollback. For remote calls, which never run inside a transaction (architecture §9): the
+     * event log publishes this way (realtime §4.2). An action that throws is logged and skipped, as
+     * the change is saved by then and the request must still succeed.
+     */
+    fun afterCommit(action: suspend () -> Unit)
+
     /** A value kept for the length of this transaction, made by [init] on first use. */
     fun <T : Any> getOrPut(
         key: TxKey<T>,

@@ -37,6 +37,16 @@ class WaiterCallRepository {
             it.bind(restaurantId.value, id.value).firstOrNull(::call)
         }
 
+    /** The calls of [ids] that exist, in one query (realtime's catch-up, §6.3). */
+    fun findMany(
+        tx: TxScope,
+        restaurantId: RestaurantId,
+        ids: List<WaiterCallId>,
+    ): List<WaiterCall> =
+        connection(tx).prepareStatement("$SELECT WHERE c.restaurant_id = ? AND c.id = ANY(?::uuid[]) ORDER BY c.created_at, c.id").use {
+            it.bind(restaurantId.value, ids.map { id -> id.toString() }).list(::call)
+        }
+
     /**
      * The call a new tap of [kind] merges into (FR-008): the session's unacknowledged call of that
      * kind, or else its latest one made after [since].

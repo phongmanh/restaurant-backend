@@ -17,6 +17,8 @@ import io.github.phongmanh.restaurant.orders.http.GuestOrderRoutes
 import io.github.phongmanh.restaurant.orders.http.StaffBillRoutes
 import io.github.phongmanh.restaurant.orders.http.StaffOrderRoutes
 import io.github.phongmanh.restaurant.orders.ordersModule
+import io.github.phongmanh.restaurant.realtime.http.RealtimeJobRoutes
+import io.github.phongmanh.restaurant.realtime.http.RealtimeRoutes
 import io.github.phongmanh.restaurant.realtime.realtimeModule
 import io.github.phongmanh.restaurant.reports.reportsModule
 import io.github.phongmanh.restaurant.restaurants.http.AdminRoutes
@@ -89,6 +91,8 @@ fun Application.module(
         get<StaffOrderRoutes>().install(this)
         get<StaffBillRoutes>().install(this)
         get<RetentionJobRoutes>().install(this)
+        get<RealtimeRoutes>().install(this)
+        get<RealtimeJobRoutes>().install(this)
     }
 }
 
@@ -104,6 +108,6 @@ fun appModule(
         menuModule(),
         tablesModule(config.guests, config.auth.issuer),
         ordersModule(),
-        realtimeModule(),
+        realtimeModule(config.realtime),
         reportsModule(),
     )

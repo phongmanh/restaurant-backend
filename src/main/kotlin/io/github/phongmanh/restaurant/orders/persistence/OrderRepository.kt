@@ -129,13 +129,14 @@ class OrderRepository {
             }
     }
 
+    /** The orders of [ids] that exist, in one query (one order, or the batch of realtime's catch-up, §6.3). */
     fun find(
         tx: TxScope,
         restaurantId: RestaurantId,
-        id: OrderId,
-    ): OrderRow? =
-        connection(tx).prepareStatement("$SELECT WHERE restaurant_id = ? AND id = ?").use {
-            it.bind(restaurantId.value, id.value).firstOrNull(::order)
+        ids: List<OrderId>,
+    ): List<OrderRow> =
+        connection(tx).prepareStatement("$SELECT WHERE restaurant_id = ? AND id = ANY(?::uuid[]) ORDER BY placed_at, id").use {
+            it.bind(restaurantId.value, ids.map { id -> id.toString() }).list(::order)
         }
 
     /** The order with its row locked until the transaction ends (`FOR UPDATE`). */

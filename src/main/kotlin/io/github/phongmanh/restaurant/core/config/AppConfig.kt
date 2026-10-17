@@ -33,6 +33,7 @@ data class AppConfig(
     val guests: GuestSettings,
     val jobs: JobSettings,
     val rateLimits: RateLimitSettings,
+    val realtime: RealtimeSettings,
 ) {
     companion object {
         const val PRODUCTION = "production"
@@ -64,6 +65,20 @@ data class AppConfig(
                     .milliseconds
 
             val environment = config.property("app.environment").getString()
+
+            // Upstash and Ably may be left out in dev and test only.
+            fun outsideDev(
+                path: String,
+                env: String,
+            ): String =
+                config.propertyOrNull(path)?.getString().orEmpty().also {
+                    if (it.isBlank() &&
+                        environment !in LOCAL_ENVIRONMENTS
+                    ) {
+                        missing += env
+                    }
+                }
+
             val appUrl = secret("database.url", "DATABASE_URL")
             val platformUrl = secret("database.platformUrl", "DATABASE_URL_PLATFORM")
             val jwtKeys = secret("auth.staffJwtKeys", "STAFF_JWT_KEYS")
@@ -72,12 +87,9 @@ data class AppConfig(
             val guestKeys = secret("guests.sessionJwtKeys", "GUEST_JWT_KEYS")
             val qrKeys = secret("guests.qrSigningKeys", "QR_SIGNING_KEYS")
             val cronSecret = secret("jobs.cronSecret", "CRON_SECRET")
-            val upstashUrl = config.propertyOrNull("rateLimits.upstashUrl")?.getString().orEmpty()
-            val upstashToken = config.propertyOrNull("rateLimits.upstashToken")?.getString().orEmpty()
-            if (environment !in LOCAL_ENVIRONMENTS) {
-                if (upstashUrl.isBlank()) missing += "UPSTASH_REDIS_REST_URL"
-                if (upstashToken.isBlank()) missing += "UPSTASH_REDIS_REST_TOKEN"
-            }
+            val upstashUrl = outsideDev("rateLimits.upstashUrl", "UPSTASH_REDIS_REST_URL")
+            val upstashToken = outsideDev("rateLimits.upstashToken", "UPSTASH_REDIS_REST_TOKEN")
+            val ablyKey = outsideDev("realtime.ablyApiKey", "ABLY_API_KEY")
             check(missing.isEmpty()) { "missing settings: ${missing.joinToString()}" }
 
             val origins =
@@ -118,6 +130,7 @@ data class AppConfig(
                         timeout = millis("rateLimits.timeoutMs"),
                         policies = policies(config.config("rateLimits.policies").toMap()),
                     ),
+                realtime = RealtimeSettings(ablyKey.ifBlank { null }),
             )
         }
 

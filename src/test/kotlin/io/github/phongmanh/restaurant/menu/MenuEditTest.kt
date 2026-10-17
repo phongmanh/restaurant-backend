@@ -369,7 +369,7 @@ class MenuEditTest {
             assertEquals(actions.size.toLong(), menuVersion(a.id))
             val events =
                 AuthFixtures.query(
-                    "SELECT e.type, e.aggregate_type, e.aggregate_id, e.aggregate_version, e.audience, o.published_at IS NULL " +
+                    "SELECT e.type, e.aggregate_type, e.aggregate_id, e.aggregate_version, e.audience, o.published_at IS NOT NULL " +
                         "FROM domain_events e JOIN outbox o ON o.event_id = e.id WHERE e.restaurant_id = ? ORDER BY e.seq",
                     a.id.value,
                 ) { rs ->
@@ -382,6 +382,7 @@ class MenuEditTest {
                         rs.getBoolean(6).toString(),
                     )
                 }
+            // The last column: published to Ably after commit (realtime §4.2).
             assertEquals((1..actions.size).map { listOf("MenuChanged", "menu", a.id.toString(), "$it", "staff", "true") }, events)
 
             val priceEdit =

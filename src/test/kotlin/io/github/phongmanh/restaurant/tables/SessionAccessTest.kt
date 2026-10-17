@@ -4,9 +4,13 @@ import io.github.phongmanh.restaurant.core.domain.DomainError
 import io.github.phongmanh.restaurant.core.domain.UuidV7
 import io.github.phongmanh.restaurant.core.persistence.DatabasePools
 import io.github.phongmanh.restaurant.core.persistence.ExposedTransactor
+import io.github.phongmanh.restaurant.realtime.application.CircuitBreaker
 import io.github.phongmanh.restaurant.realtime.application.OutboxEventLog
+import io.github.phongmanh.restaurant.realtime.application.OutboxPublisher
 import io.github.phongmanh.restaurant.realtime.persistence.EventRepository
+import io.github.phongmanh.restaurant.realtime.persistence.OutboxRepository
 import io.github.phongmanh.restaurant.support.AuthFixtures
+import io.github.phongmanh.restaurant.support.FakeAbly
 import io.github.phongmanh.restaurant.support.Guests
 import io.github.phongmanh.restaurant.support.TestDatabase
 import io.github.phongmanh.restaurant.tables.application.DatabaseSessionAccess
@@ -37,14 +41,17 @@ import kotlin.test.assertTrue
 class SessionAccessTest {
     private lateinit var pools: DatabasePools
     private lateinit var tx: ExposedTransactor
-    private val access =
-        DatabaseSessionAccess(SessionRepository(), WaiterCallRepository(), OutboxEventLog(EventRepository(), Clock.systemUTC(), UuidV7))
+    private lateinit var access: DatabaseSessionAccess
 
     @BeforeTest
     fun setUp() {
         TestDatabase.truncate()
         pools = DatabasePools(TestDatabase.settings)
         tx = ExposedTransactor(pools)
+        val clock = Clock.systemUTC()
+        val publisher = OutboxPublisher(tx, OutboxRepository(), FakeAbly(), CircuitBreaker(clock), clock)
+        access =
+            DatabaseSessionAccess(SessionRepository(), WaiterCallRepository(), OutboxEventLog(EventRepository(), publisher, clock, UuidV7))
     }
 
     @AfterTest

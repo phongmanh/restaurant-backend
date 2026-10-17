@@ -89,7 +89,9 @@ class OrderStatusService(
     ): Order =
         transactor.inTransaction(guest.restaurantId) {
             val rid = guest.restaurantId
-            val found = orders.find(this, rid, id)?.takeIf { it.sessionId == guest.sessionId } ?: throw DomainError.NotFound()
+            val found =
+                orders.find(this, rid, listOf(id)).singleOrNull()?.takeIf { it.sessionId == guest.sessionId }
+                    ?: throw DomainError.NotFound()
             if (found.status == OrderStatus.CANCELLED) return@inTransaction query.order(this, rid, id)!!
             if (found.status != OrderStatus.PLACED) throw DomainError.OrderNotCancellable()
             val order = lockForChange(this, rid, id, takesMoney = true)
@@ -158,7 +160,7 @@ class OrderStatusService(
         takesMoney: Boolean,
     ): OrderRow {
         if (takesMoney) {
-            val sessionId = orders.find(tx, restaurantId, id)?.sessionId ?: throw DomainError.NotFound()
+            val sessionId = orders.find(tx, restaurantId, listOf(id)).singleOrNull()?.sessionId ?: throw DomainError.NotFound()
             bills.lock(tx, restaurantId, sessionId)
         }
         return orders.lock(tx, restaurantId, id) ?: throw DomainError.NotFound()

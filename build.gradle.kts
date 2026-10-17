@@ -48,6 +48,7 @@ dependencies {
     implementation(libs.koin.ktor)
     implementation(libs.bouncycastle)
     implementation(libs.java.jwt)
+    implementation(libs.ably.java)
 
     testImplementation(kotlin("test"))
     testImplementation(platform(libs.ktor.bom))

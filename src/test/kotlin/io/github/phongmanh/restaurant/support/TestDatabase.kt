@@ -1,6 +1,7 @@
 package io.github.phongmanh.restaurant.support
 
 import io.github.phongmanh.restaurant.core.config.AppConfig
+import io.github.phongmanh.restaurant.core.config.RealtimeSettings
 import io.github.phongmanh.restaurant.core.http.HttpSettings
 import io.github.phongmanh.restaurant.core.http.JobSettings
 import io.github.phongmanh.restaurant.core.http.SemVer
@@ -72,6 +73,7 @@ object TestDatabase {
             guests = TestKeys.guests,
             jobs = JobSettings(TestKeys.CRON_SECRET),
             rateLimits = TestKeys.rateLimits,
+            realtime = RealtimeSettings(TestKeys.ABLY_KEY),
         )
     }
 

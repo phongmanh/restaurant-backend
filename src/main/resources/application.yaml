@@ -98,3 +98,14 @@ rateLimits:
       place_staff: "30/60"
       cancel: "30/60"
       staff_change: "240/60"
+    # realtime §9, §14 Q1: subscription tokens and catch-up reads, per guest session and per staff member.
+    realtime:
+      token_session: "30/3600"
+      token_staff: "60/3600"
+      events_session: "120/60"
+      events_staff: "240/60"
+
+# Live updates (realtime §8, ADR-0003). Secret: the Ably API key, limited to publish and subscribe on
+# restaurant.* and session.*; one Ably app per environment. Required outside dev and test.
+realtime:
+  ablyApiKey: "$ABLY_API_KEY:"

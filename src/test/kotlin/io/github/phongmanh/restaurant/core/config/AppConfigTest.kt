@@ -45,6 +45,7 @@ class AppConfigTest {
             "guests.qrSigningKeys" to TestKeys.qrKeysJson,
             "guests.customerAppUrl" to TestKeys.CUSTOMER_APP,
             "jobs.cronSecret" to TestKeys.CRON_SECRET,
+            "realtime.ablyApiKey" to TestKeys.ABLY_KEY,
             "rateLimits.upstashUrl" to "",
             "rateLimits.upstashToken" to "",
             "rateLimits.timeoutMs" to "200",
@@ -61,6 +62,8 @@ class AppConfigTest {
         assertEquals(5.seconds, c.database.statementTimeout)
         assertEquals(listOf("https://order.example.test", "http://localhost:5173"), c.http.allowedOrigins)
         assertEquals(mapOf("customer-android" to SemVer(1, 2, 3)), c.http.minClientVersions)
+        assertEquals(TestKeys.ABLY_KEY, c.realtime.ablyApiKey)
+        assertNull(AppConfig.load(config("realtime.ablyApiKey" to "")).realtime.ablyApiKey, "optional in dev")
     }
 
     @Test
@@ -101,9 +104,16 @@ class AppConfigTest {
     fun `missing auth secrets and, outside dev, Upstash stop startup`() {
         val e =
             assertFailsWith<IllegalStateException> {
-                AppConfig.load(config("app.environment" to "staging", "auth.staffJwtKeys" to "", "auth.emailHmacKey" to ""))
+                AppConfig.load(
+                    config(
+                        "app.environment" to "staging",
+                        "auth.staffJwtKeys" to "",
+                        "auth.emailHmacKey" to "",
+                        "realtime.ablyApiKey" to "",
+                    ),
+                )
             }
-        listOf("STAFF_JWT_KEYS", "EMAIL_HMAC_KEY", "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN").forEach {
+        listOf("STAFF_JWT_KEYS", "EMAIL_HMAC_KEY", "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN", "ABLY_API_KEY").forEach {
             assertTrue(it in e.message!!, e.message)
         }
         val staging =

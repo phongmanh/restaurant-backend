@@ -11,6 +11,7 @@ import io.github.phongmanh.restaurant.core.auth.crypto.EcKeySet
 import io.github.phongmanh.restaurant.core.auth.crypto.EmailHmac
 import io.github.phongmanh.restaurant.core.auth.crypto.SecretBox
 import io.github.phongmanh.restaurant.orders.application.OrderLimitPolicies
+import io.github.phongmanh.restaurant.realtime.application.RealtimeLimits
 import io.github.phongmanh.restaurant.restaurants.application.StaffLimits
 import io.github.phongmanh.restaurant.tables.application.TableLimits
 import java.math.BigInteger
@@ -39,6 +40,9 @@ object TestKeys {
     const val ADMIN_APP = "https://admin.example.test"
     const val CUSTOMER_APP = "https://order.example.test"
     const val CRON_SECRET = "test-cron-secret-0123456789"
+
+    /** An Ably key in Ably's format, `<app>.<key id>:<secret>`; it signs token requests locally and never reaches Ably. */
+    const val ABLY_KEY = "testapp.testkey:test-ably-secret-0123456789"
 
     fun ecKeyPair(): KeyPair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
 
@@ -117,6 +121,10 @@ object TestKeys {
                     RateLimitPolicy(OrderLimitPolicies.PLACE_STAFF, 30, 60.seconds),
                     RateLimitPolicy(OrderLimitPolicies.CANCEL, 30, 60.seconds),
                     RateLimitPolicy(OrderLimitPolicies.STAFF_CHANGE, 240, 60.seconds),
+                    RateLimitPolicy(RealtimeLimits.TOKEN_SESSION, 30, 3600.seconds),
+                    RateLimitPolicy(RealtimeLimits.TOKEN_STAFF, 60, 3600.seconds),
+                    RateLimitPolicy(RealtimeLimits.EVENTS_SESSION, 120, 60.seconds),
+                    RateLimitPolicy(RealtimeLimits.EVENTS_STAFF, 240, 60.seconds),
                 ).associateBy { it.name },
         )
 

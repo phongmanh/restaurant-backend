@@ -78,7 +78,7 @@ class OrderQueryService(
         tx: TxScope,
         restaurantId: RestaurantId,
         id: OrderId,
-    ): Order? = orders.find(tx, restaurantId, id)?.let { assemble(tx, restaurantId, listOf(it)).single() }
+    ): Order? = assemble(tx, restaurantId, orders.find(tx, restaurantId, listOf(id))).singleOrNull()
 
     /** Puts [rows] together with their lines and tables: two queries, whatever the number of orders. */
     fun assemble(

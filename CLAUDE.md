@@ -42,6 +42,7 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 - **Retries and concurrent edits.** Operations listed in architecture §10 require `Idempotency-Key`, stored in the same transaction as the change. Versioned resources require `If-Match`: missing → 428, stale → 412 (core-and-auth §4–5).
 - **Idempotent by design beats a stored key.** When a database constraint already makes a retry harmless (one open session per table, merged waiter calls), the operation takes no `Idempotency-Key` (CR-005).
 - **Audit and outbox rows are written in the same transaction as the change** they record (NFR-SEC-03, ADR-0003).
+- **A remote call runs in `tx.afterCommit`, never inside the transaction** (architecture §9). `EventLog.append` registers the Ably publish there, so a rolled-back change sends nothing and a slow Ably holds no row lock. An after-commit action that throws is logged and skipped: the change is saved and the request still succeeds; the outbox covers what wasn't sent (realtime §4.2; step 8).
 - **No personal data, secrets or tokens in logs:** no emails, names, phones, notes, IPs, passwords or tokens (architecture §11).
 - **No custom cryptography.** Argon2id with Bouncy Castle, ES256 JWTs, AES-256-GCM, secure random tokens stored as SHA-256 hashes (core-and-auth §8).
 - **Sign-in failures look and cost the same.** Every failure is one `401 invalid_credentials` body and runs Argon2id exactly once (a dummy hash when there's no usable account). The timing is only even while hashes share parameters, so stored hashes are re-hashed at sign-in when the parameters change. Only a finished sign-in clears the lock counter: an admin's correct password alone doesn't (core-and-auth §8.1; IT-AUTH-02; step 3).
@@ -82,6 +83,7 @@ These rules are the owner's. Each one points to where its detail lives. **Keep t
 - detekt 1.23.8 crashes (the error is just the JDK version, e.g. `> 25.0.4.1`) when Gradle itself runs on JDK 25, because its embedded Kotlin compiler can't parse the version. It passes on a machine whose Gradle runs on JDK 21, so it fails only in CI. `build.gradle.kts` therefore runs detekt-cli as a `JavaExec` task on a JDK 21 toolchain; don't switch back to the detekt Gradle plugin until detekt 2 is stable. Reproduce with `JAVA_HOME=<jdk 25> ./gradlew detekt --rerun` (PR #3, 2026-10-15).
 
 - A `/*` inside a KDoc or comment (e.g. a path like `/v1/auth/*` in backticks) opens a nested comment in Kotlin, and the compiler reports "Unclosed comment" at the end of the file. Write the path without the `*` (step 3).
+- Tests never reach Ably: `testApp` binds a `FakeAbly` (down, rate-limited, publish hook). A test that inspects it passes its own in `overrides`. The real adapter is checked by `AblyLiveTest`, which runs only when `ABLY_API_KEY` is set in the shell (step 8).
 - macOS has no `timeout` command: `timeout 300 ./gradlew test` fails at once and prints nothing, which reads like a passing run. Run long Gradle tasks with the Bash tool's background mode and read `build/test-results` (step 3).
 
 ## Saving context (automated in `.claude/settings.json`)
