@@ -59,6 +59,8 @@ dependencies {
     implementation(libs.bouncycastle)
     implementation(libs.java.jwt)
     implementation(libs.ably.java)
+    implementation(libs.ktor.server.metrics.micrometer)
+    implementation(libs.micrometer.registry.otlp)
 
     testImplementation(kotlin("test"))
     testImplementation(platform(libs.ktor.bom))

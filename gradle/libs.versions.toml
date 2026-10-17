@@ -28,6 +28,8 @@ ktlintGradle = "14.2.0"
 ktlint = "1.8.0"
 detekt = "1.23.8"
 kover = "0.9.11"
+# Phase 5 step 4 (2026-10-17): metrics pushed over OTLP (ADR-0009); the version Ktor 3.6.0's metrics plugin is built on.
+micrometer = "1.17.1"
 
 [libraries]
 ktor-bom = { module = "io.ktor:ktor-bom", version.ref = "ktor" }
@@ -43,6 +45,8 @@ ktor-server-cors = { module = "io.ktor:ktor-server-cors" }
 ktor-server-double-receive = { module = "io.ktor:ktor-server-double-receive" }
 ktor-server-body-limit = { module = "io.ktor:ktor-server-body-limit" }
 ktor-server-test-host = { module = "io.ktor:ktor-server-test-host" }
+ktor-server-metrics-micrometer = { module = "io.ktor:ktor-server-metrics-micrometer" }
+micrometer-registry-otlp = { module = "io.micrometer:micrometer-registry-otlp", version.ref = "micrometer" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstashEncoder" }

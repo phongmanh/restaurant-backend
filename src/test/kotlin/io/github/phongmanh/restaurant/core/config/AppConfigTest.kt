@@ -46,6 +46,8 @@ class AppConfigTest {
             "guests.customerAppUrl" to TestKeys.CUSTOMER_APP,
             "jobs.cronSecret" to TestKeys.CRON_SECRET,
             "realtime.ablyApiKey" to TestKeys.ABLY_KEY,
+            "observability.otlpEndpoint" to "https://otlp.example.test/otlp",
+            "observability.otlpHeaders" to "Authorization=Basic b3RscC1zZWNyZXQ=",
             "rateLimits.upstashUrl" to "",
             "rateLimits.upstashToken" to "",
             "rateLimits.timeoutMs" to "200",
@@ -118,10 +120,20 @@ class AppConfigTest {
                         "auth.staffJwtKeys" to "",
                         "auth.emailHmacKey" to "",
                         "realtime.ablyApiKey" to "",
+                        "observability.otlpEndpoint" to "",
+                        "observability.otlpHeaders" to "",
                     ),
                 )
             }
-        listOf("STAFF_JWT_KEYS", "EMAIL_HMAC_KEY", "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN", "ABLY_API_KEY").forEach {
+        listOf(
+            "STAFF_JWT_KEYS",
+            "EMAIL_HMAC_KEY",
+            "UPSTASH_REDIS_REST_URL",
+            "UPSTASH_REDIS_REST_TOKEN",
+            "ABLY_API_KEY",
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            "OTEL_EXPORTER_OTLP_HEADERS",
+        ).forEach {
             assertTrue(it in e.message!!, e.message)
         }
         val staging =
@@ -181,6 +193,18 @@ class AppConfigTest {
                 )
             }
         assertTrue("guests.customerAppUrl" in local.message!!, local.message)
+    }
+
+    @Test
+    fun `reads the metrics backend, and never prints its token (ADR-0009)`() {
+        val c = AppConfig.load(config())
+        assertEquals("https://otlp.example.test/otlp", c.observability.otlpEndpoint)
+        assertEquals(mapOf("Authorization" to "Basic b3RscC1zZWNyZXQ="), c.observability.headers)
+        assertEquals(10, c.observability.step.seconds)
+        assertFalse("b3RscC1zZWNyZXQ=" in c.toString(), c.toString())
+        val dev = AppConfig.load(config("observability.otlpEndpoint" to "", "observability.otlpHeaders" to ""))
+        assertNull(dev.observability.otlpEndpoint, "dev may leave the backend out")
+        assertFailsWith<IllegalArgumentException> { AppConfig.load(config("observability.otlpHeaders" to "no-equals-sign")) }
     }
 
     @Test
