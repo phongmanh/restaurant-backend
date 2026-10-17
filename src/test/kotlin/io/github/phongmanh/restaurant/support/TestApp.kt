@@ -4,6 +4,7 @@ import io.github.phongmanh.restaurant.core.config.AppConfig
 import io.github.phongmanh.restaurant.module
 import io.github.phongmanh.restaurant.realtime.application.RealtimePublisher
 import io.ktor.server.application.Application
+import io.ktor.server.application.install
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
@@ -24,6 +25,7 @@ fun testApp(
     block: suspend ApplicationTestBuilder.() -> Unit,
 ) = testApplication {
     application {
+        install(RouteLog.plugin)
         module(config, listOf(module { single<RealtimePublisher> { FakeAbly() } }) + overrides)
         routing { routes(this@application) }
     }
