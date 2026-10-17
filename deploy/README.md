@@ -37,8 +37,10 @@ Steps marked **you** are the owner's. The auto-mode safety check blocks Claude f
    - Leave `VERCEL_AUTOMATION_BYPASS_SECRET` for step 7.
 5. **Claude: run the migrations** against Neon. This creates the roles, applies V1 onwards, and is the first check of R-15 (whether Neon's owner role can grant `BYPASSRLS`):
    ```
-   (set -a; . deploy/staging/.env.staging; set +a; ./gradlew migrate)
+   (while IFS= read -r line; do case "$line" in ''|'#'*) ;; *) export "$line" ;; esac; done < deploy/staging/.env.staging
+    ./gradlew --no-daemon migrate)
    ```
+   Don't load the file with `.` or `source`: the shell would strip the JSON's quotes and treat the `&` in the URLs as a command separator. `export "$line"` takes each value as it is. `--no-daemon` makes sure the Gradle process sees these variables.
 6. **You: create and link the Vercel project** from the repository root, then disconnect it from GitHub at once. Otherwise every push builds it and a merge to `main` deploys it (CLAUDE.md):
    ```
    vercel link                    # new project "restaurant-staging" in liam-36c7
