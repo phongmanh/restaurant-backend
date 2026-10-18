@@ -16,7 +16,7 @@ It is not a launch with real customers. The gate log keeps what such a launch st
 ## 2. What ships
 | Item | Value |
 |---|---|
-| Code | `main` at the release commit (§3's fixes on top of the G5 baseline `9fce6f8`), tagged `release/1.0.0`; version `1.0.0` (Q-25, decided) |
+| Code | `main` at the release commit (§3's fixes on top of the G5 baseline `9fce6f8`), tagged `release/1.0.1`; version `1.0.1`: `release/1.0.0` (Q-25) plus CR-015's key prefix, which production needs. `release/1.0.0` stays where it is, since a published tag isn't moved |
 | Image | `Dockerfile.vercel`, built by Vercel from that commit (Vercel builds from source; CI's `image` job builds the same file but doesn't push it) |
 | Contract | `docs/api/openapi.yaml` 1.1.1, 100 operations (the seven deprecated `PATCH` twins included) |
 | Migrations | V1 to V11, all expand-only; production starts from an empty database |
