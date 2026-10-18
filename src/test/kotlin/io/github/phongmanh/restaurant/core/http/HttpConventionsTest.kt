@@ -111,12 +111,13 @@ class HttpConventionsTest {
         }
 
     @Test
-    fun `every response carries HSTS and nosniff, and no Server header`() =
+    fun `every response carries HSTS and nosniff once, and no Server header`() =
         withRoutes {
-            for (path in listOf("/v1/test/ok", "/v1/test/nothing", "/v1/test/down", Endpoints.HEALTH)) {
+            // An unknown path too: ZAP found its 404 with the headers twice (ST-11, step 6a).
+            for (path in listOf("/v1/test/ok", "/v1/test/nothing", "/v1/test/down", "/v1/test/no-such-route", Endpoints.HEALTH)) {
                 val headers = client.get(path).headers
-                assertEquals(HSTS_VALUE, headers[HttpHeaders.StrictTransportSecurity], path)
-                assertEquals("nosniff", headers["X-Content-Type-Options"], path)
+                assertEquals(listOf(HSTS_VALUE), headers.getAll(HttpHeaders.StrictTransportSecurity), path)
+                assertEquals(listOf("nosniff"), headers.getAll("X-Content-Type-Options"), path)
                 assertNull(headers[HttpHeaders.Server], path)
             }
         }

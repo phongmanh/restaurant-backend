@@ -40,7 +40,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object Staging {
     const val BUDGET = 2_000
-    private const val PLANNED = 650
+    private const val PLANNED = 1_000
     const val DOMAIN = "staging.example"
 
     /** Signs in again before a token's 15 minutes run out (architecture §7). */

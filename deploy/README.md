@@ -129,6 +129,19 @@ Restores staging's database to a point about an hour back, inside the free plan'
 5. **Claude: check it**, and note the time as the end of the restore: `/health` answers 200, then `./gradlew --no-daemon systemTest -PstagingUrl=<new deployment URL> --tests '*RestoreDrillTest' -PrestoreDrill=check -PrestorePoint=<the point, RFC 3339>`. It passes when the first mark is there and the second isn't. RTO is from step 3's start to this check. RPO is the gap between the point you chose and the newest write that came back, at most the minutes between the marks.
 6. **You: switch back.** Put the two values back to `main`'s host and redeploy as in step 10. **Claude:** `-PrestoreDrill=clean` against that deployment, back on `main`, removes the marks there; the branch's copies go with the branch. **You:** delete the `restore-st08` branch in the Neon console (the free plan allows 10 branches).
 
+### ZAP scan (ST-11, NFR-SEC-01)
+ZAP, a free scanner, attacks the deployment the way an attacker's tools would, using the contract as its map. Claude runs it in Docker (the pinned image `ghcr.io/zaproxy/zaproxy:2.17.0`), with the environment exported as for the system tests, in two runs, because the five profiles together are above a run's 10,000 requests (test-plan §9):
+```
+./gradlew --no-daemon zapScan --args="<deployment URL> --profiles guest,staff,floor"
+./gradlew --no-daemon zapScan --args="<deployment URL> --profiles admin,anonymous"
+```
+- Each run onboards its own restaurant, `Nhà hàng Z <run> (ZAP)`, with a waiter, a menu item, a table, a guest, an order and a waiter call (about 15 requests), so the scan writes there, never in A, B or L. Their IDs become the contract's path examples, so the attacks reach real rows.
+- **Profiles**, each with a fresh token and its own cap: `guest` (`/v1/guest`, at most 1,200 requests), `staff` (restaurant, members, audit, menu: 4,300), `floor` (tables, sessions, orders, bills, events, reports: 4,300), `admin` (`/v1/admin`: 4,500), `anonymous` (every operation once without a token, then attacks on the 8 that take none: 1,500). A token profile stops after 12 minutes, inside its access token's 15.
+- **Budget guard:** the run prints its caps and refuses above 10,000; inside ZAP, `deploy/zap/budget.js` counts every request and stops the scan at the profile's cap. The first two runs (2026-10-18) sent 13,411 requests in about 21 minutes; the staff and admin profiles reached their caps.
+- **Clean-up:** the admin profile's writes can create admins and restaurants whose invitation only ZAP saw, so after it the run deactivates every admin and suspends every restaurant created since the run started (Z included; the scan itself often suspends Z first). The first run's Z stays, like AT-040's restaurant C.
+- **Secrets** go to the container as environment variables and are never written to a file. The reports are in `build/zap/<run>/` (git-ignored): `summary.md`, and per profile `zap-<profile>.html`. They can quote response bodies, so they stay there.
+- **Reading the result:** the run exits 1 when any alert is High. Each alert is triaged in [asvs-checklist.md](../docs/sdlc/restaurant-ordering/asvs-checklist.md) §2.
+
 ### Redeploying
 Repeat step 10. Migrations come first whenever the release adds one (step 5): they are expand-only within a release, so the deployment still running keeps working (architecture §8).
 

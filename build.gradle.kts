@@ -205,6 +205,16 @@ tasks.register<Test>("systemTest") {
     }
 }
 
+// test-plan §4 ST-11, deploy/README.md: ZAP's API scan of a staging deployment, in Docker, driven by
+// the contract. Never part of `./gradlew build`: it spends the free plans' allowances (test-plan §9).
+tasks.register<JavaExec>("zapScan") {
+    group = "staging"
+    description = "<deployment URL> [--profiles guest,staff,admin,anonymous] [--plan-only]: ST-11's ZAP scan"
+    classpath = systemTest.runtimeClasspath
+    mainClass = "io.github.phongmanh.restaurant.staging.ZapScanKt"
+    workingDir = rootDir
+}
+
 // deploy/README.md, ST-07: pushes request counts with an injected 5xx share to Grafana Cloud, so
 // staging's burn-rate alerts can be seen to fire. Reads OTEL_EXPORTER_OTLP_* from the environment.
 tasks.register<JavaExec>("injectErrors") {
