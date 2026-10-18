@@ -245,6 +245,16 @@ tasks.register<JavaExec>("injectErrors") {
     workingDir = rootDir
 }
 
+// test-plan §9 step 6b, deploy/README.md: the scaled load runs (ST-01, ST-02, ST-04, ST-06, ST-09,
+// ST-19), k6 in Docker for the mix. Never part of `./gradlew build`: it spends the free plans' allowances.
+tasks.register<JavaExec>("loadTest") {
+    group = "staging"
+    description = "<URL> --profile smoke|cold|deploy|report|noisy [--minutes N] [--rate N] [--force] [--plan-only]: step 6b's load runs"
+    classpath = systemTest.runtimeClasspath
+    mainClass = "io.github.phongmanh.restaurant.staging.LoadRunKt"
+    workingDir = rootDir
+}
+
 // ADR-0004: migrations run from CI (or locally) over a direct connection as the migrator, never at
 // service startup. Reads DATABASE_URL_MIGRATOR_DIRECT, DATABASE_URL and DATABASE_URL_PLATFORM.
 tasks.register<JavaExec>("migrate") {
