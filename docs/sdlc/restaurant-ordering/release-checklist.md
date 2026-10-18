@@ -101,4 +101,6 @@ Filled during the release.
 
 | Step | Result | Date | Reference |
 |---|---|---|---|
-| | | | |
+| 1 | PR #39 merged (P-1 to P-4, version `1.0.0`); CI `build`, `contract` and `image` passed; release commit `main` `35826b8` | 2026-10-18 | PR #39 |
+| 2 | Staging redeployed from `35826b8` (deployment `pyojll743`, `dpl_3CrqS9Ee4qjixwPAV9JUa2o6XW6T`). Smoke: `/health` 200 with the bypass header, 302 without; `restaurant-staging-ecru.vercel.app` answers 404 `DEPLOYMENT_NOT_FOUND`; start-up clean (both pools, ready in 2.2–2.4 s). `restaurant-staging-liam-36c7.vercel.app` still pointed at the earlier deployment (a manual alias since ST-19 doesn't follow new deploys); the owner moved it with `vercel alias set`, and it answers 302 without the header. System suite run `tn419f`: 32 tests, 29 passed, 0 failed, 3 skipped (ST-08's restore drill, run only on request); 970 requests. Log review: ST-15 nothing found in 1,007 lines, ST-18 both request IDs found | 2026-10-18 | `build/test-results/systemTest/` |
+| 3 | Annotated tag `release/1.0.0` pushed, pointing at `35826b8` (the commit staging passed in step 2) | 2026-10-18 | tag `release/1.0.0` |
