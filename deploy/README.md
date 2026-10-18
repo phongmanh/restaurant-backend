@@ -105,9 +105,29 @@ Claude runs them after the seed, with the environment exported from both files a
 ./gradlew --no-daemon systemTest -PstagingUrl=<deployment URL>
 ```
 - Every AT scenario of test-plan §5 runs through the API (no client app exists yet), in restaurants A and B, as the seeded accounts. Each response is checked against the contract with CI's own `ContractCheck`, so a response that breaks it fails the scenario that got it. Live updates go through real Ably subscriptions on the channels the service's tokens grant.
-- A run sends about 550 requests and stops at 2,000 (test-plan §9's budget guard); it prints its total at the end. The first run sent 535 in about 2 minutes, a minute of it AT-005 keeping a phone offline.
+- A run sends about 650 requests and stops at 2,000 (test-plan §9's budget guard); it prints its total at the end. The first run sent 535 in about 2 minutes, a minute of it AT-005 keeping a phone offline.
 - Each scenario seats its guests at tables free when it starts and closes their sessions when it ends. A run leaves closed bills in A, accounts named `….<run>@staging.example` (deactivated) and one restaurant `C <run>` from AT-040. Run one class with `--tests '*IsolationTest'`.
-- The results are JUnit's, in `build/test-results/systemTest/`; lines starting `[AT-…]` in the output are the measurements (live-update delays, call counts).
+- The results are JUnit's, in `build/test-results/systemTest/`; lines starting `[AT-…]` or `[ST-…]` in the output are the measurements (live-update delays, call counts).
+- Beside the scenarios, test-plan §4's `Free` rows: `AbuseLimitsTest` (ST-14) spends one minute's sign-in allowance and the WAF's, so for about two minutes the other tests' sign-ins wait (the client waits out a `429`). `AuditTrailTest` (ST-13) also connects to Neon with the env file's settings, only to read the chains and to try statements that match no row in a transaction it rolls back. `RequestIdTest` (ST-18) writes the request IDs it got to `build/system-test/st18-request-ids.txt`.
+- **Claude: review the logs within the hour** (Hobby keeps them an hour), a few minutes after the run: Vercel's logs take a minute or two to arrive, and a review run straight away found neither request ID. Run `python3 -I deploy/staging/log-review.py --since 1h`. It finds ST-18's request IDs in Vercel's logs and looks through every line the service logged for email addresses, tokens, IPs, phone numbers and the seeded accounts' emails, passwords and secrets (ST-15). It prints counts and the logger of each hit, never the text, and exits 0 when the IDs are found and nothing is hit.
+
+### Staff data requests (restaurants §10, NFR-PRIV-01)
+A staff member asks the operator, not their restaurant, for a copy of their personal data or for its erasure. A platform admin handles it through the API (no admin screen exists yet):
+1. **Check who's asking**: the request comes from the email on the account, or the restaurant's manager confirms it. Find the account's ID with `GET /v1/admin/restaurants/{restaurantId}/members`.
+2. **Export**: `GET /v1/admin/staff-accounts/{staffId}/export` answers the account's personal fields, its role history and the audit entries where it's the actor; never a hash, secret or token. Send that JSON to the person by a channel they confirmed. The export itself is audited (`staff.data_exported`).
+3. **Erase**, if asked: `POST /v1/admin/staff-accounts/{staffId}/erase` deactivates the account, ends its sessions and anonymises it at once; the audit log keeps only the pseudonymous ID. If the answer says `"last_manager_removed": true`, the restaurant has no active manager left: invite one (`POST /v1/admin/restaurants/{restaurantId}/members`).
+4. **Record** the request and the date it was answered. The legal deadline waits for TBD-4 and the legal review.
+
+`StaffDataRequestTest` (ST-15) does steps 2 and 3 on staging for a member it invites.
+
+### Restore drill (ST-08, NFR-REL-01)
+Restores staging's database to a point about an hour back, inside the free plan's 6-hour window, and times how long until a deployment answers on it. The target is RPO ≤ 5 minutes and RTO ≤ 1 hour. With the environment exported as for the system tests:
+1. **Claude: mark the database** twice, five minutes apart, with `./gradlew --no-daemon systemTest -PstagingUrl=<deployment URL> --tests '*RestoreDrillTest' -PrestoreDrill=mark`. Each run adds a table to A named `st08-<yyMMddHHmmss>` (UTC) and prints it. The **restore point** is a time between the two marks, so the first should come back and the second shouldn't.
+2. **Wait an hour**, so the point is an hour back, as the test plan asks.
+3. **You: note the start time, then make the branch.** Neon console → the `restaurant-staging` project → **Branches → New branch**: parent `main`, **from a point in time**, the restore point, name `restore-st08`. A branch keeps the roles and their passwords, so only the host changes: copy the new branch's **pooled** host (`ep-…-pooler.ap-southeast-1.aws.neon.tech`). It isn't a secret; send it to Claude.
+4. **You: point staging at the branch.** In the Vercel project's settings, edit `DATABASE_URL` and `DATABASE_URL_PLATFORM` (Production) and change only the host to the branch's. Then deploy as in step 10 and remove the alias.
+5. **Claude: check it**, and note the time as the end of the restore: `/health` answers 200, then `./gradlew --no-daemon systemTest -PstagingUrl=<new deployment URL> --tests '*RestoreDrillTest' -PrestoreDrill=check -PrestorePoint=<the point, RFC 3339>`. It passes when the first mark is there and the second isn't. RTO is from step 3's start to this check. RPO is the gap between the point you chose and the newest write that came back, at most the minutes between the marks.
+6. **You: switch back.** Put the two values back to `main`'s host and redeploy as in step 10. **Claude:** `-PrestoreDrill=clean` against that deployment, back on `main`, removes the marks there; the branch's copies go with the branch. **You:** delete the `restore-st08` branch in the Neon console (the free plan allows 10 branches).
 
 ### Redeploying
 Repeat step 10. Migrations come first whenever the release adds one (step 5): they are expand-only within a release, so the deployment still running keeps working (architecture §8).
