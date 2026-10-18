@@ -2,7 +2,7 @@
 
 | ID | Status | Raised | Raised by | Decides | Baseline affected |
 |---|---|---|---|---|---|
-| CR-014 | Proposed | 2026-10-18 | Manh Nguyen (product owner), choosing Q-22 option (a) after step 6c's ST-03 run | Manh Nguyen (product owner) | requirements.md v1.7 (NFR-PERF-03); test-plan.md v0.6 (ST-03) |
+| CR-014 | Approved | 2026-10-18 | Manh Nguyen (product owner), choosing Q-22 option (a) after step 6c's ST-03 run | Manh Nguyen (product owner) | requirements.md v1.7 (NFR-PERF-03); test-plan.md v0.6 (ST-03) |
 
 ## Summary
 Release 1's staff p95 target goes from 15 s to 16 s, and guests' from 60 s to 62 s. The p99 targets (20 s, 75 s) and the poll timers (15 s, 60 s, ±20 %) stay. The release-1 p95 then leaves room for the request itself, which CR-013's targets didn't.
@@ -43,4 +43,4 @@ No cost. Documents and a two-line code change, in PR #33.
 ## Decision
 | Date | Decision (Approved / Rejected / Deferred) | By | Notes |
 |---|---|---|---|
-| | | | |
+| 2026-10-18 | Approved | Manh Nguyen (product owner) | "approve CR-014 and commit to PR #33". Applied the same day: requirements v1.8, test-plan v0.7 (ST-03 passed, scaled), `LiveScreens` targets; Q-22 closed |

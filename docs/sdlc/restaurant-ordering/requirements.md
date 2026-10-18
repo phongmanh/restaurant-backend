@@ -2,7 +2,7 @@
 
 | Version | Status | Owner | Approvers |
 |---|---|---|---|
-| 1.7 | Approved (G1 2026-10-13; CR-002 2026-10-14; CR-003 2026-10-14; CR-004 to CR-007 2026-10-15; CR-013 2026-10-18) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
+| 1.8 | Approved (G1 2026-10-13; CR-002 2026-10-14; CR-003 2026-10-14; CR-004 to CR-007 2026-10-15; CR-013 and CR-014 2026-10-18) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
 
 **Version history**
 
@@ -16,6 +16,7 @@
 | 1.5 | 2026-10-15 | [CR-006](cr/CR-006-record-orders-decisions.md): the owner's orders decisions written in. A closed bill is corrected by a manager's correcting entries, counted on the day they're made (TBD-7 resolved); FR-016 isn't built in release 1 (TBD-8 resolved). Changed: FR-013, FR-016 (C → W), FR-050, §3.7, §9 |
 | 1.6 | 2026-10-15 | [CR-007](cr/CR-007-csv-export-out-of-release-1.md): FR-051 CSV export isn't built in release 1 (a 93-day export exceeds the 4.5 MB response cap and needs object storage, TBD-13). Changed: FR-051 (C → W), §3.7 |
 | 1.7 | 2026-10-18 | [CR-013](cr/CR-013-release-1-without-live-push.md): release 1 has no live push; staff screens read the event log every 15 s and guest screens every 60 s. Changed: KPI-2, NFR-PERF-03 (a release-1 target), §6 live-update transport row |
+| 1.8 | 2026-10-18 | [CR-014](cr/CR-014-release-1-delay-targets.md): release 1's live-update p95 targets leave room for the request, since a poll timer's p95 wait equals the timer (step 6c, Q-22). Changed: NFR-PERF-03 (staff p95 15 → 16 s, guests 60 → 62 s; p99s unchanged) |
 
 ## 1. Brief
 - **Problem:** In a busy restaurant, guests wait for a waiter to take their order and to bring the bill. Orders taken by hand get lost or misread on the way to the kitchen. Restaurant owners have no simple, shared view of what was ordered and sold. Small and mid-sized restaurants can't run their own ordering system, so they need one they can rent.
@@ -130,7 +131,7 @@ The product owner confirmed these numbers at G1 (2026-10-13). "Peak" is the dinn
 |---|---|---|---|
 | NFR-PERF-01 | Latency of guest reads (menu, session, orders, bill) | p95 ≤ 200 ms, p99 ≤ 500 ms at peak, measured at the service edge | Load test (k6) on staging |
 | NFR-PERF-02 | Latency of writes (place, cancel, status change, close session) | p95 ≤ 300 ms, p99 ≤ 800 ms at peak | Load test on staging |
-| NFR-PERF-03 | Live-update delay | A new order or status change reaches connected staff and guest clients within 2 s at p95 (5 s at p99) after the write is acknowledged, at peak.<br>**Release 1 has no live push (CR-013):** a change reaches staff screens within 15 s at p95 (20 s at p99) and guest screens within 60 s at p95 (75 s at p99) after the write is acknowledged; a screen shows its own change at once. The 2 s target applies once live push is added | Load test with live clients measuring end-to-end delay |
+| NFR-PERF-03 | Live-update delay | A new order or status change reaches connected staff and guest clients within 2 s at p95 (5 s at p99) after the write is acknowledged, at peak.<br>**Release 1 has no live push (CR-013):** a change reaches staff screens within 16 s at p95 (20 s at p99) and guest screens within 62 s at p95 (75 s at p99) after the write is acknowledged (CR-014: a p95 equal to the poll timer leaves no room for the request); a screen shows its own change at once. The 2 s target applies once live push is added | Load test with live clients measuring end-to-end delay |
 | NFR-PERF-04 | Report latency | A 31-day report for a restaurant with 300 bills/day returns in ≤ 3 s at p95 | Load test on staging with production-sized data |
 | NFR-SCAL-01 | Throughput and connections | At launch: 300 req/s and 15,000 concurrent live guest clients plus 2,500 staff screens. 3× within 12 months by adding instances or capacity only, with no redesign | Load test; capacity model (Phase 2) |
 | NFR-SCAL-02 | Fairness between restaurants | One restaurant's traffic (including abuse) can't push other restaurants beyond the PERF targets. Per-restaurant and per-session rate limits | Load test with one noisy tenant |

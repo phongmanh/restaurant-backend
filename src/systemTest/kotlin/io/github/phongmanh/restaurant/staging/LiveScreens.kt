@@ -408,9 +408,9 @@ class LiveScreens(
         private val GUEST_POLL: Duration = Duration.ofSeconds(60)
         private const val JITTER = 0.2
 
-        /** NFR-PERF-03's release-1 target (CR-013). */
-        private val STAFF_TARGET = Target(Duration.ofSeconds(15), Duration.ofSeconds(20))
-        private val GUEST_TARGET = Target(Duration.ofSeconds(60), Duration.ofSeconds(75))
+        /** NFR-PERF-03's release-1 target (CR-013; the p95s from CR-014, since a T ± 20 % timer's p95 wait is T). */
+        private val STAFF_TARGET = Target(Duration.ofSeconds(16), Duration.ofSeconds(20))
+        private val GUEST_TARGET = Target(Duration.ofSeconds(62), Duration.ofSeconds(75))
 
         /** `qr.present_ip`'s window (60 a minute per IP, tables §9). */
         private val SCAN_WINDOW: Duration = Duration.ofSeconds(61)
