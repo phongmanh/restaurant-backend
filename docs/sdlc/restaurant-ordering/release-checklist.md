@@ -55,12 +55,12 @@ It is built the way staging was (deploy/README.md, staging runbook steps 1–12)
 |---|---|---|---|
 | 1 | §3's fixes merged to `main`; CI green on the release commit | Claude (PR), you (merge) | CI's `build` and `image` jobs pass |
 | 2 | Staging redeployed from the release commit; the AT subset passes there (architecture §14 step 2) | You (deploy), Claude (run) | Smoke and AT subset pass on staging |
-| 3 | Tag `release/1.0.0` on the release commit | Claude | The tag points at the commit staging just passed |
+| 3 | Tag `release/1.0.1` on the release commit (`1.0.0` was tagged first; CR-015 made it `1.0.1`) | Claude | The tag points at the commit staging just passed |
 | 4 | Set up production (§4): Neon, Upstash, Vercel project and git disconnect, bypass secret, WAF rule | You | Each item exists; `vercel git disconnect` done |
 | 5 | Generate production secrets; fill in the provider secrets | Claude, then you | `.env.production` complete, mode `600`, not in git |
 | 6 | Run the migrations on production (`migrate`, V1 to V11); R-15's `BYPASSRLS` check passes as on staging | Claude | Flyway reports 11 applied, roles created |
 | 7 | **Go / no-go**: every row of §8's entry list is ticked | You | You say "go" |
-| 8 | Send the environment variables, deploy the release commit, remove the public alias (Q-24) | You | Deployment URL sent to Claude (never the bypass secret) |
+| 8 | Send the environment variables (`deploy/push-env.sh deploy/production/production.env deploy/production/.env.production`), deploy the release commit (`vercel deploy --prod --project restaurant-production`), remove the public alias `restaurant-production.vercel.app` (Q-24) | You | Deployment URL sent to Claude (never the bypass secret) |
 | 9 | Smoke-check: `/health`, the alias check (no alias answers 200 without the bypass header), start-up log line, logs free of secrets and personal data | Claude | All pass |
 | 10 | Seed production with `seedStaging` and production's exported settings: the first admin from the operator's bootstrap, then restaurants A and B | Claude | `deploy/production/.accounts.production` written, mode `600` |
 | 11 | Smoke run: the system suite (`systemTest -PstagingUrl=<production URL>`) with production's settings exported: sign-in, onboarding, the full order flow, reports, guest scan, each response checked against the contract | Claude | Every AT scenario passes |
@@ -84,10 +84,10 @@ The first **48 hours** after step 9. That covers two cron cycles, because Hobby 
 
 ## 8. G6 criteria
 **Entry (step 7, go / no-go):**
-- [ ] §3's P-1 to P-4 fixed, or accepted by the owner
-- [ ] Release commit tagged; CI green; staging passed the smoke test and AT subset on it
-- [ ] Production set up per §4; no secret shared with staging
-- [ ] Migrations applied on production
+- [x] §3's P-1 to P-4 fixed, or accepted by the owner
+- [x] Release commit tagged; CI green; staging passed the smoke test and AT subset on it
+- [x] Production set up per §4; no secret shared with staging (beside CR-015's Upstash token; Grafana token separate since 2026-10-19, Q-26)
+- [x] Migrations applied on production
 - [x] Q-24 and Q-25 decided (2026-10-18)
 
 **Exit (G6, Launch accepted):**
@@ -106,3 +106,5 @@ Filled during the release.
 | 3 | Annotated tag `release/1.0.0` pushed, pointing at `35826b8` (the commit staging passed in step 2) | 2026-10-18 | tag `release/1.0.0` |
 | 4 | Neon project `restaurant-production` (Singapore, PostgreSQL 18); Upstash shared with staging (CR-015). Vercel project `restaurant-production` (`prj_SpK4IOtHUOuWGnmhmUnKA0vs59Ro`) linked from the repository root: no Git link (checked through the API), Deployment Protection on, no deployment yet. Protection Bypass for Automation secret created by the owner and stored in `.env.production` (32 characters; not read back). WAF rule `auth-per-ip` from `deploy/production/waf-auth-per-ip.json` (`rules add --json`, then `publish`), read back with `rules inspect`: active, valid, path prefix `/v1/auth/`, fixed window 60 per 60 s per IP; no pending draft. The probe waits for step 9, when a deployment exists | 2026-10-18 | `deploy/production/waf-auth-per-ip.json` |
 | 6 | Migrations on production, run by the owner (the auto-mode check blocks Claude): 11 applied, V1 to V11, PostgreSQL 18.6, 8.5 s; the roles' creation raised no error (R-15). The service's first connection as `app` and `app_platform` confirms it | 2026-10-18 | owner's terminal |
+| 2 (1.0.1) | Staging redeployed from `main` `67e0cf1` (PR #41, CI `build`, `contract`, `image` green): deployment `4av9m1h4l`. Smoke: `/health` 200 with the bypass header in 0.8 s; without it the deployment and `restaurant-staging-liam-36c7.vercel.app` answer 302, `restaurant-staging-ecru.vercel.app` 404; start-up clean (ready in 2.2 s). System suite run `tn458b`: 32 tests, 29 passed, 0 failed, 3 skipped (ST-08 on request only); 946 requests; ST-14's burst limited by the app, then the WAF at 300. Log review: ST-15 nothing found in 1,198 lines, ST-18 both request IDs found. **Incident** on the first attempt: the command sent to production, see the STATUS decision of 2026-10-19 | 2026-10-19 | `build/test-results/systemTest/` |
+| 3 (1.0.1) | Annotated tag `release/1.0.1` pushed, pointing at `67e0cf1` (the commit staging passed above; `build.gradle.kts` says `1.0.1`) | 2026-10-19 | tag `release/1.0.1` |
