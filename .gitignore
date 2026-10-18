@@ -7,3 +7,4 @@ build/
 .DS_Store
 # Staging accounts written by ./gradlew seedStaging (passwords, the admin TOTP secret).
 .accounts*
+.vercel
