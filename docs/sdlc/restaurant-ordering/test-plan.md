@@ -2,7 +2,7 @@
 
 | Version | Status | QA lead | Approvers |
 |---|---|---|---|
-| 0.9 | Draft: fitted to free plans for Phase 5 (§2–§4, §6, §7, §9), for the owner's review; v0.6 applies CR-013 (release 1 without live push: ST-03, ST-05, ST-10, §3, §9); v0.7 applies CR-014 (ST-03's release-1 p95 targets); v0.8 records the acceptance run (§5 Result); v0.9 adds ST-05's paper check and the summary report (§10), for the owner's sign-off; §1 and §5 approved at G1 | TBD | Manh Nguyen (product owner, tech lead), operations owner TBD |
+| 1.0 | Signed off by the owner (2026-10-18): §10 summary report, every gap accepted. Earlier: fitted to free plans for Phase 5 (§2–§4, §6, §7, §9), for the owner's review; v0.6 applies CR-013 (release 1 without live push: ST-03, ST-05, ST-10, §3, §9); v0.7 applies CR-014 (ST-03's release-1 p95 targets); v0.8 records the acceptance run (§5 Result); v0.9 adds ST-05's paper check and the summary report (§10), for the owner's sign-off; §1 and §5 approved at G1 | TBD | Manh Nguyen (product owner, tech lead), operations owner TBD |
 
 Phase 1 filled §1 and §5. Phase 2 completed §2–§4 and §6–§8 as the master test plan. Phase 5 (v0.5, 2026-10-17) assigned the `ST-` IDs to the §4 rows, which Phase 3 hadn't, and fitted the System and NFR levels to free plans (§9).
 
@@ -73,7 +73,7 @@ The **Phase 5 (free plans)** column says how each test runs on the free staging 
 | ST-13 | NFR-SEC-03 | Audit trail | Each audited action produces an entry; hash chain verifies; app user can't update/delete | All pass | **Free** (CI already covers the rules: IT-CORE-05) | **Passed** (deployment `restaurant-staging-74er7may0` (step 3's build), 2026-10-18): a member's invitation, failed and successful sign-ins and deactivation each audited, the failed sign-in's entry carrying the request's ID; all 55 chains in Neon (1,502 entries) verify up to their heads; `app` and `app_platform` refused `UPDATE` and `DELETE` (42501) |
 | ST-14 | NFR-SEC-04 | Abuse limits | Exceed each limit; admin without MFA | 429 at the limits; admin refused | **Free:** each limit on staging with the real WAF rule and Upstash | **Passed** (deployment `restaurant-staging-74er7may0` (step 3's build), 2026-10-18): sign-ins from one IP: 30 answered `401`, the 31st the app's `429 rate_limited` with `Retry-After`, the WAF's `429` after 56 requests (staging's rule is 60 a minute: Q-20); report reads: the 31st in a minute `429`, another staff member still served; an admin's password gives a TOTP challenge only, which isn't an access token, and a wrong code uses it up |
 | ST-15 | NFR-PRIV-01 | Retention and minimisation | Retention-job tests with a fixed clock; log sample review for PII; staff export/erasure runbook dry run | No PII in logs; data removed on schedule | **Free:** retention runs in CI (IT-CORE-09 and others); on staging, a review of a Vercel log sample after the system suite, and the runbook dry run | **Passed** (deployment `restaurant-staging-74er7may0` (step 3's build), 2026-10-18): the log review (`deploy/staging/log-review.py`) of 139 lines after the suite found no email, token, IP, phone or seeded secret; the export/erasure runbook (`deploy/README.md`) dry run: the export holds the personal fields and no secret, erasure takes the member out of sign-in and the member list at once, both audited |
-| ST-16 | NFR-PRIV-02 | Residency | Configuration review of every store, log and trace destination | Regions per TBD-10 | **Blocked:** the review can list every region now (`sin1`, Singapore); pass or fail waits for TBD-10, which blocks G5 | |
+| ST-16 | NFR-PRIV-02 | Residency | Configuration review of every store, log and trace destination | Regions per TBD-10 | **Blocked:** the review can list every region now (`sin1`, Singapore); pass or fail waits for TBD-10, which blocks G5 | **Passed against the owner's decision** (2026-10-18: TBD-10 closed for release 1, `sin1` / Singapore kept, R-04 accepted). Configuration review: Vercel compute `sin1` (`vercel.json`); Neon and Upstash in AWS Singapore (`ap-southeast-1`); Grafana Cloud's OTLP endpoint in `ap-southeast-1`; Ably not used in release 1. Vercel keeps its runtime logs in its own infrastructure, whose region can't be set; they hold no personal data (ST-15). A legal review is required before a launch with real customers |
 | ST-17 | NFR-COMPAT-01 | Compatibility | Contract tests with the oldest client's DTOs; oasdiff | No breaking change | **CI:** `oasdiff breaking` against the G3 tag and the contract check (IT-CORE-08, IT-CORE-10). No client is released yet, so there are no older DTOs to test | **Passed in CI** (2026-10-18, the `contract` and `build` jobs on `ad70689`, the last commit with CI, CR-014): `scripts/contract-breaking.sh` reports no breaking change against the G3 tag; IT-CORE-08 and IT-CORE-10 pass, and every response a test gets is checked against the contract |
 | ST-18 | NFR-OBS-01 | Observability | Trace a request ID from client to logs and traces; check dashboards and alerts | Every SLO has an alert and a runbook | **Free** for the request ID (client → `X-Request-ID` → Vercel logs). Dashboards and alerts: with ST-07, after §9 step 4; runbooks: release checklist (Phase 6) | **Request ID passed** (deployment `restaurant-staging-74er7may0` (step 3's build), 2026-10-18): the service's own UUID v7 in the header and the problem body, the client's beside it as `client_request_id`, both found in Vercel's logs. Dashboards and alerts: with ST-07 |
 | ST-19 | NFR-OPS-01 | Deploy and rollback | Deploy and instant-rollback during the expected-peak profile | No failed requests from the deploy; rollback ≤ 10 min | **Scaled:** under the smoke-load profile | **Passed, with a switch back instead of Vercel's rollback** (owner's option (a), 2026-10-18, 3,747 requests): under 6 minutes at 10 requests a second the owner pointed the protected domain back at the earlier deployment (`vercel alias set`): the command took 2 s (06:33:08 → 06:33:10) and the domain served it by the next poll (06:33:17); 0 unexpected answers in 3,592; 104 orders, 0 lost, 0 duplicates; the earlier deployment started cold (47 requests over 2 s in the first minute, 30 iterations not started). Vercel's own rollback couldn't run on this staging: it moves the production domain, which staging removes (`vercel rollback` answered `500` twice; the dashboard's Instant Rollback changed nothing). The deploy itself: ST-09. Instant rollback with the production domain in place: residual (R-16) |
@@ -165,7 +165,7 @@ Every run records its totals with its result.
 Claude prepares each command and reads the results.
 
 ## 10. Test summary report (Phase 5)
-**Status:** for the owner's sign-off at G5 (written 2026-10-18). It sums up §4, §5 and the RTM; the detail and the evidence stay in their Result columns.
+**Status:** signed off by the owner (2026-10-18), with every §10.5 gap accepted; G5 itself is the owner's decision. It sums up §4, §5 and the RTM; the detail and the evidence stay in their Result columns.
 
 **In plain words:** a test summary report answers one question for the release gate: did the service do what the requirements ask, on something close to its real platform, and what wasn't measured? Here: every Must acceptance test passed on staging, twice. Every NFR test the free plans allow ran and passed, after three defects were found and fixed, except the live alert check, which the owner dropped. What's left was measured at a small size only, or waits for decisions that aren't tests (the legal review, an operations owner).
 
@@ -183,8 +183,8 @@ Claude prepares each command and reads the results.
 | NFR passed at a smaller size than production | 8 | ST-01, ST-02, ST-03 (CR-014's targets), ST-04, ST-06, ST-09, ST-10, ST-19 (with a switch back instead of Vercel's rollback) |
 | NFR passed in CI | 2 | ST-17, ST-20 |
 | NFR partly run | 2 | ST-07 (offline half passed; the owner dropped the live half), ST-18 (request ID passed; traces and dashboards wait for Q-18 and ST-07) |
+| NFR passed against an owner's decision | 1 | ST-16 (residency: the owner closed TBD-10 for release 1, keeping `sin1`) |
 | NFR checked on paper | 1 | ST-05 (the capacity model fits the measured times) |
-| NFR blocked | 1 | ST-16 (residency: waits for TBD-10) |
 
 ### 10.3 Defects found in Phase 5
 | ID | Severity | Defect | Status |
@@ -199,14 +199,14 @@ Claude prepares each command and reads the results.
 | Level | Criterion | Met? |
 |---|---|---|
 | Unit, integration, contract | All pass; coverage ≥ 80%; no new findings | Yes (CI on `ad70689`, ST-20) |
-| System and NFR | All `ST-` tests run | All but two: ST-16 waits for TBD-10, and ST-07's live half was dropped by the owner (2026-10-18). ST-05 is a paper check by plan |
-| System and NFR | NFR targets met, or gaps accepted in STATUS | Met wherever measured; the gaps in §10.5 are for the owner to accept at G5 |
+| System and NFR | All `ST-` tests run | All but ST-07's live half, which the owner dropped (2026-10-18; R-21). ST-05 is a paper check by plan; ST-16 passed against the owner's TBD-10 decision |
+| System and NFR | NFR targets met, or gaps accepted in STATUS | Met wherever measured; the owner accepted every gap in §10.5 (2026-10-18) |
 | System and NFR | No open S1/S2 defects | Yes |
 | Acceptance | Every Must AT passed | Yes, 21 of 21 |
-| Acceptance | The product owner signs off | **Waiting for the owner** |
+| Acceptance | The product owner signs off | **Signed off** by Manh Nguyen, product owner (2026-10-18) |
 
 ### 10.5 Gaps to accept at G5
-Accepting a gap at G5 means launching with that part unmeasured; each one names the risk that tracks it.
+Accepting a gap at G5 means launching with that part unmeasured; each one names the risk that tracks it. **The owner accepted every row (2026-10-18).**
 
 | Gap | Tests | Risk |
 |---|---|---|
@@ -216,8 +216,8 @@ Accepting a gap at G5 means launching with that part unmeasured; each one names 
 | Live push's 2 s target: deferred with ADR-0003 for release 1 | ST-03, ST-10 | R-13 |
 | Reports with 500 restaurants' rows in the index | ST-04 | R-16 |
 | Point-in-time restore beyond the free plan's 6 h window | ST-08 | R-14 |
-| No alert has fired in Grafana Cloud itself: the rules are checked only offline (promtool), and no dashboard was checked live | ST-07, ST-18 | No risk row yet |
-| Traces, the per-restaurant dashboard, deploy markers and 28-day SLO figures (Q-18, open) | ST-18 | Q-18 |
+| No alert has fired in Grafana Cloud itself: the rules are checked only offline (promtool), and no dashboard was checked live | ST-07, ST-18 | R-21 |
+| Traces, the per-restaurant dashboard, deploy markers and 28-day SLO figures (Q-18: G5 gaps, owner 2026-10-18) | ST-18 | R-21 |
 | Vercel's own rollback not proven on staging (a switch back by alias was used) | ST-19 | — |
 | Runtime logs kept an hour, with no drain to a separate system | ST-15 | R-20 |
 | ASVS F-4 (no rule on parallel sessions) and F-5 (password context words), accepted for release 1 | ST-11 | Q-21 |
@@ -226,8 +226,9 @@ Accepting a gap at G5 means launching with that part unmeasured; each one names 
 The G4 waiver carries on: FR-022 (Should) stays unbuilt until TBD-13.
 
 ### 10.6 What G5 needs besides this report
-- The owner's sign-off on the acceptance result (§10.4).
-- TBD-10 closed (the legal review on data residency; G2's condition), after which ST-16 passes or fails.
-- An operations owner and on-call named (R-07).
-- Q-18 decided, and a decision on the gaps in §10.5.
-- The open PRs #28 to #33 and this step's branch merged to `main`, so the release candidate is on `main`.
+All in on 2026-10-18:
+- The owner's sign-off on the acceptance result: given (§10.4).
+- TBD-10: closed for release 1 by the owner (`sin1` kept, R-04 accepted, a legal review before a launch with real customers); ST-16 passed against it.
+- An operations owner and on-call: Manh Nguyen (R-07 closed).
+- Q-18: all four items G5 gaps (R-21); the gaps in §10.5: all accepted.
+- The open PRs #28 to #34 merged to `main` (`1d07ea5`, CI green).
