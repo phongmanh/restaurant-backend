@@ -41,7 +41,7 @@ fun main(args: Array<String>) {
         "injectErrors: $minutes min of $perSecond guest menu reads a second, ${errorRatio * PERCENT}% of them 5xx; " +
             "${seconds / STEP_S} OTLP pushes, no request to the service",
     )
-    val registry = Metrics.registry(settings, "staging")
+    val registry = Metrics.registry(settings, deployEnvironment())
     val ok = timer(registry, "200")
     val failed = timer(registry, "500")
     var errorsOwed = 0.0

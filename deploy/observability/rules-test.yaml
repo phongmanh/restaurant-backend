@@ -10,9 +10,9 @@ tests:
 - name: "availability: 5% of requests fail"
   interval: 1m
   input_series:
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"2xx\", client=\"none\"}"
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"2xx\", client=\"none\"}"
     values: 0+95x60
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"5xx\", client=\"none\"}"
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"5xx\", client=\"none\"}"
     values: 0+5x60
   alert_rule_test:
   - eval_time: 10m
@@ -45,34 +45,34 @@ tests:
 - name: "nothing fires at 0.05% errors, nor for health, jobs or catch-up"
   interval: 1m
   input_series:
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"2xx\", client=\"none\"}"
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"2xx\", client=\"none\"}"
     values: 0+1999x120
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"5xx\", client=\"none\"}"
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"5xx\", client=\"none\"}"
     values: 0+1x120
-  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"2xx\", client=\"none\", le=\"200\"\
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"2xx\", client=\"none\", le=\"200\"\
       }"
     values: 0+1990x120
-  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"2xx\", client=\"none\", le=\"500\"\
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"2xx\", client=\"none\", le=\"500\"\
       }"
     values: 0+1999x120
-  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"5xx\", client=\"none\", le=\"200\"\
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"5xx\", client=\"none\", le=\"200\"\
       }"
     values: 0+1x120
-  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"5xx\", client=\"none\", le=\"500\"\
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/menu\", status=\"5xx\", client=\"none\", le=\"500\"\
       }"
     values: 0+1x120
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"health\", method=\"GET\", route=\"/health\", status=\"5xx\", client=\"none\"}"
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"health\", method=\"GET\", route=\"/health\", status=\"5xx\", client=\"none\"}"
     values: 0+100x120
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"jobs\", method=\"GET\", route=\"/internal/jobs/outbox-sweep\", status=\"5xx\", client=\"none\"\
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"jobs\", method=\"GET\", route=\"/internal/jobs/outbox-sweep\", status=\"5xx\", client=\"none\"\
       }"
     values: 0+100x120
-  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/events\", status=\"2xx\", client=\"none\", le=\"\
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/events\", status=\"2xx\", client=\"none\", le=\"\
       200\"}"
     values: '0x120'
-  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/events\", status=\"2xx\", client=\"none\", le=\"\
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/events\", status=\"2xx\", client=\"none\", le=\"\
       500\"}"
     values: '0x120'
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/events\", status=\"2xx\", client=\"none\"}"
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/events\", status=\"2xx\", client=\"none\"}"
     values: 0+2000x120
   alert_rule_test:
   - eval_time: 30m
@@ -114,10 +114,10 @@ tests:
 - name: "order flow: staff placements fail"
   interval: 1m
   input_series:
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"staff\", method=\"POST\", route=\"/v1/staff/table-sessions/{sessionId}/orders\", status=\"2xx\"\
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"staff\", method=\"POST\", route=\"/v1/staff/table-sessions/{sessionId}/orders\", status=\"2xx\"\
       , client=\"none\"}"
     values: 0+97x60
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"staff\", method=\"POST\", route=\"/v1/staff/table-sessions/{sessionId}/orders\", status=\"5xx\"\
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"staff\", method=\"POST\", route=\"/v1/staff/table-sessions/{sessionId}/orders\", status=\"5xx\"\
       , client=\"none\"}"
     values: 0+3x60
   alert_rule_test:
@@ -133,9 +133,9 @@ tests:
 - name: "order flow: guest placements fail"
   interval: 1m
   input_series:
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"2xx\", client=\"none\"}"
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"2xx\", client=\"none\"}"
     values: 0+97x60
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"5xx\", client=\"none\"}"
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"5xx\", client=\"none\"}"
     values: 0+3x60
   alert_rule_test:
   - eval_time: 10m
@@ -150,13 +150,13 @@ tests:
 - name: "order flow: placements fail with live push off (CR-013), the feed-delay meter counting nothing"
   interval: 1m
   input_series:
-  - series: "realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", le=\"2000\"}"
+  - series: "realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", le=\"2000\"}"
     values: 0x60
-  - series: "realtime_feed_delay_milliseconds_count{job=\"restaurant-backend\", instance=\"a\"}"
+  - series: "realtime_feed_delay_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\"}"
     values: 0x60
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"2xx\", client=\"none\"}"
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"2xx\", client=\"none\"}"
     values: 0+97x60
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"5xx\", client=\"none\"}"
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"5xx\", client=\"none\"}"
     values: 0+3x60
   alert_rule_test:
   - eval_time: 10m
@@ -171,15 +171,15 @@ tests:
 - name: "order flow: events published late"
   interval: 1m
   input_series:
-  - series: "realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", le=\"2000\"}"
+  - series: "realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", le=\"2000\"}"
     values: 0+90x60
-  - series: "realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", le=\"5000\"}"
+  - series: "realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", le=\"5000\"}"
     values: 0+98x60
-  - series: "realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", le=\"+Inf\"}"
+  - series: "realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", le=\"+Inf\"}"
     values: 0+100x60
-  - series: "realtime_feed_delay_milliseconds_count{job=\"restaurant-backend\", instance=\"a\"}"
+  - series: "realtime_feed_delay_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\"}"
     values: 0+100x60
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"2xx\", client=\"none\"}"
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"2xx\", client=\"none\"}"
     values: 0+50x60
   alert_rule_test:
   - eval_time: 10m
@@ -197,22 +197,22 @@ tests:
 - name: guest reads slow
   interval: 1m
   input_series:
-  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
       , le=\"200\"}"
     values: 0+10x60
-  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"b\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"b\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
       , le=\"200\"}"
     values: 0+10x60
-  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
       , le=\"500\"}"
     values: 0+40x60
-  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", instance=\"b\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
+  - series: "ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"b\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
       , le=\"500\"}"
     values: 0+40x60
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
       }"
     values: 0+50x60
-  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"b\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"b\", group=\"guest\", method=\"GET\", route=\"/v1/guest/orders/{orderId}\", status=\"2xx\", client=\"none\"\
       }"
     values: 0+50x60
   alert_rule_test:
@@ -237,13 +237,13 @@ tests:
 - name: outbox backlog is read from the latest sweep
   interval: 1m
   input_series:
-  - series: "outbox_sweep_timestamp_seconds{job=\"restaurant-backend\", instance=\"a\"}"
+  - series: "outbox_sweep_timestamp_seconds{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\"}"
     values: 1000x59
-  - series: "outbox_oldest_age_seconds{job=\"restaurant-backend\", instance=\"a\"}"
+  - series: "outbox_oldest_age_seconds{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\"}"
     values: 600x59
-  - series: "outbox_sweep_timestamp_seconds{job=\"restaurant-backend\", instance=\"b\"}"
+  - series: "outbox_sweep_timestamp_seconds{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"b\"}"
     values: 2000x29 3000x29
-  - series: "outbox_oldest_age_seconds{job=\"restaurant-backend\", instance=\"b\"}"
+  - series: "outbox_oldest_age_seconds{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"b\"}"
     values: 0x29 300x29
   alert_rule_test:
   - eval_time: 20m
@@ -260,17 +260,17 @@ tests:
 - name: reconcile
   interval: 1m
   input_series:
-  - series: "reports_reconcile_mismatches_total{job=\"restaurant-backend\", instance=\"a\"}"
+  - series: "reports_reconcile_mismatches_total{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\"}"
     values: _x9 1x10
-  - series: "reports_reconcile_failures_total{job=\"restaurant-backend\", instance=\"a\"}"
+  - series: "reports_reconcile_failures_total{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\"}"
     values: '0x20'
-  - series: "reports_reconcile_timestamp_seconds{job=\"restaurant-backend\", instance=\"a\"}"
+  - series: "reports_reconcile_timestamp_seconds{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\"}"
     values: 1000x20
-  - series: "reports_reconcile_lag_days{job=\"restaurant-backend\", instance=\"a\"}"
+  - series: "reports_reconcile_lag_days{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\"}"
     values: 5x20
-  - series: "reports_reconcile_timestamp_seconds{job=\"restaurant-backend\", instance=\"b\"}"
+  - series: "reports_reconcile_timestamp_seconds{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"b\"}"
     values: 2000x20
-  - series: "reports_reconcile_lag_days{job=\"restaurant-backend\", instance=\"b\"}"
+  - series: "reports_reconcile_lag_days{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"b\"}"
     values: 1x9 3x10
   alert_rule_test:
   - eval_time: 5m
@@ -301,13 +301,13 @@ tests:
 - name: "rate limits off, publishes refused, pool waiting"
   interval: 1m
   input_series:
-  - series: "rate_limit_fail_open_total{job=\"restaurant-backend\", instance=\"a\", policy=\"auth.sign_in\", reason=\"timeout\"}"
+  - series: "rate_limit_fail_open_total{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", policy=\"auth.sign_in\", reason=\"timeout\"}"
     values: 0+2x20
-  - series: "realtime_publish_total{job=\"restaurant-backend\", instance=\"a\", path=\"inline\", result=\"sent\"}"
+  - series: "realtime_publish_total{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", path=\"inline\", result=\"sent\"}"
     values: 0+80x30
-  - series: "realtime_publish_total{job=\"restaurant-backend\", instance=\"a\", path=\"inline\", result=\"failed\"}"
+  - series: "realtime_publish_total{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", path=\"inline\", result=\"failed\"}"
     values: 0+20x30
-  - series: "db_pool_connections_pending{job=\"restaurant-backend\", instance=\"a\", pool=\"app\"}"
+  - series: "db_pool_connections_pending{job=\"restaurant-backend\", deployment_environment=\"production\", instance=\"a\", pool=\"app\"}"
     values: 0x2 3x20
   alert_rule_test:
   - eval_time: 3m

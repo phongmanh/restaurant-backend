@@ -74,7 +74,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (by) (increase(orders_placed_total{job=\"restaurant-backend\"}[$__rate_interval]))",
+          "expr": "sum by (by) (increase(orders_placed_total{job=\"restaurant-backend\", deployment_environment=\"production\"}[$__rate_interval]))",
           "legendFormat": "{{by}}"
         }
       ],
@@ -106,7 +106,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(increase(sessions_opened_total{job=\"restaurant-backend\"}[$__rate_interval]))",
+          "expr": "sum(increase(sessions_opened_total{job=\"restaurant-backend\", deployment_environment=\"production\"}[$__rate_interval]))",
           "legendFormat": "opened"
         }
       ],
@@ -190,7 +190,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", method=\"POST\", route=~\"/v1/guest/orders|/v1/guest/orders/[^/]+/cancel|/v1/staff/table-sessions/[^/]+/(orders|close)|/v1/staff/orders/[^/]+/status\", le=\"300\"}[$__rate_interval])) / sum(rate(ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", method=\"POST\", route=~\"/v1/guest/orders|/v1/guest/orders/[^/]+/cancel|/v1/staff/table-sessions/[^/]+/(orders|close)|/v1/staff/orders/[^/]+/status\"}[$__rate_interval]))",
+          "expr": "sum(rate(ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", method=\"POST\", route=~\"/v1/guest/orders|/v1/guest/orders/[^/]+/cancel|/v1/staff/table-sessions/[^/]+/(orders|close)|/v1/staff/orders/[^/]+/status\", le=\"300\"}[$__rate_interval])) / sum(rate(ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", method=\"POST\", route=~\"/v1/guest/orders|/v1/guest/orders/[^/]+/cancel|/v1/staff/table-sessions/[^/]+/(orders|close)|/v1/staff/orders/[^/]+/status\"}[$__rate_interval]))",
           "legendFormat": "≤ 300 ms"
         },
         {
@@ -199,7 +199,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", method=\"POST\", route=~\"/v1/guest/orders|/v1/guest/orders/[^/]+/cancel|/v1/staff/table-sessions/[^/]+/(orders|close)|/v1/staff/orders/[^/]+/status\", le=\"800\"}[$__rate_interval])) / sum(rate(ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", method=\"POST\", route=~\"/v1/guest/orders|/v1/guest/orders/[^/]+/cancel|/v1/staff/table-sessions/[^/]+/(orders|close)|/v1/staff/orders/[^/]+/status\"}[$__rate_interval]))",
+          "expr": "sum(rate(ktor_http_server_requests_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", method=\"POST\", route=~\"/v1/guest/orders|/v1/guest/orders/[^/]+/cancel|/v1/staff/table-sessions/[^/]+/(orders|close)|/v1/staff/orders/[^/]+/status\", le=\"800\"}[$__rate_interval])) / sum(rate(ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", method=\"POST\", route=~\"/v1/guest/orders|/v1/guest/orders/[^/]+/cancel|/v1/staff/table-sessions/[^/]+/(orders|close)|/v1/staff/orders/[^/]+/status\"}[$__rate_interval]))",
           "legendFormat": "≤ 800 ms"
         }
       ],
@@ -233,7 +233,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (status, group) (rate(ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", method=\"POST\", route=~\"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders\"}[$__rate_interval]))",
+          "expr": "sum by (status, group) (rate(ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\", method=\"POST\", route=~\"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders\"}[$__rate_interval]))",
           "legendFormat": "{{group}} {{status}}"
         }
       ],
@@ -280,7 +280,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", le=\"2000\"}[$__rate_interval])) / sum(rate(realtime_feed_delay_milliseconds_count{job=\"restaurant-backend\"}[$__rate_interval]))",
+          "expr": "sum(rate(realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", le=\"2000\"}[$__rate_interval])) / sum(rate(realtime_feed_delay_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\"}[$__rate_interval]))",
           "legendFormat": "≤ 2 s"
         },
         {
@@ -289,7 +289,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", le=\"5000\"}[$__rate_interval])) / sum(rate(realtime_feed_delay_milliseconds_count{job=\"restaurant-backend\"}[$__rate_interval]))",
+          "expr": "sum(rate(realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", deployment_environment=\"production\", le=\"5000\"}[$__rate_interval])) / sum(rate(realtime_feed_delay_milliseconds_count{job=\"restaurant-backend\", deployment_environment=\"production\"}[$__rate_interval]))",
           "legendFormat": "≤ 5 s"
         }
       ],
@@ -323,7 +323,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (path, result) (increase(realtime_publish_total{job=\"restaurant-backend\"}[$__rate_interval]))",
+          "expr": "sum by (path, result) (increase(realtime_publish_total{job=\"restaurant-backend\", deployment_environment=\"production\"}[$__rate_interval]))",
           "legendFormat": "{{path}} {{result}}"
         }
       ],
@@ -355,7 +355,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(outbox_pending{job=\"restaurant-backend\"} and on (instance) (outbox_sweep_timestamp_seconds{job=\"restaurant-backend\"} == scalar(max(outbox_sweep_timestamp_seconds{job=\"restaurant-backend\"}))))",
+          "expr": "max(outbox_pending{job=\"restaurant-backend\", deployment_environment=\"production\"} and on (instance) (outbox_sweep_timestamp_seconds{job=\"restaurant-backend\", deployment_environment=\"production\"} == scalar(max(outbox_sweep_timestamp_seconds{job=\"restaurant-backend\", deployment_environment=\"production\"}))))",
           "legendFormat": "pending"
         },
         {
@@ -364,7 +364,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(outbox_oldest_age_seconds{job=\"restaurant-backend\"} and on (instance) (outbox_sweep_timestamp_seconds{job=\"restaurant-backend\"} == scalar(max(outbox_sweep_timestamp_seconds{job=\"restaurant-backend\"}))))",
+          "expr": "max(outbox_oldest_age_seconds{job=\"restaurant-backend\", deployment_environment=\"production\"} and on (instance) (outbox_sweep_timestamp_seconds{job=\"restaurant-backend\", deployment_environment=\"production\"} == scalar(max(outbox_sweep_timestamp_seconds{job=\"restaurant-backend\", deployment_environment=\"production\"}))))",
           "legendFormat": "oldest age (s)"
         }
       ],
@@ -396,7 +396,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(outbox_sweep_timestamp_seconds{job=\"restaurant-backend\"}) * 1000",
+          "expr": "max(outbox_sweep_timestamp_seconds{job=\"restaurant-backend\", deployment_environment=\"production\"}) * 1000",
           "legendFormat": "",
           "instant": true
         }
@@ -455,7 +455,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(increase(reports_reconcile_days_total{job=\"restaurant-backend\"}[$__rate_interval]))",
+          "expr": "sum(increase(reports_reconcile_days_total{job=\"restaurant-backend\", deployment_environment=\"production\"}[$__rate_interval]))",
           "legendFormat": "days rebuilt"
         },
         {
@@ -464,7 +464,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(reports_reconcile_mismatches_total{job=\"restaurant-backend\"})",
+          "expr": "max(reports_reconcile_mismatches_total{job=\"restaurant-backend\", deployment_environment=\"production\"})",
           "legendFormat": "mismatches (instance total)"
         },
         {
@@ -473,7 +473,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(reports_reconcile_failures_total{job=\"restaurant-backend\"})",
+          "expr": "max(reports_reconcile_failures_total{job=\"restaurant-backend\", deployment_environment=\"production\"})",
           "legendFormat": "failures (instance total)"
         }
       ],
@@ -505,7 +505,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(reports_reconcile_lag_days{job=\"restaurant-backend\"} and on (instance) (reports_reconcile_timestamp_seconds{job=\"restaurant-backend\"} == scalar(max(reports_reconcile_timestamp_seconds{job=\"restaurant-backend\"}))))",
+          "expr": "max(reports_reconcile_lag_days{job=\"restaurant-backend\", deployment_environment=\"production\"} and on (instance) (reports_reconcile_timestamp_seconds{job=\"restaurant-backend\", deployment_environment=\"production\"} == scalar(max(reports_reconcile_timestamp_seconds{job=\"restaurant-backend\", deployment_environment=\"production\"}))))",
           "legendFormat": "",
           "instant": true
         }
@@ -563,7 +563,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(reports_reconcile_timestamp_seconds{job=\"restaurant-backend\"}) * 1000",
+          "expr": "max(reports_reconcile_timestamp_seconds{job=\"restaurant-backend\", deployment_environment=\"production\"}) * 1000",
           "legendFormat": "",
           "instant": true
         }

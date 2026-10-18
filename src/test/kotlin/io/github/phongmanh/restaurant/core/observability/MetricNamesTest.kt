@@ -1,6 +1,7 @@
 package io.github.phongmanh.restaurant.core.observability
 
 import com.sun.net.httpserver.HttpServer
+import io.github.phongmanh.restaurant.core.config.AppConfig
 import io.github.phongmanh.restaurant.core.http.Endpoint
 import io.github.phongmanh.restaurant.core.http.Endpoints
 import io.github.phongmanh.restaurant.service
@@ -55,21 +56,13 @@ class MetricNamesTest {
         series: Pushed?,
     ): List<String> {
         if (series == null) return listOf("the service pushes no ${s.metric}")
-        val job =
-            if (s.matchers.none {
-                    it ==
-                        AlertRules.Matcher(
-                            "job",
-                            "=",
-                            Metrics.SERVICE,
-                        )
-                }
-            ) {
-                listOf("${s.metric} without job")
-            } else {
-                emptyList()
-            }
-        return job +
+        // Staging and production push to one Grafana stack, which promotes `deployment.environment` to
+        // a label: without it, staging's series would mix into production's alerts (release-checklist P-3).
+        val scope =
+            listOf("job" to Metrics.SERVICE, "deployment_environment" to AppConfig.PRODUCTION)
+                .filter { (label, value) -> AlertRules.Matcher(label, "=", value) !in s.matchers }
+                .map { (label, value) -> "${s.metric} without $label=\"$value\"" }
+        return scope +
             s.matchers.mapNotNull { m ->
                 when {
                     m.label !in series.labels + RESOURCE_LABELS -> "${s.metric} has no label ${m.label}"
@@ -214,6 +207,6 @@ class MetricNamesTest {
 
     private companion object {
         /** From the OTLP resource: `job` is `service.name`, `instance` is `service.instance.id`. */
-        val RESOURCE_LABELS = setOf("job", "instance")
+        val RESOURCE_LABELS = setOf("job", "instance", "deployment_environment")
     }
 }
