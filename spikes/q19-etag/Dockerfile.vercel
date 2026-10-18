@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+
+# The S-1 spike's plain JVM image, on JDK 25 (the service's runtime).
+
+FROM eclipse-temurin:25-jdk AS build
+WORKDIR /workspace
+
+COPY gradlew ./
+COPY gradle/ gradle/
+COPY settings.gradle.kts build.gradle.kts ./
+RUN ./gradlew --no-daemon --quiet --version
+
+COPY src/ src/
+RUN ./gradlew --no-daemon --quiet buildFatJar -x test \
+    && cp build/libs/*-all.jar /workspace/app.jar
+
+FROM eclipse-temurin:25-jre AS runtime
+RUN groupadd --system app && useradd --system --gid app --home /app app
+WORKDIR /app
+COPY --from=build --chown=app:app /workspace/app.jar /app/app.jar
+COPY --chown=app:app docker-entrypoint.vercel.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+USER app
+
+# Vercel routes to $PORT (default 80, which a non-root process can't bind): set PORT=8080.
+EXPOSE 8080
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["java", "-XX:+UseG1GC", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar"]
