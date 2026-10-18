@@ -77,8 +77,8 @@ internal fun generate(
     dbName: String,
 ): Map<String, String> =
     linkedMapOf(
-        "DATABASE_URL" to "postgresql://app:${token(PASSWORD_BYTES)}@$host/$dbName?sslmode=require",
-        "DATABASE_URL_PLATFORM" to "postgresql://app_platform:${token(PASSWORD_BYTES)}@$host/$dbName?sslmode=require",
+        "DATABASE_URL" to "postgresql://app:${token(PASSWORD_BYTES)}@$host/$dbName?sslmode=verify-full",
+        "DATABASE_URL_PLATFORM" to "postgresql://app_platform:${token(PASSWORD_BYTES)}@$host/$dbName?sslmode=verify-full",
         "STAFF_JWT_KEYS" to keySet("staff-1"),
         "GUEST_JWT_KEYS" to keySet("guest-1"),
         // A printed QR code carries its key ID in one byte (tables §2), so the IDs are numbers.

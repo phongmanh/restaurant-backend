@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.ktor)
     alias(libs.plugins.ktlint)
     alias(libs.plugins.kover)
+    alias(libs.plugins.cyclonedx)
 }
 
 group = "io.github.phongmanh.restaurant"
@@ -47,6 +48,10 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.logback.classic)
     implementation(libs.logstash.logback.encoder)
+    // Jackson comes only through libraries (java-jwt, Flyway, the logstash encoder); the BOMs lift
+    // it to fixed versions (gradle/libs.versions.toml).
+    implementation(platform(libs.jackson2.bom))
+    implementation(platform(libs.jackson3.bom))
     implementation(libs.ktor.server.cors)
     implementation(libs.ktor.server.double.receive)
     implementation(libs.ktor.server.body.limit)
@@ -166,6 +171,21 @@ tasks.check {
 
 // deploy/README.md, test-plan §6: staging's data. Both read the service's environment (exported from
 // deploy/staging/*.env, as for `migrate`) and take the deployment's URL.
+// The libraries that ship, as a CycloneDX SBOM (ASVS V15.1.2, F-3, step 6a): the runtime classpath
+// only. CI's `build` job writes it and Grype checks it; the image job covers the JRE and the OS
+// packages, which Gradle doesn't know (deploy/README.md "Vulnerable dependencies"). A fat jar keeps
+// no `pom.properties` for Gradle-published libraries (Ktor, Exposed, Kotlin), so an image scan alone
+// misses them.
+tasks.cyclonedxDirectBom {
+    includeConfigs = listOf("runtimeClasspath")
+    projectType = org.cyclonedx.model.Component.Type.APPLICATION
+    xmlOutput.convention(null as RegularFile?)
+}
+tasks.cyclonedxBom {
+    projectType = org.cyclonedx.model.Component.Type.APPLICATION
+    xmlOutput.convention(null as RegularFile?)
+}
+
 tasks.register<JavaExec>("seedStaging") {
     group = "staging"
     description = "<deployment URL>: restaurants A and B, their staff accounts, menus and tables"

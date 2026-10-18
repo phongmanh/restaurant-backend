@@ -38,7 +38,11 @@ class GenerateSecretsTest {
         val app = JdbcTarget.parse(values.getValue("DATABASE_URL"))
         val platform = JdbcTarget.parse(values.getValue("DATABASE_URL_PLATFORM"))
         assertEquals("app" to "app_platform", app.user to platform.user)
-        assertEquals("jdbc:postgresql://ep-x-pooler.ap-southeast-1.aws.neon.tech/restaurant?sslmode=require", app.jdbcUrl)
+        assertEquals(
+            "jdbc:postgresql://ep-x-pooler.ap-southeast-1.aws.neon.tech/restaurant?sslmode=verify-full" +
+                "&sslfactory=org.postgresql.ssl.DefaultJavaSSLFactory",
+            app.jdbcUrl,
+        )
         assertTrue(app.password.length >= 32 && app.password != platform.password)
 
         for (name in listOf("STAFF_JWT_KEYS", "GUEST_JWT_KEYS", "QR_SIGNING_KEYS")) {

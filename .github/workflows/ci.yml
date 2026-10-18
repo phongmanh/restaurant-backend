@@ -3,7 +3,9 @@
 # runner's Docker serves it), the Kover gate, the route-test matrix (`routeMatrix`, G4 hardening
 # H4) and the contract tests (every test response validated against the contract, H3). It also lints
 # the contract and checks it for breaking changes against the G3 contract (oasdiff, H3). Later
-# Phase 4 steps add the dependency and secret scans. The `image` job builds the Vercel image (Phase 5).
+# Phase 4 steps add the secret scan. The `build` and `image` jobs list the libraries and the image as
+# SBOMs and fail on a High or Critical vulnerability that has a fix (F-3, step 6a). The `image` job
+# builds the Vercel image (Phase 5).
 name: ci
 
 on:
@@ -31,6 +33,18 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
       - name: Build, lint and test
         run: ./gradlew --no-daemon build
+      - name: List the libraries that ship (CycloneDX SBOM)
+        run: ./gradlew --no-daemon cyclonedxBom
+      - name: Keep the libraries' SBOM
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-libraries
+          path: build/reports/cyclonedx/bom.json
+          retention-days: 90
+      - name: No High or Critical vulnerability that has a fix, in the libraries
+        run: >-
+          docker run --rm -v "$PWD/build/reports/cyclonedx:/in" anchore/grype:v0.119.0
+          sbom:/in/bom.json --only-fixed --fail-on high
       - name: Keep the test reports
         if: failure()
         uses: actions/upload-artifact@v7
@@ -55,10 +69,27 @@ jobs:
 
   image:
     # The image Vercel builds from Dockerfile.vercel (deploy/README.md), so a broken image shows on
-    # the PR instead of at the next deploy. Built only, never pushed.
+    # the PR instead of at the next deploy. Built only, never pushed. Then its parts list and the
+    # vulnerability check (deploy/README.md "Vulnerable dependencies") for the JRE and the base
+    # image's packages; the `build` job checks the libraries from Gradle's own graph, which a fat
+    # jar hides from Syft. Syft and Grype are pinned.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - name: Build the service image
         run: docker build --file Dockerfile.vercel --tag restaurant-backend:ci .
+      - name: List the image's components (CycloneDX SBOM)
+        run: >-
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/out"
+          anchore/syft:v1.52.0 restaurant-backend:ci --output cyclonedx-json=/out/sbom.cdx.json
+      - name: Keep the image's SBOM
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-image
+          path: sbom.cdx.json
+          retention-days: 90
+      - name: No High or Critical vulnerability that has a fix, in the image
+        run: >-
+          docker run --rm -v "$PWD:/in" anchore/grype:v0.119.0
+          sbom:/in/sbom.cdx.json --only-fixed --fail-on high

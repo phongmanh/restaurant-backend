@@ -39,5 +39,5 @@
 
 ## 4. Not covered
 - The running service from outside (ZAP scan) and the ASVS checklist: done in Phase 5 step 6a, [asvs-checklist.md](asvs-checklist.md).
-- Dependency vulnerabilities: no scan was run in this review (still none: asvs-checklist.md F-3).
+- Dependency vulnerabilities: no scan was run in this review. Since step 6a (F-3), CI scans the libraries and the image with Grype on every PR; its first run found High advisories in Jackson 2.22.0 and 3.0.1 and in the base image's Pebble binary, all fixed in the same change.
 - Vercel, Neon, Ably and Upstash settings (who can sign in to them, their keys): outside the code.

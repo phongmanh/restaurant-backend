@@ -16,7 +16,11 @@ RUN ./gradlew --no-daemon --quiet buildFatJar \
     && cp build/libs/*-all.jar /workspace/app.jar
 
 FROM eclipse-temurin:25-jre AS runtime
-RUN groupadd --system app && useradd --system --gid app --home /app app
+# The Ubuntu base ships Canonical's Pebble (`/usr/bin/pebble`, a Go service manager, no dpkg
+# package); the service never runs it, and its Go runtime carries advisories CI's Grype check
+# fails on (deploy/README.md "Vulnerable dependencies").
+RUN rm -f /usr/bin/pebble \
+    && groupadd --system app && useradd --system --gid app --home /app app
 WORKDIR /app
 COPY --from=build --chown=app:app /workspace/app.jar /app/app.jar
 COPY --chown=app:app docker-entrypoint.vercel.sh /app/entrypoint.sh

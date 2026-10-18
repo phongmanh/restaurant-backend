@@ -1,0 +1,22 @@
+# Weekly update PRs for the service's libraries and CI's actions (ASVS V15.2.1, F-3; deploy/README.md
+# "Vulnerable dependencies"). Minor and patch updates come grouped in one PR, so a week makes at most
+# a few. The base image is left out: its tags (`25-jre`) float, and each image build takes the
+# patched one. Spikes are throwaway code and aren't watched.
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      libraries:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        update-types: [minor, patch]

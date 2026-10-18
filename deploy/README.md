@@ -147,3 +147,32 @@ Repeat step 10. Migrations come first whenever the release adds one (step 5): th
 
 ### Rotating a secret
 Edit the line in `.env.staging`, run step 9, then step 10: a deployment reads its variables when it starts. For a signing key, keep the old public key in the set until the tokens it signed have expired (core-and-auth §8).
+
+### Key policy (ASVS V11.1.1, F-6)
+Every key and secret is listed in [asvs-checklist.md §5.1](../docs/sdlc/restaurant-ordering/asvs-checklist.md). The rules for all of them:
+
+- **Who holds them:** the owner only. They live in the Vercel project's environment variables and in each environment's `.env.<environment>` on the owner's machine (mode `600`, ignored by git). Never in git, CI, chat, tickets or logs. Staging and production never share a key or a password.
+- **Exposure means rotate now.** A secret is exposed when it has been committed, pasted or printed anywhere another person or tool can read it (a chat, a shared terminal, a screenshot), or when someone who could read it loses their access. Rotate it the same day, with "Rotating a secret" above.
+- **How long each lives:**
+
+| Secret | Lifetime | Note |
+|---|---|---|
+| `STAFF_JWT_KEYS`, `GUEST_JWT_KEYS` | 1 year | A new `kid` signs; keep the old public key in the set for one token lifetime |
+| `TOTP_ENCRYPTION_KEYS` | 1 year | A new key ID encrypts new secrets; keep the old key in the set while any stored secret uses it |
+| `QR_SIGNING_KEYS` | Until exposed | A new key means reprinting every table's code (`rotate-all`, tables §2) |
+| `EMAIL_HMAC_KEY` | Until exposed | A new key stops linking new sign-in failures to older ones |
+| `CRON_SECRET`, database passwords | 1 year | `app` and `app_platform`: new URLs from `generateSecrets`, then `migrate` (it resets both passwords), then step 9 and step 10. `migrator`: reset in the Neon console |
+| `ABLY_API_KEY`, `UPSTASH_REDIS_REST_TOKEN`, `OTEL_EXPORTER_OTLP_HEADERS`, `VERCEL_AUTOMATION_BYPASS_SECRET` | 1 year | Issue a new one in the provider's console, deploy, then revoke the old one |
+
+### Vulnerable dependencies (ASVS V15.1.1, V15.2.1, F-3)
+CI lists what ships as two CycloneDX SBOMs, each kept 90 days as an artifact: `sbom-libraries`, the runtime classpath from Gradle (`./gradlew cyclonedxBom`), and `sbom-image`, the image's JRE and Ubuntu packages (Syft). Two, because a fat jar keeps no trace of the Gradle-published libraries (Ktor, Exposed, Kotlin), so an image scan alone misses them. Grype then fails the build on a **High or Critical vulnerability that has a fixed version**. One without a fix doesn't fail the build: it is tracked until a fix ships. A library's fix usually comes through a BOM or a version in `gradle/libs.versions.toml` (Jackson, step 6a). Dependabot opens weekly update PRs for the Gradle libraries and the workflow's actions (`.github/dependabot.yml`).
+
+Time frames, from the day a fix is available:
+
+| Severity | Fix within |
+|---|---|
+| Critical | 7 days, with an out-of-cycle release |
+| High | 30 days |
+| Medium, Low | The next release |
+
+To check locally, run the same commands as CI's `build` and `image` jobs (`.github/workflows/ci.yml`): `./gradlew cyclonedxBom` and its Grype line, then `docker build --file Dockerfile.vercel --tag restaurant-backend:ci .` and the image job's two `docker run` lines.

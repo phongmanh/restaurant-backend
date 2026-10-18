@@ -13,7 +13,7 @@ app:
   environment: "$APP_ENV:dev"
 
 database:
-  # The `app` and `app_platform` roles through Neon's pooler, as postgresql://user:password@host/db?sslmode=require
+  # The `app` and `app_platform` roles through Neon's pooler, as postgresql://user:password@host/db?sslmode=verify-full
   url: "$DATABASE_URL:"
   platformUrl: "$DATABASE_URL_PLATFORM:"
   # ADR-0004: up to 10 connections per instance, a 2 s wait for one, statements stopped after 5 s.
