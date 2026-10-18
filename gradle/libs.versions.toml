@@ -13,15 +13,15 @@ logstashEncoder = "9.0"
 # Raised over what java-jwt, Flyway (2.x) and the logstash encoder (3.x) bring: fixes for High
 # advisories that CI's Grype check found (F-3, step 6a).
 jackson2 = "2.22.3"
-jackson3 = "3.1.7"
+jackson3 = "3.2.2"
 uuidGenerator = "5.2.0"
 exposed = "1.5.1"
 postgresql = "42.7.14"
 hikari = "7.1.0"
-flyway = "13.10.0"
+flyway = "13.10.3"
 koin = "4.2.2"
 bouncycastle = "1.86"
-javaJwt = "4.6.0"
+javaJwt = "4.6.2"
 # Realtime (step 8, 2026-10-16): the official SDK, for token requests and REST publishing (realtime §8, §4.2).
 ably = "1.8.2"
 testcontainers = "2.0.5"
@@ -32,7 +32,7 @@ ktlintGradle = "14.2.0"
 ktlint = "1.8.0"
 detekt = "1.23.8"
 kover = "0.9.11"
-cyclonedx = "3.4.1"
+cyclonedx = "3.5.1"
 # Phase 5 step 4 (2026-10-17): metrics pushed over OTLP (ADR-0009); the version Ktor 3.6.0's metrics plugin is built on.
 micrometer = "1.17.1"
 
@@ -76,7 +76,7 @@ detekt-cli = { module = "io.gitlab.arturbosch.detekt:detekt-cli", version.ref = 
 snakeyaml-engine = { module = "org.snakeyaml:snakeyaml-engine", version.ref = "snakeyamlEngine" }
 json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "jsonSchemaValidator" }
 # Phase 5 step 4c: reads the OTLP push in tests. The version micrometer-registry-otlp brings at runtime.
-opentelemetry-proto = { module = "io.opentelemetry.proto:opentelemetry-proto", version = "1.10.0-alpha" }
+opentelemetry-proto = { module = "io.opentelemetry.proto:opentelemetry-proto", version = "1.11.1-alpha" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
