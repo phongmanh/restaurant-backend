@@ -63,6 +63,9 @@ object Staging {
     /** The customer app's QR links (`deploy/staging/staging.env`). */
     val customerAppUrl: String = env("CUSTOMER_APP_URL")
 
+    /** Whether staging pushes changes through Ably (`LIVE_PUSH`, `deploy/staging/staging.env`); release 1 doesn't (CR-013). */
+    val livePush: Boolean = env("LIVE_PUSH") == "ably"
+
     private val tokens = ConcurrentHashMap<String, Pair<String, Instant>>()
     private val admin by lazy { Authenticator(accounts.admin.totpSecret) }
 

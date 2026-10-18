@@ -2,7 +2,7 @@
 
 | Version | Status | Owner | Reviewers |
 |---|---|---|---|
-| 1.6 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR); CR-004, CR-005, CR-006 and CR-008 applied 2026-10-15, CR-011 on 2026-10-17, CR-012 on 2026-10-18 | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
+| 1.7 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR); CR-004, CR-005, CR-006 and CR-008 applied 2026-10-15, CR-011 on 2026-10-17, CR-012 and CR-013 on 2026-10-18 | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
 
 **Version history**
 
@@ -15,6 +15,7 @@
 | 1.4 | 2026-10-15 | [CR-008](cr/CR-008-architecture-g3-alignment.md): aligned with the Phase 3 designs at the G3 consistency pass. The stale device-data retention step is gone (no device data is stored, CR-005); the job list names the seven jobs the designs run. Changed: §6, §10 |
 | 1.5 | 2026-10-17 | [CR-011](cr/CR-011-free-staging-as-production-deploy.md): on the free plans, staging is its own Vercel project's production deployment (public alias removed, Deployment Protection on) on its own Neon project, not a preview of a `staging` branch: Vercel Cron runs only on production deployments, and a preview scales to zero after 30 s. Changed: §8 |
 | 1.6 | 2026-10-18 | [CR-012](cr/CR-012-updates-through-post.md): Vercel's edge evaluates `If-Match` on a `PATCH` against the function's response `ETag`, after the function has run, so updates are `POST <path>/update`; the seven `PATCH` updates stay, deprecated. Changed: §8 (Edge) |
+| 1.7 | 2026-10-18 | [CR-013](cr/CR-013-release-1-without-live-push.md): release 1 has no live push; clients read the event log on a timer (staff 15 s, guests 60 s). Changed: §3 live-updates row, §9 (the polling peak ≈ 640 req/s, headroom ≈ 1,280), R-13 |
 
 Baseline: [requirements.md](requirements.md) v1.6 (G1 2026-10-13; CR-002 and CR-003 2026-10-14; CR-004 to CR-007 2026-10-15). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). G2 approved by the owner on 2026-10-15 with one condition: TBD-10 (data residency, legal review) is settled before G5, by a region change or, if storage in Vietnam is required, a CR to change provider (§8, R-04). Accepted free-plan residual risks: R-11 to R-14. The cost estimate (TBD-11) was deferred on 2026-10-15 because the project stays on free plans.
 
@@ -85,7 +86,7 @@ The ktor-sdlc default stack applies, except for:
 |---|---|---|
 | Module layout | One Gradle module, packages by feature | ADR-0001 |
 | Deployment platform | Vercel container runtime (an OCI image run as a Function, as in `ktor-sample`), region `sin1`; cold start and limits measured by spike S-1 | ADR-0002 (Accepted with conditions) |
-| Live updates | Managed pub/sub (Ably) for notifications + PostgreSQL event log for catch-up | ADR-0003 (Accepted 2026-10-15, S-3) |
+| Live updates | Release 1: PostgreSQL event log, read by clients on a timer (staff 15 s, guests 60 s; CR-013). Later: managed pub/sub for notifications (Ably measured by S-3) | ADR-0003 (Accepted 2026-10-15, S-3; deferred for release 1 by CR-013) |
 | Database hosting | Neon PostgreSQL in Singapore (AWS `ap-southeast-1`) with its transaction-mode pooler; S-2 met its exit criterion; Hikari pool of up to 10 per instance (2 s wait, 5 s statement timeout); `prepareThreshold=0` | ADR-0004 |
 | Tenant isolation | `restaurant_id` checks in services + forced PostgreSQL RLS via `set_config(…, true)` (`SET LOCAL` with a bind parameter); missing tenant gives 0 rows; verified in S-2 | ADR-0005 |
 | Guest authentication | Service-issued QR token and table-session token (ES256) | ADR-0006 |
@@ -278,8 +279,9 @@ Peak = dinner peak at launch (ASSUMPTION-1, confirmed at G1). Load mix (ASSUMPTI
   - Updated in the transaction that closes a bill (FR-013): one upsert per table, rows in key order so concurrent closes queue instead of deadlocking; ≈ +2 ms per close.
   - Rebuilt every night for each restaurant's previous day (delete the day, insert it from the raw rows; Vercel Cron, ADR-0002). Idempotent, ≈ 50–60 ms per restaurant-day; repairs any missed update.
   - A bill counts on the restaurant's local day on which it was closed (ASSUMPTION-11).
-- **Pub/sub:** ≈ 17,500 concurrent connections and ≈ 300 messages/s at launch, ≈ 52,500 at 3×. S-3 (2026-10-14) measured Ably: publish → receive p95 ≈ 50 ms, per-channel isolation verified. Ably Pro fits launch (50k connections, 1,447 REST requests/s against ≈ 75 publishes/s at peak); 3× needs Enterprise.
-- **Headroom:** the load test must pass at 2× peak (≈ 600 req/s) without breaching NFR-PERF.
+- **Release 1 polls (CR-013).** With no live push, every open screen reads the event log on a timer: 2,500 staff screens every 15 s ≈ 167 req/s and 15,000 guest devices every 60 s ≈ 250 req/s. These polls replace the mix's 75 req/s of event catch-up and its 10 req/s of pub/sub tokens, so the peak is 310 − 85 + 417 ≈ 640 req/s (≈ 590 at the origin), not ≈ 310, and 2× headroom is ≈ 1,280 req/s. Realtime §7 and CR-013 round this to ≈ 600. Each poll is one indexed query (`restaurant_id, seq`) that usually returns nothing.
+- **Pub/sub (when live push is added; not in release 1):** ≈ 17,500 concurrent connections and ≈ 300 messages/s at launch, ≈ 52,500 at 3×. S-3 (2026-10-14) measured Ably: publish → receive p95 ≈ 50 ms, per-channel isolation verified. Ably Pro fits launch (50k connections, 1,447 REST requests/s against ≈ 75 publishes/s at peak); 3× needs Enterprise.
+- **Headroom:** the load test must pass at 2× peak (≈ 600 req/s with live push; ≈ 1,280 req/s in release 1, which polls) without breaching NFR-PERF.
 - **Cost estimate:** TBD-11 (deferred 2026-10-15: free plans only for now), draft in [cost-estimate.md](cost-estimate.md): ≈ $1,540–1,740 a month at launch without menu images (≈ $3–3.50 per restaurant), ≈ $3,700–4,350 at 3×. S-3 confirmed the pub/sub figure (Ably Pro). The cost drivers, largest first:
   - pub/sub connections and messages (≈ 55–60%);
   - Vercel per-request charges: CDN requests, invocations, origin transfer;
@@ -433,7 +435,7 @@ Full detail in [test-plan.md](test-plan.md).
 | R-10 | A flaw in the built-in sign-in (hashing, brute force, tokens) | Staff or admin account takeover | Argon2id with Bouncy Castle, rate limits (ADR-0008), rotating refresh tokens, admin TOTP (§7, ADR-0011; S-4: 19/19 token cases); ASVS V6/V7 checklist in Phase 3 | Manh Nguyen |
 | R-11 | Production database wakes from scale to zero (never measured) | Slow first request after a quiet spell | Neon Launch plan or above with scale to zero off. Accepted as a free-plan residual risk (2026-10-14) | Manh Nguyen |
 | R-12 | On the paid plan the instance doesn't stay warm, or scale-out cold-starts often | Guest p99 (NFR-PERF-01/02) fails | ADR-0002 condition: measure on the production Pro account before G5; JDK AOT cache; reopen CR-001 if p99 fails. Accepted as a free-plan residual risk (2026-10-14) | Manh Nguyen |
-| R-13 | Ably delay or refusals rise above the 190 subscribers S-3 could test | NFR-PERF-03 missed at 17,500 connections | Outbox + sweep and in-request retry of refused publishes; event-log catch-up; load test on a paid plan before launch. Accepted as a free-plan residual risk (2026-10-15) | Manh Nguyen |
+| R-13 | Ably delay or refusals rise above the 190 subscribers S-3 could test | NFR-PERF-03 missed at 17,500 connections | Outbox + sweep and in-request retry of refused publishes; event-log catch-up; load test on a paid plan before launch. Accepted as a free-plan residual risk (2026-10-15). Closed for release 1, which has no live push (CR-013); reopens with it | Manh Nguyen |
 | R-14 | Neon's free plan keeps point-in-time restore for 6 h, not 7 days | Damage noticed after 6 h can't be rolled back; at worst a day's loss back to the daily snapshot | Neon Launch plan or above in production. Accepted as a free-plan residual risk (2026-10-15) | Manh Nguyen |
 | D-01 | Hand-written OpenAPI contract can drift from the code | Contract errors | Response validation in contract tests; route-listing test (ADR-0007) | Manh Nguyen |
 

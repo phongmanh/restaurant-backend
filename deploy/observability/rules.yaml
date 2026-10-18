@@ -49,39 +49,41 @@ groups:
       - record: slo:order_placement:error_ratio_rate5m
         expr: |
           (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders", status="5xx"}[5m])) or vector(0))
-          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders"}[5m]))
+          / (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders"}[5m])) > 0)
       - record: slo:order_placement:error_ratio_rate30m
         expr: |
           (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders", status="5xx"}[30m])) or vector(0))
-          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders"}[30m]))
+          / (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders"}[30m])) > 0)
       - record: slo:order_placement:error_ratio_rate1h
         expr: |
           (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders", status="5xx"}[1h])) or vector(0))
-          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders"}[1h]))
+          / (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders"}[1h])) > 0)
       - record: slo:order_placement:error_ratio_rate6h
         expr: |
           (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders", status="5xx"}[6h])) or vector(0))
-          / sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders"}[6h]))
+          / (sum(rate(ktor_http_server_requests_milliseconds_count{job="restaurant-backend", method="POST", route=~"/v1/guest/orders|/v1/staff/table-sessions/[^/]+/orders"}[6h])) > 0)
 
       # NFR-AVAIL-02, part 2: events that reached Ably more than 2 s after their change.
       - record: slo:feed_delay:slow_ratio_rate5m
         expr: |
           1 - sum(rate(realtime_feed_delay_milliseconds_bucket{job="restaurant-backend", le="2000"}[5m]))
-          / sum(rate(realtime_feed_delay_milliseconds_count{job="restaurant-backend"}[5m]))
+          / (sum(rate(realtime_feed_delay_milliseconds_count{job="restaurant-backend"}[5m])) > 0)
       - record: slo:feed_delay:slow_ratio_rate30m
         expr: |
           1 - sum(rate(realtime_feed_delay_milliseconds_bucket{job="restaurant-backend", le="2000"}[30m]))
-          / sum(rate(realtime_feed_delay_milliseconds_count{job="restaurant-backend"}[30m]))
+          / (sum(rate(realtime_feed_delay_milliseconds_count{job="restaurant-backend"}[30m])) > 0)
       - record: slo:feed_delay:slow_ratio_rate1h
         expr: |
           1 - sum(rate(realtime_feed_delay_milliseconds_bucket{job="restaurant-backend", le="2000"}[1h]))
-          / sum(rate(realtime_feed_delay_milliseconds_count{job="restaurant-backend"}[1h]))
+          / (sum(rate(realtime_feed_delay_milliseconds_count{job="restaurant-backend"}[1h])) > 0)
       - record: slo:feed_delay:slow_ratio_rate6h
         expr: |
           1 - sum(rate(realtime_feed_delay_milliseconds_bucket{job="restaurant-backend", le="2000"}[6h]))
-          / sum(rate(realtime_feed_delay_milliseconds_count{job="restaurant-backend"}[6h]))
+          / (sum(rate(realtime_feed_delay_milliseconds_count{job="restaurant-backend"}[6h])) > 0)
 
-      # NFR-AVAIL-02: both parts spend one budget. A part with no traffic adds 0.
+      # NFR-AVAIL-02: both parts spend one budget. A part with no traffic adds 0: its ratio divides only
+      # by a rate above 0, so a meter that exists but counts nothing (the feed delay with LIVE_PUSH=off,
+      # CR-013) gives no series instead of 0/0 = NaN, which would hide the other part's burn.
       - record: slo:order_flow:error_ratio_rate5m
         expr: (slo:order_placement:error_ratio_rate5m or vector(0)) + (slo:feed_delay:slow_ratio_rate5m or vector(0))
       - record: slo:order_flow:error_ratio_rate30m

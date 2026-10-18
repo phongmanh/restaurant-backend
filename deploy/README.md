@@ -16,7 +16,7 @@ The non-secret settings for staging are in [`staging/staging.env`](staging/stagi
 | `STAFF_JWT_KEYS`, `GUEST_JWT_KEYS`, `QR_SIGNING_KEYS`, `TOTP_ENCRYPTION_KEYS`, `EMAIL_HMAC_KEY`, `CRON_SECRET` | `./gradlew generateSecrets` |
 | `DATABASE_URL_MIGRATOR_DIRECT` | Neon console: the `migrator` role's **direct** connection string (pooling off). Used by `./gradlew migrate` on your machine; never sent to Vercel |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Upstash console, the database's REST API section |
-| `ABLY_API_KEY` | Ably console, the app's API keys |
+| `ABLY_API_KEY` | Ably console, the app's API keys. Only with `LIVE_PUSH=ably`; release 1 runs `LIVE_PUSH=off` (CR-013, set in `staging.env`) and leaves it out |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` | Grafana Cloud, the stack's OpenTelemetry (OTLP) connection: the endpoint, and the `Authorization=Basic …` header made with a token that can write metrics (ADR-0009, TBD-12) |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | Vercel project → Settings → Deployment Protection → Protection Bypass for Automation. Test clients send it as `x-vercel-protection-bypass`; never sent to the service |
 
@@ -34,7 +34,7 @@ Steps marked **you** are the owner's. The auto-mode safety check blocks Claude f
 4. **You: fill in the provider secrets** in `deploy/staging/.env.staging`. The file has an empty line for each:
    - `DATABASE_URL_MIGRATOR_DIRECT`: the `migrator` connection string with **pooling off** (the host has no `-pooler`).
    - Upstash: create a free Redis database `restaurant-staging` in **AWS ap-southeast-1 (Singapore)**, then copy `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
-   - Ably: create an app `restaurant-staging`. Add an API key with only the **publish** and **subscribe** capabilities, on the resource `*`, and copy it into `ABLY_API_KEY`. The app holds only this environment's channels, and the tokens the service mints narrow it further, to one `restaurant.<id>.staff` or `session.<id>` channel each.
+   - Ably, only with `LIVE_PUSH=ably` (release 1 runs `off`, CR-013, so skip this): create an app `restaurant-staging`. Add an API key with only the **publish** and **subscribe** capabilities, on the resource `*`, and copy it into `ABLY_API_KEY`. The app holds only this environment's channels, and the tokens the service mints narrow it further, to one `restaurant.<id>.staff` or `session.<id>` channel each.
    - Leave `VERCEL_AUTOMATION_BYPASS_SECRET` for step 7.
 5. **Claude: run the migrations** against Neon. This creates the roles, applies V1 onwards, and is the first check of R-15 (whether Neon's owner role can grant `BYPASSRLS`):
    ```
@@ -155,6 +155,14 @@ The scaled runs of ST-01, ST-02, ST-04, ST-06, ST-09 and ST-19. Claude runs them
 - **`report` (ST-04):** 60 requests for L's 31-day report, one every 2.5 s (the limit is 30 a minute per staff member); the first is timed apart. Target p95 ≤ 3 s.
 - **`noisy` (ST-06):** from the start of one minute, A's 25 guests place 10 orders each and its manager and two waiters 30 each: 340 against A's limit of 300 a minute, so A gets `429 rate_limited`. B's guest places 5 orders over the same 30 s, and each must succeed. About 500 requests; the sessions close afterwards.
 - **Secrets** reach k6 only as environment variables of the `docker` process; k6 prints order IDs, statuses and request IDs, never a token or a body. The summary is in `build/load/<run>/summary.json` (git-ignored).
+
+### Live push off (CR-013)
+Release 1 has no live push: `staging.env` says `LIVE_PUSH=off`, the service writes no outbox rows, and the two `realtime-token` routes answer `503`. To move a staging that ran with Ably to `off`, **you**:
+1. delete the `ABLY_API_KEY` line from `.env.staging` (otherwise step 9 sends it again), then remove it from Vercel: `vercel env rm ABLY_API_KEY production --yes`;
+2. run step 9 (it sends `LIVE_PUSH=off` from `staging.env`), then step 10;
+3. delete the Ably app `restaurant-staging` in the Ably console, or revoke its key (the S-3 spike's app `restaurant-s3-spike` is still open too).
+
+The system suite reads `LIVE_PUSH` from `staging.env`: with `off`, AT-005 and AT-011 poll the catch-up endpoints on release 1's timer (staff 15 s, guests 60 s) and allow NFR-PERF-03's release-1 p99 (20 s, 75 s), so those two take a minute or two longer.
 
 ### Redeploying
 Repeat step 10. Migrations come first whenever the release adds one (step 5): they are expand-only within a release, so the deployment still running keeps working (architecture §8).

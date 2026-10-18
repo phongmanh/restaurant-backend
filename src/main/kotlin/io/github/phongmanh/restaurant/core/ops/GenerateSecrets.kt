@@ -88,13 +88,15 @@ internal fun generate(
         "CRON_SECRET" to token(KEY_BYTES),
     )
 
-/** The secrets a provider issues; the file gets an empty line for each. */
+/**
+ * The secrets a provider issues; the file gets an empty line for each. `ABLY_API_KEY` isn't one while
+ * release 1 runs `LIVE_PUSH=off` (CR-013); add it by hand with `LIVE_PUSH=ably`.
+ */
 internal val PROVIDED =
     listOf(
         "DATABASE_URL_MIGRATOR_DIRECT",
         "UPSTASH_REDIS_REST_URL",
         "UPSTASH_REDIS_REST_TOKEN",
-        "ABLY_API_KEY",
         "OTEL_EXPORTER_OTLP_ENDPOINT",
         "OTEL_EXPORTER_OTLP_HEADERS",
         "VERCEL_AUTOMATION_BYPASS_SECRET",

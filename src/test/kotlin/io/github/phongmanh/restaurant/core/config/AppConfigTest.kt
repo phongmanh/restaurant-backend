@@ -45,6 +45,7 @@ class AppConfigTest {
             "guests.qrSigningKeys" to TestKeys.qrKeysJson,
             "guests.customerAppUrl" to TestKeys.CUSTOMER_APP,
             "jobs.cronSecret" to TestKeys.CRON_SECRET,
+            "realtime.livePush" to "ably",
             "realtime.ablyApiKey" to TestKeys.ABLY_KEY,
             "observability.otlpEndpoint" to "https://otlp.example.test/otlp",
             "observability.otlpHeaders" to "Authorization=Basic b3RscC1zZWNyZXQ=",
@@ -69,7 +70,7 @@ class AppConfigTest {
         assertEquals(listOf("https://order.example.test", "http://localhost:5173"), c.http.allowedOrigins)
         assertEquals(mapOf("customer-android" to SemVer(1, 2, 3)), c.http.minClientVersions)
         assertEquals(TestKeys.ABLY_KEY, c.realtime.ablyApiKey)
-        assertNull(AppConfig.load(config("realtime.ablyApiKey" to "")).realtime.ablyApiKey, "optional in dev")
+        assertNull(AppConfig.load(config("realtime.livePush" to "", "realtime.ablyApiKey" to "")).realtime.ablyApiKey, "optional in dev")
     }
 
     @Test
@@ -157,6 +158,27 @@ class AppConfigTest {
             )
         assertFalse("upstash-secret" in staging.toString(), "no secret in toString")
         assertFailsWith<IllegalStateException> { AppConfig.load(config("auth.emailHmacKey" to "c2hvcnQ=")) }
+    }
+
+    @Test
+    fun `LIVE_PUSH is required outside dev, ably needs its key, off ignores it (CR-013)`() {
+        val staging =
+            arrayOf("app.environment" to "staging", "rateLimits.upstashUrl" to "https://x.upstash.io", "rateLimits.upstashToken" to "t")
+        val unset = assertFailsWith<IllegalStateException> { AppConfig.load(config(*staging, "realtime.livePush" to "")) }
+        assertTrue("LIVE_PUSH" in unset.message!!, unset.message)
+        val noKey = assertFailsWith<IllegalStateException> { AppConfig.load(config(*staging, "realtime.ablyApiKey" to "")) }
+        assertTrue("ABLY_API_KEY" in noKey.message!!, noKey.message)
+        assertFailsWith<IllegalStateException> { AppConfig.load(config(*staging, "realtime.livePush" to "pusher")) }
+
+        val off = AppConfig.load(config(*staging, "realtime.livePush" to "off")).realtime
+        assertEquals(LivePush.OFF, off.livePush)
+        assertNull(off.ablyApiKey, "with push off the key is never used")
+        assertEquals(LivePush.ABLY, AppConfig.load(config(*staging)).realtime.livePush)
+        assertFalse(TestKeys.ABLY_KEY in AppConfig.load(config(*staging)).realtime.toString(), "no key in toString")
+
+        assertEquals(LivePush.ABLY, AppConfig.load(config("realtime.livePush" to "")).realtime.livePush, "dev: on with a key")
+        val devWithoutKey = AppConfig.load(config("realtime.livePush" to "", "realtime.ablyApiKey" to ""))
+        assertEquals(LivePush.OFF, devWithoutKey.realtime.livePush, "dev: off without")
     }
 
     @Test

@@ -147,6 +147,27 @@ tests:
       exp_annotations:
         summary: "Order flow SLO (NFR-AVAIL-02): more than 1.4% of placements fail or of events reach Ably later than 2 s"
         runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn"
+- name: "order flow: placements fail with live push off (CR-013), the feed-delay meter counting nothing"
+  interval: 1m
+  input_series:
+  - series: "realtime_feed_delay_milliseconds_bucket{job=\"restaurant-backend\", instance=\"a\", le=\"2000\"}"
+    values: 0x60
+  - series: "realtime_feed_delay_milliseconds_count{job=\"restaurant-backend\", instance=\"a\"}"
+    values: 0x60
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"2xx\", client=\"none\"}"
+    values: 0+97x60
+  - series: "ktor_http_server_requests_milliseconds_count{job=\"restaurant-backend\", instance=\"a\", group=\"guest\", method=\"POST\", route=\"/v1/guest/orders\", status=\"5xx\", client=\"none\"}"
+    values: 0+3x60
+  alert_rule_test:
+  - eval_time: 10m
+    alertname: OrderFlowBurnFast
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        slo: order_flow
+      exp_annotations:
+        summary: "Order flow SLO (NFR-AVAIL-02): more than 1.4% of placements fail or of events reach Ably later than 2 s"
+        runbook_url: "https://github.com/phongmanh/restaurant-backend/blob/main/deploy/observability/runbooks.md#slo-burn"
 - name: "order flow: events published late"
   interval: 1m
   input_series:

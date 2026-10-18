@@ -58,12 +58,16 @@ interface EventLog {
     ): AppendedEvent
 }
 
-/** [EventLog] on `event_counters`, `domain_events` and `outbox`. */
+/**
+ * [EventLog] on `event_counters`, `domain_events` and `outbox`. Without [push] (`LIVE_PUSH=off`,
+ * release 1, CR-013) it writes no outbox row and publishes nothing: screens poll the log (realtime §7).
+ */
 class OutboxEventLog(
     private val events: EventRepository,
     private val publisher: OutboxPublisher,
     private val clock: Clock,
     private val ids: IdGenerator,
+    private val push: Boolean = true,
 ) : EventLog {
     override fun append(
         tx: TxScope,
@@ -77,7 +81,8 @@ class OutboxEventLog(
         require(audience == EventAudience.STAFF || sessionId != null) { "a session's event names the session" }
         val seq = events.nextSeq(tx, restaurantId)
         val event = LoggedEvent(ids.next(), restaurantId, seq, Rfc3339.truncate(clock.instant()), type, subject, audience, sessionId)
-        events.insert(tx, event)
+        events.insert(tx, event, outbox = push)
+        if (!push) return AppendedEvent(event.id, seq)
         // The first event of the transaction registers its publishing; the rest join the list.
         tx.getOrPut(WRITTEN) {
             mutableListOf<LoggedEvent>().also { written ->

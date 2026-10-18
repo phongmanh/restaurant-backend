@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Restaurant ordering API
-  version: 1.1.0
+  version: 1.1.1
   description: |
     Contract for the restaurant ordering service (`docs/sdlc/restaurant-ordering/`).
     Hand-written in Phase 3 and frozen at G3 on 2026-10-15 (architecture §5, ADR-0007). Changes need a CR;
@@ -20,6 +20,8 @@ info:
     An operation lists one of them only when it has its own reason to (CR-010).
     An update of a versioned resource is `POST <path>/update` with `If-Match`; the `PATCH` forms are
     deprecated and kept only for compatibility within `/v1`, because Vercel's edge answers them `412` (CR-012).
+    Release 1 has no live push (CR-013): clients poll the two catch-up operations, every 15 s for staff
+    and 60 s for guests (design/realtime.md §7), and don't call the two `realtime-token` operations.
 servers:
   - url: https://api.example.invalid
     description: Placeholder until the environments' URLs are fixed
@@ -44,7 +46,7 @@ tags:
   - name: orders
     description: Orders, their status steps, bills, closing a session with its payment, and bill corrections
   - name: realtime
-    description: Catch-up from the event log and Ably subscription tokens
+    description: "Catch-up from the event log, and Ably subscription tokens (not used in release 1: CR-013)"
   - name: reports
     description: Daily sales reports for managers
 
@@ -2584,6 +2586,7 @@ paths:
       tags: [realtime]
       operationId: guestRealtimeToken
       summary: 'An Ably token request that may only subscribe to the session''s channel (30 min)'
+      description: "Not used in release 1 (CR-013): while live push is off (`LIVE_PUSH=off`) it answers `503 service_unavailable` after authentication. Kept for the release that adds live push (design/realtime.md §8)."
       security:
         - guestBearer: []
       x-allowed-when-suspended: false
@@ -2631,6 +2634,7 @@ paths:
       tags: [realtime]
       operationId: staffRealtimeToken
       summary: 'An Ably token request that may only subscribe to the restaurant''s staff channel (60 min; all roles)'
+      description: "Not used in release 1 (CR-013): while live push is off (`LIVE_PUSH=off`) it answers `503 service_unavailable` after authentication. Kept for the release that adds live push (design/realtime.md §8)."
       security:
         - staffBearer: []
       x-allowed-when-suspended: false

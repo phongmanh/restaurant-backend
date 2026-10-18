@@ -21,7 +21,7 @@ class KitchenAndBillTest {
     private val api = Staging.api
 
     @Test
-    fun `AT-011 the kitchen sees exactly its own orders within 2 s, and misses none after a network cut`() =
+    fun `AT-011 the kitchen sees exactly its own orders within NFR-PERF-03, and misses none after a network cut`() =
         a.withTables(5) { tables ->
             val start = api.expect(OK, "GET", "/v1/staff/events", token = a.kitchen).json.str("cursor")
             val item = a.item("Grilled pork with noodles").str("id")
@@ -37,7 +37,7 @@ class KitchenAndBillTest {
                     assertNotNull(note, "the kitchen screen got order ${order.str("id")}")
                     val delay = Live.delay(at, note)
                     println("[AT-011] order at table ${order.obj("table").str("number")} reached the kitchen in ${delay.toMillis()} ms")
-                    assertTrue(delay <= Live.LIMIT, "within ${Live.LIMIT}: took $delay")
+                    assertTrue(delay <= screen.limit, "within ${screen.limit}: took $delay")
                 }
                 assertTrue(screen.all().none { it.id == bOrder.str("id") }, "nothing of restaurant B on A's channel")
                 val screenList = api.expect(OK, "GET", "/v1/staff/orders?status=placed&limit=100", token = a.kitchen).arrOf("items")

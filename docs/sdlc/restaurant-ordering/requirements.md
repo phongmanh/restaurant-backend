@@ -2,7 +2,7 @@
 
 | Version | Status | Owner | Approvers |
 |---|---|---|---|
-| 1.6 | Approved (G1 2026-10-13; CR-002 2026-10-14; CR-003 2026-10-14; CR-004 to CR-007 2026-10-15) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
+| 1.7 | Approved (G1 2026-10-13; CR-002 2026-10-14; CR-003 2026-10-14; CR-004 to CR-007 2026-10-15; CR-013 2026-10-18) | Manh Nguyen (product owner) | Manh Nguyen (product owner, tech lead) |
 
 **Version history**
 
@@ -15,13 +15,14 @@
 | 1.4 | 2026-10-15 | [CR-005](cr/CR-005-natural-idempotency-and-session-data.md): no guest device data is stored with table sessions. Changed: §5 table-session row |
 | 1.5 | 2026-10-15 | [CR-006](cr/CR-006-record-orders-decisions.md): the owner's orders decisions written in. A closed bill is corrected by a manager's correcting entries, counted on the day they're made (TBD-7 resolved); FR-016 isn't built in release 1 (TBD-8 resolved). Changed: FR-013, FR-016 (C → W), FR-050, §3.7, §9 |
 | 1.6 | 2026-10-15 | [CR-007](cr/CR-007-csv-export-out-of-release-1.md): FR-051 CSV export isn't built in release 1 (a 93-day export exceeds the 4.5 MB response cap and needs object storage, TBD-13). Changed: FR-051 (C → W), §3.7 |
+| 1.7 | 2026-10-18 | [CR-013](cr/CR-013-release-1-without-live-push.md): release 1 has no live push; staff screens read the event log every 15 s and guest screens every 60 s. Changed: KPI-2, NFR-PERF-03 (a release-1 target), §6 live-update transport row |
 
 ## 1. Brief
 - **Problem:** In a busy restaurant, guests wait for a waiter to take their order and to bring the bill. Orders taken by hand get lost or misread on the way to the kitchen. Restaurant owners have no simple, shared view of what was ordered and sold. Small and mid-sized restaurants can't run their own ordering system, so they need one they can rent.
 - **Solution in one line:** A multi-restaurant (SaaS) backend. Guests scan the QR code on their table and order from a mobile app or the web app. The order goes straight to the kitchen and staff screens, and staff move it through to served and paid.
 - **Goals and KPIs** (agreed by the product owner at G1):
   - KPI-1: ≥ 60% of orders in pilot restaurants are placed by guests themselves (QR), not keyed in by staff, 3 months after go-live.
-  - KPI-2: a placed order appears on the kitchen screen within 2 s for 99% of orders (see NFR-PERF-03).
+  - KPI-2: a placed order appears on the kitchen screen within NFR-PERF-03's target for 99% of orders (release 1: 20 s; 2 s once live push is added; CR-013).
   - KPI-3: < 1% of orders are cancelled or corrected because the table or an item was wrong.
   - KPI-4: onboard a new restaurant (menu + tables + staff + printed QR codes) in ≤ 1 working day without developer help.
 - **In scope (release 1):**
@@ -129,7 +130,7 @@ The product owner confirmed these numbers at G1 (2026-10-13). "Peak" is the dinn
 |---|---|---|---|
 | NFR-PERF-01 | Latency of guest reads (menu, session, orders, bill) | p95 ≤ 200 ms, p99 ≤ 500 ms at peak, measured at the service edge | Load test (k6) on staging |
 | NFR-PERF-02 | Latency of writes (place, cancel, status change, close session) | p95 ≤ 300 ms, p99 ≤ 800 ms at peak | Load test on staging |
-| NFR-PERF-03 | Live-update delay | A new order or status change reaches connected staff and guest clients within 2 s at p95 (5 s at p99) after the write is acknowledged, at peak | Load test with live clients measuring end-to-end delay |
+| NFR-PERF-03 | Live-update delay | A new order or status change reaches connected staff and guest clients within 2 s at p95 (5 s at p99) after the write is acknowledged, at peak.<br>**Release 1 has no live push (CR-013):** a change reaches staff screens within 15 s at p95 (20 s at p99) and guest screens within 60 s at p95 (75 s at p99) after the write is acknowledged; a screen shows its own change at once. The 2 s target applies once live push is added | Load test with live clients measuring end-to-end delay |
 | NFR-PERF-04 | Report latency | A 31-day report for a restaurant with 300 bills/day returns in ≤ 3 s at p95 | Load test on staging with production-sized data |
 | NFR-SCAL-01 | Throughput and connections | At launch: 300 req/s and 15,000 concurrent live guest clients plus 2,500 staff screens. 3× within 12 months by adding instances or capacity only, with no redesign | Load test; capacity model (Phase 2) |
 | NFR-SCAL-02 | Fairness between restaurants | One restaurant's traffic (including abuse) can't push other restaurants beyond the PERF targets. Per-restaurant and per-session rate limits | Load test with one noisy tenant |
@@ -173,7 +174,7 @@ No guest names, phone numbers, emails, payment cards or locations are collected.
 | Vercel (hosting platform) | Vercel | Platform runtime; limits on execution time, concurrency and long-lived connections to confirm in Phase 2 (R-01) | Preview and production deployments | Vercel plan SLA (TBD) | Service down → NFR-AVAIL budget; guests order via staff |
 | Managed PostgreSQL (provider chosen in Phase 2) | Provider | PostgreSQL wire protocol | Per environment | Connection limits matter with serverless instances (pooling, Phase 2) | Service returns 503; no orders accepted; recovery per NFR-REL-01 |
 | Object storage for menu images (FR-022, provider in Phase 2) | Provider | HTTPS object API; images served from a CDN | Per environment | Upload size ≤ 5 MB | Menus show without images; uploads fail with 503 |
-| Live-update transport (if the platform needs a managed real-time service; Phase 2 ADR) | Provider TBD | e.g. SSE/WebSocket, or a hosted pub/sub | Per environment | Connection and message quotas vs NFR-SCAL-01 | Clients fall back to reading the list (NFR-REL-03) |
+| Live-update transport (if the platform needs a managed real-time service; Phase 2 ADR) | None in release 1 (CR-013): clients read the event log on a timer. Provider decided later (ADR-0003) | e.g. SSE/WebSocket, or a hosted pub/sub | Per environment | Connection and message quotas vs NFR-SCAL-01 | Clients fall back to reading the list (NFR-REL-03) |
 
 ## 7. Compliance
 - **Regulations:** Vietnam's Personal Data Protection Law (in force 1 January 2026) and Decree 356/2025/ND-CP on personal data protection (which replaced Decree 13/2023/ND-CP on 1 January 2026), plus implementing guidance. Vietnam's accounting rules for keeping sales records (retention, TBD-4). No PCI-DSS scope, because no payment card data is handled. GDPR doesn't apply unless restaurants outside Vietnam are onboarded (that would be a CR).
