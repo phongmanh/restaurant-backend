@@ -108,9 +108,11 @@ rateLimits:
     reports:
       read: "30/60"
 
-# Live updates (realtime §8, ADR-0003). Secret: the Ably API key, limited to publish and subscribe on
-# restaurant.* and session.*; one Ably app per environment. Required outside dev and test.
+# Live updates (realtime §4.2, §8, ADR-0003, CR-013). LIVE_PUSH is "off" (release 1: screens poll the
+# event log) or "ably"; required outside dev and test. With "ably", the secret ABLY_API_KEY, limited to
+# publish and subscribe on restaurant.* and session.*; one Ably app per environment.
 realtime:
+  livePush: "$LIVE_PUSH:"
   ablyApiKey: "$ABLY_API_KEY:"
 
 # Metrics pushed over OTLP (ADR-0009, architecture §13) to Grafana Cloud (TBD-12). Required outside dev

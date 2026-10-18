@@ -7,10 +7,13 @@
 //   LOAD_FIXTURES  JSON: base, restaurant_id, staff_token, item_ids, report_from, report_to,
 //                  guests [{token, session_id, qr_token}]
 //   BYPASS         the Deployment Protection bypass secret
-//   PROFILE        smoke | cold | deploy
+//   PROFILE        smoke | cold | deploy | live
 //   RATE, MINUTES  requests per second and the run's length
+//   LIVE_PUSH      the service's setting: with "off" (release 1, CR-013) the token routes answer 503,
+//                  so their share of the mix goes to catch-up reads, as release 1's apps poll instead
 //
-// Output: `ACK <order id>` for each order the service acknowledged, `FAIL <time> <op> <status>
+// Output: `ACK <order id>` for each order the service acknowledged, `WROTE <epoch ms> <session id>
+// <order id> <version>` for each order write acknowledged (placed or moved on; ST-03), `FAIL <time> <op> <status>
 // <request id>` for each unexpected answer, `SLOW <time> <op> <ms>` for each request over COLD_MS,
 // and the summary as JSON in /out/summary.json. No token or body is ever printed.
 import http from "k6/http";
@@ -26,16 +29,17 @@ const MINUTES = Number(__ENV.MINUTES || 10);
 // 2 s is counted as one that waited for an instance to start, apart from the warm ones (§3).
 const COLD_MS = 2000;
 
-// Architecture §9's mix, in percent of requests.
+// Architecture §9's mix, in percent of requests. Without live push the token share is catch-up.
+const PUSH = __ENV.LIVE_PUSH === "ably";
 const MIX = [
   ["menu", 23],
   ["session", 23],
-  ["catchup", 24],
+  ["catchup", PUSH ? 24 : 27],
   ["qr", 5],
   ["order", 3],
   ["status", 13],
   ["lists", 5],
-  ["token", 3],
+  ["token", PUSH ? 3 : 0],
   ["report", 1],
 ];
 const WRITES = new Set(["qr", "order", "status", "token"]);
@@ -122,6 +126,9 @@ function send(op, method, path, token, body, extra, ok) {
   return res;
 }
 
+// When the service acknowledged an order write, for ST-03's delay: k6's clock, read by the driver.
+const wrote = (session, order) => console.log(`WROTE ${Date.now()} ${session} ${order.id} ${order.version}`);
+
 const json = (res) => {
   try {
     return res.json();
@@ -178,7 +185,8 @@ const ops = {
     if (first === null) return;
     acked.add(1);
     console.log(`ACK ${first.id}`);
-    state.orders.push({ id: first.id, version: first.version, status: first.status });
+    wrote(guest().session_id, first);
+    state.orders.push({ id: first.id, version: first.version, status: first.status, session: guest().session_id });
     if (replay) {
       const again = json(send("order", "POST", "/v1/guest/orders", guest().token, { lines }, { "Idempotency-Key": key }, [201]));
       if (!again || again.id !== first.id) replayMismatch.add(1);
@@ -200,6 +208,7 @@ const ops = {
     if (!body) return state.orders.shift();
     order.version = body.version;
     order.status = body.status;
+    wrote(order.session, body);
     if (!NEXT[order.status]) state.orders.shift();
   },
   lists() {

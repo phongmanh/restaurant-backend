@@ -69,7 +69,7 @@ class RealtimeRateLimits(
 /**
  * Subscription tokens (realtime §8): a guest may listen on their session's channel for 30 min, a
  * staff member of any role on their restaurant's staff channel for 60 min. The channel comes from
- * the caller, never from the request. Without an Ably key (dev only), `503`.
+ * the caller, never from the request. With live push off (`LIVE_PUSH=off`, release 1, CR-013), `503`.
  */
 class TokenService(
     private val issuer: TokenIssuer?,

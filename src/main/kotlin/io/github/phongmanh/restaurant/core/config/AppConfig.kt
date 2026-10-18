@@ -72,7 +72,7 @@ data class AppConfig(
 
             val environment = config.property("app.environment").getString()
 
-            // Upstash, Ably and the metrics backend may be left out in dev and test only.
+            // Upstash and the metrics backend may be left out in dev and test only; Ably by `LIVE_PUSH`.
             fun outsideDev(
                 path: String,
                 env: String,
@@ -95,7 +95,7 @@ data class AppConfig(
             val cronSecret = secret("jobs.cronSecret", "CRON_SECRET")
             val upstashUrl = outsideDev("rateLimits.upstashUrl", "UPSTASH_REDIS_REST_URL")
             val upstashToken = outsideDev("rateLimits.upstashToken", "UPSTASH_REDIS_REST_TOKEN")
-            val ablyKey = outsideDev("realtime.ablyApiKey", "ABLY_API_KEY")
+            val realtime = realtimeSettings(config, environment, missing)
             val otlpEndpoint = outsideDev("observability.otlpEndpoint", "OTEL_EXPORTER_OTLP_ENDPOINT")
             val otlpHeaders = outsideDev("observability.otlpHeaders", "OTEL_EXPORTER_OTLP_HEADERS")
             check(missing.isEmpty()) { "missing settings: ${missing.joinToString()}" }
@@ -139,9 +139,36 @@ data class AppConfig(
                         timeout = millis("rateLimits.timeoutMs"),
                         policies = policies(config.config("rateLimits.policies").toMap()),
                     ),
-                realtime = RealtimeSettings(ablyKey.ifBlank { null }),
+                realtime = realtime,
                 observability = observability(config, otlpEndpoint, otlpHeaders),
             )
+        }
+
+        /**
+         * Live push (realtime §4.2, CR-013). `LIVE_PUSH` must be `off` or `ably` outside dev and test,
+         * where it defaults to `ably` when a key is set. `ably` needs `ABLY_API_KEY`; `off` ignores it.
+         * A missing setting joins [missing]; an unknown value stops the start without echoing it.
+         */
+        private fun realtimeSettings(
+            config: ApplicationConfig,
+            environment: String,
+            missing: MutableList<String>,
+        ): RealtimeSettings {
+            val key = config.propertyOrNull("realtime.ablyApiKey")?.getString()?.takeIf { it.isNotBlank() }
+            val setting =
+                config
+                    .propertyOrNull("realtime.livePush")
+                    ?.getString()
+                    .orEmpty()
+                    .trim()
+            val push =
+                when {
+                    setting.isNotEmpty() -> checkNotNull(LivePush.parse(setting)) { "LIVE_PUSH must be off or ably" }
+                    environment in LOCAL_ENVIRONMENTS -> if (key != null) LivePush.ABLY else LivePush.OFF
+                    else -> null.also { missing += "LIVE_PUSH" }
+                }
+            if (push == LivePush.ABLY && key == null) missing += "ABLY_API_KEY"
+            return if (push == LivePush.ABLY && key != null) RealtimeSettings(key, LivePush.ABLY) else RealtimeSettings(null, LivePush.OFF)
         }
 
         /** Where metrics go (ADR-0009); blank values only in dev and test, as `load` checks. */

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: the four §14 questions decided by the owner on 2026-10-15 |
+| Version | 1.2 (CR-013, approved 2026-10-18: release 1 has no live push; clients poll, `LIVE_PUSH` setting). 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: the four §14 questions decided by the owner on 2026-10-15 |
 | Owner decisions | §14, all four accepted 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `realtime` (architecture §4) |
@@ -23,6 +23,8 @@
 - The client apps' code. §7 is the contract they follow.
 
 ## 2. How it works
+**Release 1 has no live push (CR-013, 2026-10-18).** Staging and production run with `LIVE_PUSH=off`: every event is still written to the log, but no outbox row is written and nothing goes to Ably. Screens read `GET …/events?after=<cursor>` on a timer (§7 "Release 1"), every 15 s for staff and 60 s for guests. The rest of this design describes `LIVE_PUSH=ably`, which the code keeps for the release that adds push (ADR-0003, deferred).
+
 **In plain words:** when something changes, the database writes the change and a numbered note about it ("event 4,812: order X is now version 3"), together, so neither can exist without the other. After the save, the server sends a tiny ping through Ably to the screens that care: "something changed, you're now at 4,812". Each screen then asks the API "what happened after 4,811?" and gets the changes. If a ping gets lost, nothing is lost: the next ping, a reconnect or a poll asks the same question and gets everything since the last number the screen saw.
 
 ```mermaid
@@ -93,6 +95,8 @@ The `OrderEvents`, `SessionEvents` and `MenuEvents` ports from the other designs
 2. inserts the `domain_events` row and its `outbox` row (`next_attempt_at` = now);
 3. remembers the event in the request context, so the request can publish it after commit (§4.2).
 
+With `LIVE_PUSH=off` (release 1, CR-013) it does step 1 and inserts only the `domain_events` row: no outbox row, nothing to publish. So the backlog claim (§4.3), the sweep and the circuit breaker find no work, and no publish failure is ever counted.
+
 The counter comes after the business rows and before the audit chain head in the lock order (CLAUDE.md; orders §3.1). A busy restaurant writes about 1–2 events a second at peak, and each holds the counter for the few milliseconds until its commit, so they queue briefly and never wait on each other in a circle.
 
 ### 4.2 Publishing after commit
@@ -103,6 +107,7 @@ The counter comes after the business rows and before the audit chain head in the
   - A per-instance circuit breaker (architecture §10) skips the inline try for 30 s after 5 failures in a row; the rows wait for the next publisher.
   - A request publishes its events in order and stops at the first failure: when Ably is down, it isn't sent the rest, each of which could wait 300 ms. Those rows wait for the next publisher (CR-009, Q-14).
 - **No remote call inside a transaction** (architecture §9): publishing always happens after commit.
+- **The `LIVE_PUSH` setting** (`off` | `ably`, CR-013) has no default outside dev and test: staging and production must name it, so a missing key can never switch push off quietly. `ably` requires `ABLY_API_KEY`, as before; `off` ignores it. In dev and test it defaults to `ably` when a key is set and `off` otherwise.
 
 ### 4.3 Catching up on missed publishes
 Rows that weren't published (Ably down, a refused request, an instance that died after commit) are picked up three ways:
@@ -199,6 +204,8 @@ The job routes (§10) are in the registry under the cron-secret group and not in
 
 **When live delivery is down** (Ably reports the connection `suspended` or `failed`, or the token endpoint fails): poll `GET .../events?after=<cursor>` every **15 s for staff and 60 s for guests** (±20 % random jitter, so screens don't poll in step), until Ably is `connected` again; then catch up once and stop polling (§14 Q1).
 
+**Release 1 (CR-013): no subscription.** Clients skip steps 3 and 4 of "Start" and the realtime-token call, and stay in the "live delivery is down" mode for good: poll `GET .../events?after=<cursor>` every **15 s for staff and 60 s for guests** (±20 % jitter). They also catch up at once after the screen's own write and when the app comes to the foreground, so a guest sees their own order and a cook their own status change without waiting for the timer. A client written to the full rules above still works: the token endpoint's `503` sends it to polling.
+
 **Rules for every client:**
 - Ignore event types and fields it doesn't know (core-and-auth §2), but still move `cursor`.
 - Apply a snapshot only if its `version` is higher than the one held.
@@ -217,6 +224,7 @@ The job routes (§10) are in the registry under the cron-secret group and not in
 - **Lifetime** (§14 Q3): guests 30 min, staff 60 min. Ably's SDK asks for a new one before expiry. A closed session can't get a new one (the guest call answers `401 table_session_closed`), so its devices stop receiving within 30 min. Until then they only get IDs, which they can't read with a closed session.
 - **No `clientId`.** Nothing about the device or the staff member goes to Ably.
 - **Suspended restaurant:** no new tokens (`403 restaurant_suspended`); existing ones run out (restaurants §6).
+- **`LIVE_PUSH=off` (release 1, CR-013):** both token routes answer `503 service_unavailable` (core-and-auth §3's shared code) after the usual authentication. Release-1 clients don't call them.
 - **The API key** (`ABLY_API_KEY`, a Vercel sensitive variable) is limited to `{"restaurant.*": ["publish", "subscribe"], "session.*": ["publish", "subscribe"]}`, so even a leaked token request can't reach anything else. One Ably app per environment. Creating the key and storing it is an owner step (CLAUDE.md: Claude doesn't write secrets to a secret store).
 - Isolation was verified in S-3 (Q3, 9 of 9): a session token is refused on every other channel and action.
 
@@ -243,6 +251,7 @@ Both are idempotent, hold `pg_try_advisory_xact_lock`, and are called by Vercel 
 - **`realtime_outbox_pending`** and the age of the oldest unsent row, read by the sweep. Alert: oldest unsent row older than 2 min (production).
 - **`realtime_publish_failures_total`** by Ably error code (`42918` rate limit, timeouts, circuit open).
 - **Feed delay for NFR-PERF-03** is measured end to end by the load test's live clients (test-plan), because the server can't see when a phone received a message.
+- **With `LIVE_PUSH=off`** (release 1) the three meters above stay at zero, the outbox alert and the late-publish half of the order-flow SLO don't apply, and the SLO counts failed order placements only (`deploy/observability/rules.yaml`).
 
 ## 12. Code layout
 ```
@@ -269,10 +278,11 @@ Both are idempotent, hold `pg_try_advisory_xact_lock`, and are called by Vercel 
 | IT-RT-07 | Ably fake down: requests still succeed; rows stay unsent; a later request of the same restaurant publishes them; the sweep publishes the rest; each event is published with its own ID (no duplicates at the fake) | NFR-REL-03, NFR-AVAIL-02 |
 | IT-RT-08 | `42918` from the fake → one retry after 50 ms; two sweepers at once never claim the same row | NFR-REL-03, NFR-AVAIL-02 (ADR-0003) |
 | IT-RT-09 | Token: the guest gets exactly `session.<sid>: subscribe`; the staff member gets exactly `restaurant.<rid>.staff: subscribe`; a closed session → `401`; suspended → `403`; no `clientId` | NFR-SEC-02, FR-043 |
-| IT-RT-10 | Resilience (Phase 5, with live clients): drop connections under load, then compare every client's received state with the database; no missing or extra orders | NFR-REL-03 |
-| IT-RT-11 | Live delay end to end at peak: p95 ≤ 2 s, p99 ≤ 5 s (Phase 5 on a paid Ably plan, R-13) | NFR-PERF-03 |
+| IT-RT-10 | Resilience (Phase 5, ST-10): screens pause and catch up under load, then every screen's events are compared with the database; no missing or extra events. Release 1: polling screens (CR-013) | NFR-REL-03 |
+| IT-RT-11 | Live delay end to end (Phase 5, ST-03). Release 1: polling screens against NFR-PERF-03's release-1 target (CR-013); p95 ≤ 2 s at peak waits for live push (R-13) | NFR-PERF-03 |
 | IT-RT-12 | Purge: events older than 7 days are deleted with their outbox rows; a client with an older cursor gets `reset` | NFR-REL-03, NFR-PRIV-01 (architecture §6) |
 | IT-RT-13 | No personal data in events, Ably messages or tokens (names, notes, IPs, device IDs) | NFR-PRIV-01 |
+| IT-RT-14 | `LIVE_PUSH=off`: a change writes its event and no outbox row, nothing reaches the fake, and catch-up still returns it; both token routes → `503 service_unavailable`. Outside dev, a missing or unknown `LIVE_PUSH` stops the start, and `ably` without a key does too (CR-013) | NFR-REL-03, FR-005, FR-011 |
 
 ## 14. Owner decisions (2026-10-15)
 The owner accepted all four recommendations. They're recorded in STATUS.md (Decisions; Q-7 resolved).

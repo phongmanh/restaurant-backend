@@ -55,10 +55,11 @@ class EventRepository {
                     "ON CONFLICT (restaurant_id) DO UPDATE SET last_seq = event_counters.last_seq + 1 RETURNING last_seq",
             ).use { it.bind(restaurantId.value).firstOrNull { rs -> rs.getLong(1) } } ?: error("event counter not visible")
 
-    /** The event and its outbox row, due now. */
+    /** The event and, with [outbox], its outbox row, due now (none while live push is off, CR-013). */
     fun insert(
         tx: TxScope,
         event: LoggedEvent,
+        outbox: Boolean = true,
     ) {
         val conn = ExposedTransactor.connection(tx)
         conn
@@ -83,6 +84,7 @@ class EventRepository {
                         event.audience.value,
                     ).executeUpdate()
             }
+        if (!outbox) return
         conn
             .prepareStatement("INSERT INTO outbox (event_id, restaurant_id, created_at, next_attempt_at) VALUES (?, ?, ?, ?)")
             .use { it.bind(event.id, event.restaurantId.value, event.occurredAt, event.occurredAt).executeUpdate() }

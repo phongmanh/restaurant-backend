@@ -1,6 +1,7 @@
 package io.github.phongmanh.restaurant.realtime
 
 import io.github.phongmanh.restaurant.core.application.RateLimiter
+import io.github.phongmanh.restaurant.core.config.LivePush
 import io.github.phongmanh.restaurant.core.config.RealtimeSettings
 import io.github.phongmanh.restaurant.core.http.Endpoints
 import io.github.phongmanh.restaurant.orders.floor
@@ -79,15 +80,17 @@ class TokenTest {
         }
 
     @Test
-    fun `without an Ably key (dev) the token routes answer 503`() =
+    fun `IT-RT-14 with live push off the token routes answer 503`() =
         testApp(
-            config = TestDatabase.config.copy(realtime = RealtimeSettings(null)),
+            config = TestDatabase.config.copy(realtime = RealtimeSettings(null, LivePush.OFF)),
             overrides = listOf(module { single<RateLimiter> { NoLimits } }),
         ) {
             val tenant = Tenants.create("A", "manager@a.example")
             val response = client.api(e.STAFF_REALTIME_TOKEN, tenant.managerToken)
             assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
             assertEquals("service_unavailable", response.problem())
+            val guest = client.api(e.GUEST_REALTIME_TOKEN, Guests.seated(tenant.id).token)
+            assertEquals(HttpStatusCode.ServiceUnavailable, guest.status)
         }
 
     /**

@@ -24,8 +24,9 @@ import org.koin.dsl.onClose
 
 /**
  * The realtime feature (realtime §12): the event log, publishing to Ably after commit, the catch-up
- * reads, subscription tokens and the sweep and purge jobs. Without an Ably key (dev only) nothing is
+ * reads, subscription tokens and the sweep and purge jobs. With live push off (no Ably key) nothing is
  * published and the token routes answer `503`; clients still catch up by reading the log.
+ * Release 1 runs that way everywhere (`LIVE_PUSH=off`, CR-013), and the event log writes no outbox rows.
  */
 fun realtimeModule(settings: RealtimeSettings) =
     module {
@@ -43,7 +44,7 @@ fun realtimeModule(settings: RealtimeSettings) =
         single { TokenService(client?.let(::AblyTokenIssuer), get()) }
 
         single { OutboxPublisher(get(), get(), get(), get(), get(), get()) }
-        single<EventLog> { OutboxEventLog(get(), get(), get(), get()) }
+        single<EventLog> { OutboxEventLog(get(), get(), get(), get(), push = client != null) }
         single { RealtimeRateLimits(get(), get()) }
         single { CatchUpService(get(), get(), getAll()) }
         single { OutboxSweep(get(), get(), get(), get(), get()) }

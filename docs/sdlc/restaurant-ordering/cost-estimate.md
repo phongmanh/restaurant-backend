@@ -4,6 +4,7 @@
 |---|---|---|---|
 | 0.1 | 2026-10-14 | Draft for G2. The pub/sub line is a placeholder until S-3 | Architecture §9 capacity model, S-1, S-2, S-4 results, vendor price pages checked 2026-10-14 |
 | 0.2 | 2026-10-14 | S-3 ran: the Ably line is confirmed on Ably, prices rechecked, unchanged; no figure changes. For the owner's review | S-3 results (`spikes/s3-pubsub/README.md`), Ably pricing and limits pages checked 2026-10-14 |
+| 0.3 | 2026-10-18 | CR-013: release 1 has no live push, so the Ably line is $0 and Vercel carries the polls (§1.1). The figures with live push are kept below. For the owner's review | CR-013, architecture §9 (polling peak ≈ 640 req/s) |
 
 All prices are USD per month, list price, before tax. This is a paper estimate: it answers "what would a real launch cost?" for the G2 capacity model. The project itself stays on free plans (decision 2026-10-14), so nothing here means buying a plan.
 
@@ -29,6 +30,31 @@ What drives the bill, largest first:
 2. **Request count at the CDN.** Vercel bills every request three times: as a CDN request ($2.60/M in `sin1`), as an invocation ($0.60/M) and as origin transfer. The event catch-up endpoint (75 req/s) is the largest single group.
 3. **Menu images**, if FR-022 is a Must. ≈ 90 M image requests and ≈ 4.5 TB a month at launch.
 4. **The database**, which is cheap next to these: Neon bills compute by the hour, and the data is small.
+
+### 1.1 Release 1, without live push (CR-013)
+Release 1 has no Ably: every open screen reads the event log on a timer (staff every 15 s, guests every 60 s). The polls replace the mix's event catch-up and tokens, so the peak rises from ≈ 310 to ≈ 640 req/s (≈ 590 at the origin; architecture §9). By C-1 that is 192 M CDN requests and 177 M invocations a month at launch, about twice C-2.
+
+| Vercel Pro item, launch | Formula | $/month |
+|---|---|---|
+| Developer seat less included credit | $20 − $20 | 0 |
+| Invocations | 177 M × $0.60/M | 106 |
+| Active CPU | 177 M × 5 ms = 246 CPU-hours × $0.160 | 39 |
+| Provisioned memory | 177 M × 50 ms × 2 GB = 4,917 GB-h, up to 5,760 (C-5); + 1,460 warm; × $0.0133 | 85 – 96 |
+| CDN requests | (192 M − 1 M) × $2.60/M | 497 |
+| Fast Data Transfer | 192 M × 3 KB = 576 GB, inside the 1 TB included | 0 |
+| Fast Origin Transfer | 177 M × 3 KB = 531 GB × $0.27/GB | 143 |
+| Firewall rate-limit rules | Unchanged | 5 |
+| Firewall OWASP managed rules | Writes only (19.5 M) to every request (192 M) × $1.04/M | 20 – 200 |
+| **Vercel total** | | **≈ 895 – 1,086** |
+
+| | Launch | 3× growth |
+|---|---|---|
+| Vercel Pro | 895 – 1,086 | 2,685 – 3,258 |
+| Neon, Upstash, Grafana, other (as §1) | 133 – 211 | 310 – 583 |
+| Ably | 0 | 0 |
+| **Total without menu images** | **≈ 1,030 – 1,300** | **≈ 3,000 – 3,840** |
+
+So release 1 saves ≈ $440–510 a month at launch, not the whole Ably line (≈ $970): about half of it moves to Vercel as polls, mostly CDN requests. 3× is still priced at launch's per-request rates. Not recomputed: the database. The polls add ≈ 330 tiny indexed reads a second at peak, which C-7's 2 CU should absorb (S-2), but the load test hasn't shown it.
 
 ## 2. Today, on free plans: $0
 

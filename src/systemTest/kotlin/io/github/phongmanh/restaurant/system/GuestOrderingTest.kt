@@ -102,7 +102,7 @@ class GuestOrderingTest {
         }
 
     @Test
-    fun `AT-005 both guests see the kitchen's change within 2 s, and an offline phone catches up`() =
+    fun `AT-005 both guests see the kitchen's change within NFR-PERF-03, and an offline phone catches up`() =
         a.withTables(1) { (table) ->
             val code = a.qrToken(table.str("id"))
             val guest1 = Guest.scan(code)
@@ -122,7 +122,7 @@ class GuestOrderingTest {
                         assertNotNull(note, "$name's screen got `preparing`")
                         val delay = Live.delay(changedAt, note)
                         println("[AT-005] `preparing` reached $name ${delay.toMillis()} ms after the change's response")
-                        assertTrue(delay <= Live.LIMIT, "$name saw `preparing` within ${Live.LIMIT}: took $delay")
+                        assertTrue(delay <= screen.limit, "$name saw `preparing` within ${screen.limit}: took $delay")
                     }
                     val cursor = guest1.expect(OK, "GET", "/v1/guest/events").json.str("cursor")
                     screen1.disconnect()

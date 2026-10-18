@@ -1,6 +1,9 @@
 package io.github.phongmanh.restaurant.realtime
 
+import io.github.phongmanh.restaurant.core.application.RateLimiter
 import io.github.phongmanh.restaurant.core.application.Transactor
+import io.github.phongmanh.restaurant.core.config.LivePush
+import io.github.phongmanh.restaurant.core.config.RealtimeSettings
 import io.github.phongmanh.restaurant.core.domain.RestaurantId
 import io.github.phongmanh.restaurant.core.domain.UuidV7
 import io.github.phongmanh.restaurant.core.http.Endpoints
@@ -17,6 +20,8 @@ import io.github.phongmanh.restaurant.support.AuthFixtures
 import io.github.phongmanh.restaurant.support.FakeAbly
 import io.github.phongmanh.restaurant.support.Guests
 import io.github.phongmanh.restaurant.support.MutableClock
+import io.github.phongmanh.restaurant.support.NoLimits
+import io.github.phongmanh.restaurant.support.Tenants
 import io.github.phongmanh.restaurant.support.TestDatabase
 import io.github.phongmanh.restaurant.support.TestKeys
 import io.github.phongmanh.restaurant.support.json
@@ -44,7 +49,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.seconds
 
-/** IT-RT-01, IT-RT-07, IT-RT-08, IT-RT-12 and IT-RT-13 (realtime §3, §4; ADR-0003; NFR-REL-03, NFR-PRIV-01). */
+/** IT-RT-01, IT-RT-07, IT-RT-08, IT-RT-12, IT-RT-13 and IT-RT-14 (realtime §3, §4; ADR-0003; CR-013; NFR-REL-03, NFR-PRIV-01). */
 class PublishingTest {
     @BeforeTest
     fun setUp() = TestDatabase.truncate()
@@ -272,6 +277,30 @@ class PublishingTest {
                 columns,
                 "IDs, types, versions and times only",
             )
+        }
+    }
+
+    @Test
+    fun `IT-RT-14 with live push off an event is logged with no outbox row, nothing is published, and catch-up returns it`() {
+        val ably = FakeAbly()
+        val tenant = Tenants.create("A", "manager@a.example")
+        val order = UuidV7.next()
+        testApp(
+            config = TestDatabase.config.copy(realtime = RealtimeSettings(null, LivePush.OFF)),
+            overrides = listOf(module { single<RealtimePublisher> { ably } }, module { single<RateLimiter> { NoLimits } }),
+            routes = { app ->
+                get("/test/realtime/append") {
+                    app.get<Transactor>().inTransaction(tenant.id) {
+                        app.get<EventLog>().append(this, tenant.id, "OrderPlaced", EventSubject("order", order, 1), EventAudience.STAFF)
+                    }
+                    call.respondText("ok")
+                }
+            },
+        ) {
+            client.get("/test/realtime/append")
+            assertEquals(listOf(1, 0), listOf(eventIds(tenant.id).size, outboxRows(tenant.id)), "the event, and no outbox row")
+            assertEquals(0, ably.tries(), "nothing is published")
+            assertEquals(listOf("OrderPlaced:$order:1"), client.catchUp(staffEvents, tenant.managerToken, after = 0).eventList())
         }
     }
 
