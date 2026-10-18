@@ -403,7 +403,8 @@ class DeployWatch(
         val first = checkNotNull(current()) { "vercel inspect $domain didn't name a deployment" }
         switches += Instant.now() to first
         out.println("[ST-09, ST-19] $domain serves $first.")
-        out.println("To switch it: vercel deploy --prod; to switch back: vercel alias set <deployment> $domain")
+        out.println("To switch it: vercel deploy --prod --project restaurant-staging")
+        out.println("To switch back: vercel alias set <deployment> $domain")
         thread.start()
     }
 
