@@ -29,8 +29,8 @@ class MenuTest {
         val shown = createItem(category, "AT-020 món ${Staging.run}", PRICE)
         val hidden = createItem(category, "AT-020 ẩn ${Staging.run}", PRICE)
         try {
-            val repriced = patchItem(shown, buildJsonObject { put("price", vnd(NEW_PRICE)) })
-            patchItem(hidden, buildJsonObject { put("active", false) })
+            val repriced = updateItem(shown, buildJsonObject { put("price", vnd(NEW_PRICE)) })
+            updateItem(hidden, buildJsonObject { put("active", false) })
             a.withTables(1) { (table) ->
                 val menu = a.seat(table.str("id")).expect(OK, "GET", "/v1/guest/menu?lang=vi").json
                 val section = menu.arrOf("categories").single { it.str("id") == category.str("id") }
@@ -110,12 +110,20 @@ class MenuTest {
         price: Long,
     ) = api.expect(CREATED, "POST", "/v1/staff/menu/items", itemBody(category, name, price), a.manager).json
 
-    private fun patchItem(
+    private fun updateItem(
         item: JsonObject,
         change: JsonObject,
     ): JsonObject {
         val current = api.expect(OK, "GET", "/v1/staff/menu/items/${item.str("id")}", token = a.manager).json
-        return api.expect(OK, "PATCH", "/v1/staff/menu/items/${item.str("id")}", change, a.manager, ifMatch(current.int("version"))).json
+        return api
+            .expect(
+                OK,
+                "POST",
+                "/v1/staff/menu/items/${item.str("id")}/update",
+                change,
+                a.manager,
+                ifMatch(current.int("version")),
+            ).json
     }
 
     private companion object {

@@ -13,6 +13,7 @@ import io.github.phongmanh.restaurant.core.http.JsonResponse
 import io.github.phongmanh.restaurant.core.http.Page
 import io.github.phongmanh.restaurant.core.http.adminCaller
 import io.github.phongmanh.restaurant.core.http.endpoint
+import io.github.phongmanh.restaurant.core.http.endpoints
 import io.github.phongmanh.restaurant.core.http.etagOf
 import io.github.phongmanh.restaurant.core.http.pageOf
 import io.github.phongmanh.restaurant.core.http.requestMeta
@@ -56,7 +57,7 @@ class AdminRoutes(
         }
         endpoint(e.ONBOARD_RESTAURANT) { onboard(call) }
         endpoint(e.GET_RESTAURANT) { respondRestaurant(call, restaurants.get(call.restaurantIdParam())) }
-        endpoint(e.UPDATE_RESTAURANT) {
+        endpoints(e.UPDATE_RESTAURANT, e.UPDATE_RESTAURANT_POST) {
             val scope = RestaurantScope.admin(call.adminCaller(), call.restaurantIdParam())
             val changes = call.receive<RestaurantUpdateRequest>().toChanges(admin = true)
             respondRestaurant(call, restaurants.update(scope, call.requireIfMatch(), changes, call.requestMeta()))

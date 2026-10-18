@@ -4,6 +4,7 @@ import io.github.phongmanh.restaurant.Contract
 import io.github.phongmanh.restaurant.service
 import io.github.phongmanh.restaurant.support.TestDatabase
 import io.github.phongmanh.restaurant.support.notYetRouted
+import io.ktor.http.HttpMethod
 import io.ktor.server.application.Application
 import io.ktor.server.application.plugin
 import io.ktor.server.routing.HttpMethodRouteSelector
@@ -45,6 +46,24 @@ class EndpointInventoryTest {
                 if (expected == actual) null else "${op.key()} (${op.operationId}): contract $expected, registry $actual"
             }
         assertTrue(mismatches.isEmpty(), "(Idempotency-Key, If-Match, x-allowed-when-suspended) differ:\n" + mismatches.joinToString("\n"))
+    }
+
+    @Test
+    fun `every PATCH has a POST update twin with its flags, and only the PATCH operations are deprecated`() {
+        val byKey = Endpoints.all.associateBy { it.key() }
+        val patches = Endpoints.all.filter { it.method == HttpMethod.Patch }
+        val missing =
+            patches.filterNot { patch ->
+                byKey["POST ${patch.path}/update"]?.let { it.copy(method = patch.method, path = patch.path) == patch } == true
+            }
+        assertTrue(missing.isEmpty(), "CR-012: no POST <path>/update twin with the same flags for $missing")
+        assertEquals(
+            patches.map { it.key() }.sorted(),
+            Contract.operations
+                .filter { it.deprecated }
+                .map { it.key() }
+                .sorted(),
+        )
     }
 
     @Test

@@ -6,6 +6,7 @@ import io.github.phongmanh.restaurant.core.http.Endpoints
 import io.github.phongmanh.restaurant.core.http.Page
 import io.github.phongmanh.restaurant.core.http.adminCaller
 import io.github.phongmanh.restaurant.core.http.endpoint
+import io.github.phongmanh.restaurant.core.http.endpoints
 import io.github.phongmanh.restaurant.core.http.etagOf
 import io.github.phongmanh.restaurant.core.http.pageOf
 import io.github.phongmanh.restaurant.core.http.requestMeta
@@ -36,6 +37,7 @@ class StaffMemberRoutes(
         val invite: Endpoint,
         val get: Endpoint,
         val update: Endpoint,
+        val updatePost: Endpoint,
         val deactivate: Endpoint,
         val reactivate: Endpoint,
         val invitation: Endpoint,
@@ -51,6 +53,7 @@ class StaffMemberRoutes(
                 e.INVITE_MEMBER,
                 e.GET_MEMBER,
                 e.UPDATE_MEMBER,
+                e.UPDATE_MEMBER_POST,
                 e.DEACTIVATE_MEMBER,
                 e.REACTIVATE_MEMBER,
                 e.INVITATION_MEMBER,
@@ -63,6 +66,7 @@ class StaffMemberRoutes(
                 e.INVITE_RESTAURANT_MEMBER,
                 e.GET_RESTAURANT_MEMBER,
                 e.UPDATE_RESTAURANT_MEMBER,
+                e.UPDATE_RESTAURANT_MEMBER_POST,
                 e.DEACTIVATE_RESTAURANT_MEMBER,
                 e.REACTIVATE_RESTAURANT_MEMBER,
                 e.INVITATION_RESTAURANT_MEMBER,
@@ -91,7 +95,7 @@ class StaffMemberRoutes(
             val scope = e.scope(call)
             respondMember(call, staff.get(scope, call.staffIdParam()))
         }
-        endpoint(e.update) {
+        endpoints(e.update, e.updatePost) {
             val scope = e.scope(call)
             val changes = call.receive<MemberUpdateRequest>().toChanges()
             respondMember(call, staff.update(scope, call.staffIdParam(), call.requireIfMatch(), changes, call.requestMeta()))

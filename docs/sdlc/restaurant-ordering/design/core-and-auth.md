@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.6 (0.6: §4 key list per CR-005; 0.5: menu reads and the image route as exceptions in §2, CR-004): the five §16 questions decided by the owner on 2026-10-15; 0.3–0.4 add the changes from [restaurants](restaurants.md) §14 (one-time secrets, suspension check, sign-in when suspended, staff token on admin routes → 404). |
+| Version | 1.1 ([CR-012](../cr/CR-012-updates-through-post.md), approved 2026-10-18: updates are `POST <path>/update`, §5; IT-CORE-11, §15). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.6 (0.6: §4 key list per CR-005; 0.5: menu reads and the image route as exceptions in §2, CR-004): the five §16 questions decided by the owner on 2026-10-15; 0.3–0.4 add the changes from [restaurants](restaurants.md) §14 (one-time secrets, suspension check, sign-in when suspended, staff token on admin routes → 404). |
 | Date | 2026-10-15 |
 | Package | `core` (shared kernel and staff/admin sign-in), per architecture §4 |
 | Requirements | FR-010, FR-042 (the shared parts), NFR-REL-02 (idempotency), NFR-SEC-01 to 04, NFR-PRIV-01 (logs, staff data), NFR-COMPAT-01, NFR-OBS-01 (request ID) |
@@ -140,7 +140,8 @@ Keys are kept 24 h; the hourly purge job deletes older ones (architecture §10).
 
 - Versioned resources (architecture §10): orders, menu items, tables, table sessions, restaurant profile; staff accounts too (§9).
 - A read of one versioned resource returns `ETag: "<version>"` (a strong ETag).
-- `PATCH`, `PUT` and `DELETE` on one need `If-Match: "<version>"`. Missing → `428 precondition_required`. Stale → `412 precondition_failed`, and the client reloads.
+- An update of one is `POST <path>/update`; it, and `PUT` and `DELETE` on one, need `If-Match: "<version>"`. Missing → `428 precondition_required`. Stale → `412 precondition_failed`, and the client reloads.
+- **No `PATCH` (CR-012).** Vercel's edge compares a `PATCH`'s `If-Match` with the `ETag` of the function's response, after the function has run. An update always makes a new version, so every successful `PATCH` reaches the client as Vercel's own `412`, though the change is saved (D-1). The response without an `ETag` fails the same way (the Q-19 spike); a `POST` passes. The seven updates the contract had as `PATCH` keep that form, deprecated, for compatibility within `/v1`, with the same handler as their `POST …/update` twin. A new update is a `POST …/update` only.
 - The update is `UPDATE ... SET ..., version = version + 1 WHERE id = ? AND restaurant_id = ? AND version = ?`. 0 rows → read again: not there → 404, there → 412.
 - State changes through action endpoints (e.g. `POST /v1/staff/orders/{id}/status`) take `If-Match` too. The `orders` design decides which.
 
@@ -523,6 +524,7 @@ These go into the integration suite (test-plan §2: `testApplication` + Testcont
 | IT-CORE-08 | `X-Client: customer-android/0.9.0` with minimum 1.0.0 → 426; absent → served | NFR-COMPAT-01 |
 | IT-CORE-09 | Logs: a sign-in and a failed sign-in produce no email, password, token or IP in application logs | NFR-PRIV-01 |
 | IT-CORE-10 | Endpoint inventory: the set of routes Ktor registers equals `Endpoints.kt` and the contract's paths (method + path), excluding `/internal/jobs/*` and `/health` | NFR-COMPAT-01, NFR-SEC-01 |
+| IT-CORE-11 | Each `PATCH` update and its `POST <path>/update` twin give the same answers to the same requests (`401`, `400`, `404`, `428`, `412`, `200` with the next `ETag`); IT-CORE-10 checks every `PATCH` has a twin with its flags and is the contract's only deprecated kind (CR-012) | NFR-COMPAT-01, FR-020, FR-030, FR-041, FR-044 |
 
 ## 16. Owner decisions (2026-10-15)
 The owner accepted all five recommendations. They're recorded in STATUS.md (Decisions; Q-2 resolved).

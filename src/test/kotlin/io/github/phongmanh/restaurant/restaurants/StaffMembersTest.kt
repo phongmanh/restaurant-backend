@@ -93,18 +93,18 @@ class StaffMembersTest {
             assertEquals("\"0\"", client.api(e.GET_MEMBER, a.managerToken, "staffId" to waiterId).headers[HttpHeaders.ETag])
 
             val change = """{"role": "kitchen", "phone": "+84901234567"}"""
-            val promoted = client.api(e.UPDATE_MEMBER, a.managerToken, "staffId" to waiterId, body = change) { ifMatch(0) }
+            val promoted = client.api(e.UPDATE_MEMBER_POST, a.managerToken, "staffId" to waiterId, body = change) { ifMatch(0) }
             assertEquals(HttpStatusCode.OK, promoted.status)
             assertEquals("\"1\"", promoted.headers[HttpHeaders.ETag])
             assertEquals("kitchen", promoted.json().str("role"))
             assertEquals(HttpStatusCode.Unauthorized, client.api(Endpoints.Restaurants.GET_OWN_RESTAURANT, waiter).status)
 
             val rename = """{"display_name": "Mai"}"""
-            val stale = client.api(e.UPDATE_MEMBER, a.managerToken, "staffId" to waiterId, body = rename) { ifMatch(0) }
+            val stale = client.api(e.UPDATE_MEMBER_POST, a.managerToken, "staffId" to waiterId, body = rename) { ifMatch(0) }
             assertEquals("precondition_failed", stale.problem())
             assertEquals(
                 "precondition_required",
-                client.api(e.UPDATE_MEMBER, a.managerToken, "staffId" to waiterId, body = rename).problem(),
+                client.api(e.UPDATE_MEMBER_POST, a.managerToken, "staffId" to waiterId, body = rename).problem(),
             )
 
             val details = AuthFixtures.query("SELECT details::text FROM audit_events WHERE action = 'staff.updated'") { it.getString(1) }
@@ -139,7 +139,7 @@ class StaffMembersTest {
     fun `IT-REST-07 the last manager can't demote or deactivate themselves`() =
         authApp {
             val a = Tenants.create("A", "lan@a.example")
-            val self = client.api(e.UPDATE_MEMBER, a.managerToken, "staffId" to a.manager, body = DEMOTE) { ifMatch(0) }
+            val self = client.api(e.UPDATE_MEMBER_POST, a.managerToken, "staffId" to a.manager, body = DEMOTE) { ifMatch(0) }
             assertEquals(HttpStatusCode.Conflict, self.status)
             assertEquals("last_manager", self.problem())
             assertEquals("last_manager", client.api(e.DEACTIVATE_MEMBER, a.managerToken, "staffId" to a.manager).problem())
@@ -155,8 +155,8 @@ class StaffMembersTest {
                 val statuses =
                     coroutineScope {
                         listOf(
-                            async { client.api(e.UPDATE_MEMBER, r.managerToken, "staffId" to twoId, body = DEMOTE) { ifMatch(0) } },
-                            async { client.api(e.UPDATE_MEMBER, two, "staffId" to r.manager, body = DEMOTE) { ifMatch(0) } },
+                            async { client.api(e.UPDATE_MEMBER_POST, r.managerToken, "staffId" to twoId, body = DEMOTE) { ifMatch(0) } },
+                            async { client.api(e.UPDATE_MEMBER_POST, two, "staffId" to r.manager, body = DEMOTE) { ifMatch(0) } },
                         ).map { it.await().status }
                     }
                 // The loser is refused by the rule, or because the winner's change ended its session.
@@ -210,7 +210,7 @@ class StaffMembersTest {
 
             for (endpoint in listOf(
                 e.GET_MEMBER,
-                e.UPDATE_MEMBER,
+                e.UPDATE_MEMBER_POST,
                 e.DEACTIVATE_MEMBER,
                 e.REACTIVATE_MEMBER,
                 e.INVITATION_MEMBER,
@@ -326,7 +326,7 @@ class StaffMembersTest {
             assertEquals(HttpStatusCode.BadRequest, invite.status)
             assertEquals(listOf("/role"), invite.errorFields())
             for (body in listOf("""{}""", """{"role": "chef"}""", """{"phone": "not a phone"}""")) {
-                val edit = client.api(e.UPDATE_MEMBER, a.managerToken, "staffId" to waiter, body = body) { ifMatch(0) }
+                val edit = client.api(e.UPDATE_MEMBER_POST, a.managerToken, "staffId" to waiter, body = body) { ifMatch(0) }
                 assertEquals(HttpStatusCode.BadRequest, edit.status, body)
                 assertEquals("validation_failed", edit.problem(), body)
             }
@@ -351,7 +351,7 @@ class StaffMembersTest {
             assertEquals(HttpStatusCode.OK, read.status)
             assertEquals("invited", read.json().str("status"))
             assertEquals(HttpStatusCode.Created, client.api(e.INVITATION_RESTAURANT_MEMBER, admin, *member).status)
-            val edited = client.api(e.UPDATE_RESTAURANT_MEMBER, admin, *member, body = """{"role": "kitchen"}""") { ifMatch(0) }
+            val edited = client.api(e.UPDATE_RESTAURANT_MEMBER_POST, admin, *member, body = """{"role": "kitchen"}""") { ifMatch(0) }
             assertEquals(HttpStatusCode.OK, edited.status)
             assertEquals("kitchen", edited.json().str("role"))
             assertEquals("deactivated", client.api(e.DEACTIVATE_RESTAURANT_MEMBER, admin, *member).json().str("status"))
@@ -367,7 +367,7 @@ class StaffMembersTest {
             }
             val badInvite = client.api(e.INVITE_RESTAURANT_MEMBER, admin, *at, body = """{"email": "x", "role": "waiter"}""")
             assertEquals(listOf("/email", "/display_name"), badInvite.errorFields())
-            val emptyEdit = client.api(e.UPDATE_RESTAURANT_MEMBER, admin, *member, body = "{}") { ifMatch(1) }
+            val emptyEdit = client.api(e.UPDATE_RESTAURANT_MEMBER_POST, admin, *member, body = "{}") { ifMatch(1) }
             assertEquals(HttpStatusCode.BadRequest, emptyEdit.status)
 
             // Every route with a restaurant that doesn't exist, then a member that isn't the restaurant's.
@@ -384,7 +384,7 @@ class StaffMembersTest {
             for (path in strangers) {
                 for (endpoint in listOf(
                     e.GET_RESTAURANT_MEMBER,
-                    e.UPDATE_RESTAURANT_MEMBER,
+                    e.UPDATE_RESTAURANT_MEMBER_POST,
                     e.DEACTIVATE_RESTAURANT_MEMBER,
                     e.REACTIVATE_RESTAURANT_MEMBER,
                     e.INVITATION_RESTAURANT_MEMBER,

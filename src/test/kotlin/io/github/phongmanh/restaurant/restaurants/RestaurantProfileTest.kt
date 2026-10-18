@@ -35,7 +35,7 @@ class RestaurantProfileTest {
         token: String,
         body: String,
         version: String? = "\"0\"",
-    ) = api(Endpoints.Restaurants.UPDATE_OWN_RESTAURANT, token, body = body) { version?.let { header(HttpHeaders.IfMatch, it) } }
+    ) = api(Endpoints.Restaurants.UPDATE_OWN_RESTAURANT_POST, token, body = body) { version?.let { header(HttpHeaders.IfMatch, it) } }
 
     @Test
     fun `IT-REST-04 a manager edits the profile, bad fields are 400, a stale If-Match 412, and a waiter 403`() =
@@ -94,7 +94,7 @@ class RestaurantProfileTest {
             assertFalse("owner_contact" in ignored.json(), "a manager's owner_contact is ignored")
 
             val byAdmin =
-                client.api(Endpoints.Admin.UPDATE_RESTAURANT, admin, "restaurantId" to a.id, body = contact) {
+                client.api(Endpoints.Admin.UPDATE_RESTAURANT_POST, admin, "restaurantId" to a.id, body = contact) {
                     header(HttpHeaders.IfMatch, "\"1\"")
                 }
             assertEquals(HttpStatusCode.OK, byAdmin.status)
@@ -117,7 +117,7 @@ class RestaurantProfileTest {
 
             for (body in listOf("""{}""", """{"time_zone": "Mars/Base"}""")) {
                 val bad =
-                    client.api(Endpoints.Admin.UPDATE_RESTAURANT, admin, "restaurantId" to a.id, body = body) {
+                    client.api(Endpoints.Admin.UPDATE_RESTAURANT_POST, admin, "restaurantId" to a.id, body = body) {
                         header(HttpHeaders.IfMatch, "\"0\"")
                     }
                 assertEquals(HttpStatusCode.BadRequest, bad.status, body)
@@ -127,7 +127,7 @@ class RestaurantProfileTest {
 
             val nowhere = "restaurantId" to "0192aaaa-0000-7000-8000-000000000000"
             val edit =
-                client.api(Endpoints.Admin.UPDATE_RESTAURANT, admin, nowhere, body = """{"name": "B"}""") {
+                client.api(Endpoints.Admin.UPDATE_RESTAURANT_POST, admin, nowhere, body = """{"name": "B"}""") {
                     header(HttpHeaders.IfMatch, "\"0\"")
                 }
             assertEquals(HttpStatusCode.NotFound, edit.status)

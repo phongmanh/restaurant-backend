@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: CR-004 approved and the seven §14 questions decided by the owner on 2026-10-15 |
+| Version | 1.2 ([CR-012](../cr/CR-012-updates-through-post.md), approved 2026-10-18: the category and item edits as `POST …/update`, the `PATCH` deprecated). 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: CR-004 approved and the seven §14 questions decided by the owner on 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `menu` (architecture §4) |
 | Requirements | FR-002 guest menu, FR-020 edit, FR-021 sold out, FR-022 images (Should; TBD-5 decided 2026-10-15), FR-023 options (Should), FR-024 vi/en (Should); NFR-PERF-01 (guest reads), FR-042 |
@@ -178,7 +178,7 @@ The same body as the staff read, read only (authorisation matrix: admins read an
 | Operation | Request | Rules |
 |---|---|---|
 | Create | `POST /v1/staff/menu/categories` `{"name_vi", "name_en"?, "active"?}` | Goes last in the order. Duplicate `name_vi` (case-insensitive) → `409 duplicate_name` |
-| Edit | `PATCH /v1/staff/menu/categories/{categoryId}` + `If-Match` | Name, `active` |
+| Edit | `POST /v1/staff/menu/categories/{categoryId}/update` + `If-Match` | Name, `active` |
 | Delete | `DELETE /v1/staff/menu/categories/{categoryId}` + `If-Match` | Only if it has no undeleted items → otherwise `409 category_not_empty` (§14 Q7) |
 | Reorder | `PUT /v1/staff/menu/categories/order` `{"category_ids": [...]}` | Must list every undeleted category exactly once → otherwise `400 validation_failed`. Sets `display_order` 0…n−1 |
 
@@ -186,7 +186,7 @@ The same body as the staff read, read only (authorisation matrix: admins read an
 | Operation | Request | Rules |
 |---|---|---|
 | Create | `POST /v1/staff/menu/items` `{"category_id", "name_vi", "name_en"?, "description_vi"?, "description_en"?, "price", "active"?, "option_groups"?}` | Goes last in its category. `price` is a Money object; non-VND or a fraction → 400. Duplicate name in the category → `409 duplicate_name` |
-| Edit | `PATCH /v1/staff/menu/items/{itemId}` + `If-Match` | Any field. A new `category_id` moves the item to the end of that category (the name check runs there). `option_groups`, when sent, **replaces the whole set**: groups and options with an `id` are kept and updated, ones without are created, and missing ones are soft-deleted |
+| Edit | `POST /v1/staff/menu/items/{itemId}/update` + `If-Match` | Any field. A new `category_id` moves the item to the end of that category (the name check runs there). `option_groups`, when sent, **replaces the whole set**: groups and options with an `id` are kept and updated, ones without are created, and missing ones are soft-deleted |
 | Delete | `DELETE /v1/staff/menu/items/{itemId}` + `If-Match` | Soft delete (FR-020) |
 | Reorder | `PUT /v1/staff/menu/categories/{categoryId}/items/order` `{"item_ids": [...]}` | Every undeleted item of the category exactly once |
 
@@ -261,19 +261,19 @@ Waiter or kitchen on any write except sold-out → `403`. An ID of another resta
 - **Performance:** one query per table with `id = ANY(?)`, at most 50 lines (ASSUMPTION-4).
 
 ## 8. Endpoints
-All of these go into `core/http/Endpoints.kt` and the contract.
+All of these go into `core/http/Endpoints.kt` and the contract. An update is `POST <path>/update` with `If-Match`; the same update as `PATCH <path>` is kept for compatibility within `/v1`, deprecated, because Vercel's edge answers a successful `PATCH` with its own `412` (D-1, [CR-012](../cr/CR-012-updates-through-post.md)). Both are in the registry and the contract, with one handler.
 
 | Method and path | Who | If-Match | Allowed when suspended | Success |
 |---|---|---|---|---|
 | `GET /v1/guest/menu` | Guest session | — | Yes | 200 + ETag, or 304 |
 | `GET /v1/staff/menu` | Staff, all roles | — | No | 200 + ETag, or 304 |
 | `POST /v1/staff/menu/categories` | Manager | — | No | 201 |
-| `PATCH /v1/staff/menu/categories/{categoryId}` | Manager | Yes | No | 200 |
+| `POST /v1/staff/menu/categories/{categoryId}/update` | Manager | Yes | No | 200 |
 | `DELETE /v1/staff/menu/categories/{categoryId}` | Manager | Yes | No | 204 |
 | `PUT /v1/staff/menu/categories/order` | Manager | — | No | 204 |
 | `POST /v1/staff/menu/items` | Manager | — | No | 201 |
 | `GET /v1/staff/menu/items/{itemId}` | Staff, all roles | — | No | 200 + ETag |
-| `PATCH /v1/staff/menu/items/{itemId}` | Manager | Yes | No | 200 |
+| `POST /v1/staff/menu/items/{itemId}/update` | Manager | Yes | No | 200 |
 | `DELETE /v1/staff/menu/items/{itemId}` | Manager | Yes | No | 204 |
 | `PUT /v1/staff/menu/categories/{categoryId}/items/order` | Manager | — | No | 204 |
 | `PUT /v1/staff/menu/items/{itemId}/sold-out` | Kitchen, manager | — | No | 200 |

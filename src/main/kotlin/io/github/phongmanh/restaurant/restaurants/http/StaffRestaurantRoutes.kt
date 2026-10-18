@@ -2,6 +2,7 @@ package io.github.phongmanh.restaurant.restaurants.http
 
 import io.github.phongmanh.restaurant.core.http.Endpoints
 import io.github.phongmanh.restaurant.core.http.endpoint
+import io.github.phongmanh.restaurant.core.http.endpoints
 import io.github.phongmanh.restaurant.core.http.etagOf
 import io.github.phongmanh.restaurant.core.http.requestMeta
 import io.github.phongmanh.restaurant.core.http.requireIfMatch
@@ -23,7 +24,7 @@ class StaffRestaurantRoutes(
     fun install(route: Route) {
         with(route) {
             endpoint(Endpoints.Restaurants.GET_OWN_RESTAURANT) { respond(call, restaurants.own(call.staffCaller())) }
-            endpoint(Endpoints.Restaurants.UPDATE_OWN_RESTAURANT) {
+            endpoints(Endpoints.Restaurants.UPDATE_OWN_RESTAURANT, Endpoints.Restaurants.UPDATE_OWN_RESTAURANT_POST) {
                 val scope = RestaurantScope.manager(call.staffCaller())
                 val changes = call.receive<RestaurantUpdateRequest>().toChanges(admin = false)
                 respond(call, restaurants.update(scope, call.requireIfMatch(), changes, call.requestMeta()))

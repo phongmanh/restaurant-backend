@@ -28,7 +28,7 @@ class StaffAccessTest {
         }
         val item = a.item("Iced tea").str("id")
         for ((role, token) in roles - "manager") {
-            val edit = api.call("PATCH", "/v1/staff/menu/items/$item", buildJsonObject { put("name_en", "x") }, token, ifMatch(1))
+            val edit = api.call("POST", "/v1/staff/menu/items/$item/update", buildJsonObject { put("name_en", "x") }, token, ifMatch(1))
             assertEquals(FORBIDDEN, edit.status, "$role can't open menu editing")
             assertEquals(FORBIDDEN, api.call("GET", "/v1/staff/members", token = token).status, "$role can't manage staff")
         }
@@ -100,8 +100,8 @@ class StaffAccessTest {
             api
                 .expect(
                     OK,
-                    "PATCH",
-                    "/v1/staff/members/${member.staffId}",
+                    "POST",
+                    "/v1/staff/members/${member.staffId}/update",
                     buildJsonObject {
                         put("role", "kitchen")
                     },
@@ -126,8 +126,8 @@ class StaffAccessTest {
         val self = api.expect(OK, "GET", "/v1/staff/members/${a.seed.manager.staffId}", token = a.manager).json
         val demote =
             api.call(
-                "PATCH",
-                "/v1/staff/members/${self.str("id")}",
+                "POST",
+                "/v1/staff/members/${self.str("id")}/update",
                 buildJsonObject {
                     put("role", "waiter")
                 },
@@ -154,7 +154,7 @@ class StaffAccessTest {
                 }
             }
         try {
-            patchRestaurant(
+            updateRestaurant(
                 before,
                 buildJsonObject {
                     put("opening_hours", hours)
@@ -166,15 +166,15 @@ class StaffAccessTest {
             assertEquals(hours, seen.obj("opening_hours").filterKeys { it == "mon" }.let(::JsonObject), "and the new hours")
             val waiter =
                 api.call(
-                    "PATCH",
-                    "/v1/staff/restaurant",
+                    "POST",
+                    "/v1/staff/restaurant/update",
                     buildJsonObject { put("time_zone", "UTC") },
                     a.waiter,
                     ifMatch(seen.int("version")),
                 )
             assertEquals(FORBIDDEN, waiter.status, "a waiter can't change them")
         } finally {
-            patchRestaurant(
+            updateRestaurant(
                 api.expect(OK, "GET", "/v1/staff/restaurant", token = a.manager).json,
                 buildJsonObject {
                     put("opening_hours", before.obj("opening_hours"))
@@ -184,10 +184,10 @@ class StaffAccessTest {
         }
     }
 
-    private fun patchRestaurant(
+    private fun updateRestaurant(
         current: JsonObject,
         change: JsonObject,
-    ) = api.expect(OK, "PATCH", "/v1/staff/restaurant", change, a.manager, ifMatch(current.int("version"))).json
+    ) = api.expect(OK, "POST", "/v1/staff/restaurant/update", change, a.manager, ifMatch(current.int("version"))).json
 
     private fun credentials(
         email: String,
