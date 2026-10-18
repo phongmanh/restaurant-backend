@@ -2,7 +2,7 @@
 
 | Version | Status | Owner | Reviewers |
 |---|---|---|---|
-| 1.7 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR); CR-004, CR-005, CR-006 and CR-008 applied 2026-10-15, CR-011 on 2026-10-17, CR-012 and CR-013 on 2026-10-18 | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
+| 1.8 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR); CR-004, CR-005, CR-006 and CR-008 applied 2026-10-15, CR-011 on 2026-10-17, CR-012, CR-013 and CR-015 on 2026-10-18 | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
 
 **Version history**
 
@@ -16,6 +16,7 @@
 | 1.5 | 2026-10-17 | [CR-011](cr/CR-011-free-staging-as-production-deploy.md): on the free plans, staging is its own Vercel project's production deployment (public alias removed, Deployment Protection on) on its own Neon project, not a preview of a `staging` branch: Vercel Cron runs only on production deployments, and a preview scales to zero after 30 s. Changed: §8 |
 | 1.6 | 2026-10-18 | [CR-012](cr/CR-012-updates-through-post.md): Vercel's edge evaluates `If-Match` on a `PATCH` against the function's response `ETag`, after the function has run, so updates are `POST <path>/update`; the seven `PATCH` updates stay, deprecated. Changed: §8 (Edge) |
 | 1.7 | 2026-10-18 | [CR-013](cr/CR-013-release-1-without-live-push.md): release 1 has no live push; clients read the event log on a timer (staff 15 s, guests 60 s). Changed: §3 live-updates row, §9 (the polling peak ≈ 640 req/s, headroom ≈ 1,280), R-13 |
+| 1.8 | 2026-10-18 | [CR-015](cr/CR-015-shared-upstash-free-plan.md): on the free plans, production shares staging's Upstash database and token; every key carries its environment (§7, §8) |
 
 Baseline: [requirements.md](requirements.md) v1.6 (G1 2026-10-13; CR-002 and CR-003 2026-10-14; CR-004 to CR-007 2026-10-15). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). G2 approved by the owner on 2026-10-15 with one condition: TBD-10 (data residency, legal review) is settled before G5, by a region change or, if storage in Vietnam is required, a CR to change provider (§8, R-04). Accepted free-plan residual risks: R-11 to R-14. The cost estimate (TBD-11) was deferred on 2026-10-15 because the project stays on free plans.
 
@@ -194,7 +195,7 @@ Shared `api-contract` KMP module with the clients: **not now**. TBD-2 is decided
 
 **Service-to-service.**
 - Vercel Cron → API: `Authorization: Bearer <CRON_SECRET>` on `/internal/jobs/*`.
-- API → pub/sub, Redis, database, object storage: per-environment credentials from Vercel encrypted environment variables.
+- API → pub/sub, Redis, database, object storage: per-environment credentials from Vercel encrypted environment variables. One exception on this learning project's free plans: production and staging share one Upstash database and its token, because the free plan allows one database per account. Every key starts with its environment (`production:rl:…`), so their counters never meet (CR-015, R-22).
 - Pub/sub client tokens are minted by the API with **subscribe-only** rights on exactly one channel.
 
 **Authorisation matrix** (operations; Phase 3 maps them to endpoints). Scope: "own" = the caller's restaurant; "session" = the guest's session. Anything outside scope → 404.
@@ -237,7 +238,7 @@ Shared `api-contract` KMP module with the clients: **not now**. TBD-2 is decided
 
   Environments differ only in environment variables and sizes.
 
-  On this learning project's free plans: staging is the production deployment of its own Vercel project (`restaurant-staging`), deployed from the CLI (`vercel deploy --prod`) with its public alias removed. Deployment Protection stays on, and test clients send the project's automation bypass header. It has its own Neon project (Singapore). The database is one compute that scales to zero (R-11) with a 6 h restore window (R-14), not HA. Full-size load tests wait for paid plans (R-12, R-13, R-16) (CR-011).
+  On this learning project's free plans: staging is the production deployment of its own Vercel project (`restaurant-staging`), deployed from the CLI (`vercel deploy --prod`) with its public alias removed. Deployment Protection stays on, and test clients send the project's automation bypass header. It has its own Neon project (Singapore). The database is one compute that scales to zero (R-11) with a 6 h restore window (R-14), not HA. Full-size load tests wait for paid plans (R-12, R-13, R-16) (CR-011). Release 1's free production is a second Vercel project (`restaurant-production`) with its own Neon project, and it shares staging's Upstash database with keys prefixed `production:` (CR-015).
 - **Edge:**
   - TLS terminated by Vercel, HSTS on;
   - Vercel WAF with managed rules and rate-limit rules per IP and path (ADR-0008);

@@ -41,7 +41,7 @@ It is built the way staging was (deploy/README.md, staging runbook steps 1–12)
 | Vercel project | `restaurant-staging` | `restaurant-production`, same Hobby account, disconnected from GitHub at once |
 | Public domain | Removed; Deployment Protection on, test clients send the bypass header Removed, as on staging: Deployment Protection on, test clients send the bypass header (Q-24, decided) |
 | Neon | Project `restaurant-staging`, Singapore, PostgreSQL 18 | Project `restaurant-production`, same settings |
-| Upstash | `restaurant-staging`, Singapore | `restaurant-production`, Singapore. Check at setup whether the free plan allows a second database |
+| Upstash | `restaurant-staging`, Singapore | Staging's database, keys prefixed `production:` (CR-015, approved 2026-10-18): the free plan allows one database per account |
 | Grafana Cloud | The free stack | The same stack; see P-3 |
 | Settings file | `deploy/staging/staging.env` | `deploy/production/production.env` (committed): `APP_ENV=production`, `AUTH_ISSUER=https://restaurant-production.vercel.app`, `https` app URLs, `LIVE_PUSH=off` |
 | Secrets | `deploy/staging/.env.staging` | `deploy/production/.env.production`, made by `generateSecrets`. No key or password is shared with staging (key policy) |

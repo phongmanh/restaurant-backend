@@ -135,7 +135,7 @@ data class AppConfig(
                 jobs = JobSettings(cronSecret),
                 rateLimits =
                     RateLimitSettings(
-                        upstash = if (upstashUrl.isBlank() || upstashToken.isBlank()) null else UpstashSettings(upstashUrl, upstashToken),
+                        upstash = upstash(upstashUrl, upstashToken, environment),
                         timeout = millis("rateLimits.timeoutMs"),
                         policies = policies(config.config("rateLimits.policies").toMap()),
                     ),
@@ -170,6 +170,13 @@ data class AppConfig(
             if (push == LivePush.ABLY && key == null) missing += "ABLY_API_KEY"
             return if (push == LivePush.ABLY && key != null) RealtimeSettings(key, LivePush.ABLY) else RealtimeSettings(null, LivePush.OFF)
         }
+
+        /** Upstash, if set; its keys carry the environment, since staging and production share it (CR-015). */
+        private fun upstash(
+            url: String,
+            token: String,
+            environment: String,
+        ): UpstashSettings? = if (url.isBlank() || token.isBlank()) null else UpstashSettings(url, token, "$environment:")
 
         /** Where metrics go (ADR-0009); blank values only in dev and test, as `load` checks. */
         private fun observability(

@@ -24,18 +24,20 @@ import kotlin.time.toJavaDuration
 /**
  * Upstash Redis over its REST API (ADR-0008, measured in S-1 Q10): one `EVAL` per hit, so the
  * increment and the expiry are one round trip and one atomic step. The key names its window, so a
- * key that somehow missed its expiry still stops counting when the window ends.
+ * key that somehow missed its expiry still stops counting when the window ends. Every key starts
+ * with [keyPrefix], the environment, since staging and production share the database (CR-015).
  */
 class UpstashRateLimiter(
     private val restUrl: String,
     private val token: String,
+    private val keyPrefix: String,
     private val http: HttpClient = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT.toJavaDuration()).build(),
 ) : RateLimiter {
     override suspend fun hit(
         key: String,
         window: Duration,
     ): Long {
-        val command = JsonArray(listOf("EVAL", SCRIPT, "1", key, (window.inWholeSeconds + 1).toString()).map(::JsonPrimitive))
+        val command = JsonArray(listOf("EVAL", SCRIPT, "1", keyPrefix + key, (window.inWholeSeconds + 1).toString()).map(::JsonPrimitive))
         val body = send(command.toString())
         return Json
             .parseToJsonElement(body)

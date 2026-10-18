@@ -69,6 +69,11 @@ data class RateLimitSettings(
 class UpstashSettings(
     val restUrl: String,
     val token: String,
+    /**
+     * `<environment>:`, in front of every key: on the free plan staging and production share one
+     * Upstash database, and the prefix keeps their counters apart (CR-015).
+     */
+    val keyPrefix: String,
 ) {
     override fun toString(): String = "UpstashSettings(***)"
 }

@@ -138,17 +138,21 @@ class RateLimitTest {
         try {
             val url = "http://127.0.0.1:${server.address.port}"
             runBlocking {
-                val limiter: RateLimiter = UpstashRateLimiter(url, "right")
+                val limiter: RateLimiter = UpstashRateLimiter(url, "right", "production:")
                 assertEquals(1, limiter.hit("rl:auth.sign_in:203.0.113.7:1760000000", 60.seconds))
                 assertTrue(bodies[0].startsWith("""["EVAL","""), bodies[0])
-                assertTrue(bodies[0].endsWith(""""1","rl:auth.sign_in:203.0.113.7:1760000000","61"]"""), bodies[0])
+                assertTrue(bodies[0].endsWith(""""1","production:rl:auth.sign_in:203.0.113.7:1760000000","61"]"""), bodies[0])
                 assertEquals("Bearer right", auth[0])
                 (limiter as UpstashRateLimiter).warmUp()
                 assertEquals("""["PING"]""", bodies[1])
 
-                assertFailsWith<IOException> { UpstashRateLimiter(url, "wrong").hit("k", 60.seconds) }
+                assertFailsWith<IOException> { UpstashRateLimiter(url, "wrong", "production:").hit("k", 60.seconds) }
                 // Through RateLimits a failing store lets the request through.
-                RateLimits(UpstashRateLimiter(url, "wrong"), MutableClock(), 1.seconds).check(RateLimitPolicy("p", 0, 60.seconds), "s")
+                RateLimits(
+                    UpstashRateLimiter(url, "wrong", "production:"),
+                    MutableClock(),
+                    1.seconds,
+                ).check(RateLimitPolicy("p", 0, 60.seconds), "s")
             }
         } finally {
             server.stop(0)
