@@ -48,7 +48,7 @@ Steps marked **you** are the owner's. The auto-mode safety check blocks Claude f
    vercel git disconnect --yes
    ```
 7. **You: create the bypass secret.** Project → Settings → Deployment Protection: keep Vercel Authentication on (Standard Protection), create a **Protection Bypass for Automation** secret and paste it into `VERCEL_AUTOMATION_BYPASS_SECRET`.
-8. **You: create the WAF rule.** Hobby allows one rate-limit rule per project (ADR-0008). Project → Firewall → New rule `auth-per-ip`: if the request path starts with `/v1/auth/`, rate-limit with a fixed window of 60 requests per 60 s per IP, action 429. That's twice the app's own sign-in limit (30 per 60 s), so the app's 429, which carries `Retry-After`, answers first. The CLI's `rules add` left no rule in S-1, so use the dashboard.
+8. **You: create the WAF rule.** Hobby allows one rate-limit rule per project (ADR-0008). Project → Firewall → New rule `auth-per-ip`: if the request path starts with `/v1/auth/`, rate-limit with a fixed window of 300 requests per 60 s per IP, action 429. That's core-and-auth §11's backstop (Q-20 raised staging's from 60), above every app limit (sign-in 30, refresh 120), so the app's 429, which carries `Retry-After`, answers first. The CLI's `rules add` left no rule in S-1, so create it in the dashboard. To change it later, a dashboard edit to 300 on 2026-10-18 never went live, and `vercel firewall rules edit auth-per-ip --rate-limit-requests 300` answered "No changes detected"; what worked is the whole rule as JSON, `vercel firewall rules edit auth-per-ip --json '<rule>' --yes`, then `vercel firewall diff` and `vercel firewall publish --yes`. Check the result with `vercel firewall rules inspect auth-per-ip`.
 9. **You: send the environment variables** to the project's Production environment:
    ```
    deploy/push-env.sh deploy/staging/staging.env deploy/staging/.env.staging
@@ -56,9 +56,10 @@ Steps marked **you** are the owner's. The auto-mode safety check blocks Claude f
 10. **You: deploy, then remove the public alias.** Send Claude the deployment URL printed by `vercel deploy`, never the bypass secret:
     ```
     vercel deploy --prod
-    vercel alias rm restaurant-staging.vercel.app --yes
+    vercel alias rm restaurant-staging-ecru.vercel.app --yes
     ```
-11. **Claude: smoke-check the deployment.** `GET /health` with the bypass header answers 200, and the same request without it is refused by Deployment Protection. Then read the Vercel logs for the start-up line, and look for any secret or personal data in them.
+    The project's production domain is `restaurant-staging-ecru.vercel.app`, not `restaurant-staging.vercel.app`: Vercel adds a suffix when the plain name is taken, so removing the plain name removes nothing. Standard Protection doesn't cover the production domain, and it stayed public from 2026-10-17 to 2026-10-18 for that reason. `vercel alias ls` shows each deploy's aliases; `restaurant-staging-liam-36c7.vercel.app` is protected and can stay.
+11. **Claude: smoke-check the deployment.** `GET /health` with the bypass header answers 200, and the same request without it is refused by Deployment Protection. Then the same request without the header to each alias `vercel alias ls` lists for the deployment, and to `restaurant-staging-ecru.vercel.app`: none answers 200. Then read the Vercel logs for the start-up line, and look for any secret or personal data in them.
 12. **Claude: check the scheduled jobs** the day after the deploy. The Cron Jobs tab shows one run of each, and on Hobby each runs once a day at most. A run against a deployment without its alias is recorded, whatever the result.
 
 ### Metrics backend (ADR-0009, TBD-12)
