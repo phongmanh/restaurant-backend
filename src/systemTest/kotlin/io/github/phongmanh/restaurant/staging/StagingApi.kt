@@ -165,4 +165,10 @@ class StagingApi(
 /** A required setting from the environment, as `./gradlew migrate` reads it (deploy/README.md step 5). */
 fun env(name: String): String =
     System.getenv(name)?.takeIf { it.isNotBlank() }
-        ?: error("$name isn't set: export deploy/staging/staging.env and deploy/staging/.env.staging first (deploy/README.md)")
+        ?: error("$name isn't set: export deploy/<environment>/<environment>.env and its .env.<environment> first (deploy/README.md)")
+
+/** The environment the exported settings name (`APP_ENV`, `deploy/<environment>/<environment>.env`): staging or production. */
+fun deployEnvironment(): String =
+    (System.getenv("APP_ENV")?.takeIf { it.isNotBlank() } ?: "staging").also {
+        require(it == "staging" || it == "production") { "APP_ENV is $it: the system suite runs on staging or production only" }
+    }

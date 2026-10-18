@@ -74,7 +74,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (pool) (db_pool_connections_active{job=\"restaurant-backend\"})",
+          "expr": "sum by (pool) (db_pool_connections_active{job=\"restaurant-backend\", deployment_environment=\"production\"})",
           "legendFormat": "{{pool}} active"
         },
         {
@@ -83,7 +83,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (pool) (db_pool_connections_idle{job=\"restaurant-backend\"})",
+          "expr": "sum by (pool) (db_pool_connections_idle{job=\"restaurant-backend\", deployment_environment=\"production\"})",
           "legendFormat": "{{pool}} idle"
         }
       ],
@@ -115,7 +115,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (instance, pool) (db_pool_connections_pending{job=\"restaurant-backend\"})",
+          "expr": "max by (instance, pool) (db_pool_connections_pending{job=\"restaurant-backend\", deployment_environment=\"production\"})",
           "legendFormat": "{{pool}} {{instance}}"
         }
       ],
@@ -147,7 +147,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (instance, pool) (db_pool_connections_active{job=\"restaurant-backend\"} / db_pool_connections_max{job=\"restaurant-backend\"})",
+          "expr": "max by (instance, pool) (db_pool_connections_active{job=\"restaurant-backend\", deployment_environment=\"production\"} / db_pool_connections_max{job=\"restaurant-backend\", deployment_environment=\"production\"})",
           "legendFormat": "{{pool}} {{instance}}"
         }
       ],
@@ -181,7 +181,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (pool) (db_pool_connections_max{job=\"restaurant-backend\"})",
+          "expr": "max by (pool) (db_pool_connections_max{job=\"restaurant-backend\", deployment_environment=\"production\"})",
           "legendFormat": "{{pool}}"
         }
       ],
@@ -226,7 +226,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (policy, reason) (increase(rate_limit_fail_open_total{job=\"restaurant-backend\"}[$__rate_interval]))",
+          "expr": "sum by (policy, reason) (increase(rate_limit_fail_open_total{job=\"restaurant-backend\", deployment_environment=\"production\"}[$__rate_interval]))",
           "legendFormat": "{{policy}} {{reason}}"
         }
       ],

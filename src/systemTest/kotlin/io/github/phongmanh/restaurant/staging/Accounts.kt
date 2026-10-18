@@ -13,10 +13,10 @@ import java.time.Clock
 import java.util.Base64
 
 /**
- * The staging accounts the seed made (test-plan §6), for the system tests and the owner's
- * acceptance run. The file holds passwords and the admin's TOTP secret, so it lives next to the
- * other secrets in `deploy/staging/.accounts.staging`: ignored by git, readable by the owner only,
- * and never printed.
+ * The accounts the seed made (test-plan §6), for the system tests and the owner's acceptance run.
+ * The file holds passwords and the admin's TOTP secret, so it lives next to the other secrets in
+ * `deploy/<environment>/.accounts.<environment>`: ignored by git, readable by the owner only, and
+ * never printed.
  */
 @Serializable
 data class Accounts(
@@ -35,7 +35,8 @@ data class Accounts(
     }
 
     companion object {
-        const val PATH = "deploy/staging/.accounts.staging"
+        /** The environment is the exported `APP_ENV`, so a run on production uses production's file (release-checklist P-4). */
+        val PATH: String = deployEnvironment().let { "deploy/$it/.accounts.$it" }
 
         private val format = Json { prettyPrint = true }
 

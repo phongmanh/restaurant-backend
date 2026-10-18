@@ -3,8 +3,12 @@
 # The service's image for Vercel's container runtime (architecture §8, ADR-0002). Vercel accepts only
 # this file name as a container entrypoint. Plain JVM, as S-1 measured it; S-1's AOT cache took
 # about 1 s off a 5-7 s cold start, most of which is the platform's.
+#
+# Both base images are pinned by digest: Vercel builds the image once per project, so staging and
+# production get identical layers only from a fixed digest (release-checklist P-2). Dependabot's
+# weekly `docker` PR moves the digests to the patched images.
 
-FROM eclipse-temurin:25-jdk AS build
+FROM eclipse-temurin:25-jdk@sha256:2d5d5e9b533342a565907c84f47a2ec298c40cde7b13a3ca85d4950fa456a641 AS build
 WORKDIR /workspace
 
 COPY gradlew settings.gradle.kts build.gradle.kts ./
@@ -15,7 +19,7 @@ COPY src/main/ src/main/
 RUN ./gradlew --no-daemon --quiet buildFatJar \
     && cp build/libs/*-all.jar /workspace/app.jar
 
-FROM eclipse-temurin:25-jre AS runtime
+FROM eclipse-temurin:25-jre@sha256:dbb43d81099eec91e0800226ed2296d03146ee7857165b95112372ad0d67e87f AS runtime
 # The Ubuntu base ships Canonical's Pebble (`/usr/bin/pebble`, a Go service manager, no dpkg
 # package); the service never runs it, and its Go runtime carries advisories CI's Grype check
 # fails on (deploy/README.md "Vulnerable dependencies").
