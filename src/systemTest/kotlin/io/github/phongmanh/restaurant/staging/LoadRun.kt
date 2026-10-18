@@ -35,6 +35,9 @@ import kotlin.system.exitProcess
  * - `deploy` (ST-09, ST-19): the smoke load for 12 minutes, while the owner deploys and then rolls
  *   back. [DeployWatch] reads which deployment the URL's domain serves and prints each switch; give
  *   it the project's domain (`restaurant-staging-liam-36c7.vercel.app`), which follows production.
+ * - `live` (ST-03, ST-10; step 6c, CR-013): the smoke load for 14 minutes while 55 screens on L poll
+ *   the event log ([LiveScreens]). k6 runs at 9 a second, so with the screens' 1.2 the service gets
+ *   the smoke load's 10. 14 minutes, because k6's staff token lasts 15 and can't be renewed inside k6.
  * - `report` (ST-04) and `noisy` (ST-06): [ReportRun] and [NoisyRun].
  *
  * The mix runs in k6's container (`deploy/load/mix.js`) as restaurant L's manager and one guest per
@@ -71,7 +74,7 @@ fun main(args: Array<String>) {
 
                 else -> {
                     val minutes = args.optionValue("--minutes")?.toInt() ?: profile.minutes
-                    val rate = args.optionValue("--rate")?.toInt() ?: SMOKE_RATE
+                    val rate = args.optionValue("--rate")?.toInt() ?: profile.rate
                     MixRun(url, profile, rate, minutes, System.out).run(force, planOnly)
                 }
             }
@@ -104,10 +107,12 @@ enum class LoadProfile(
     val label: String,
     val minutes: Int = 0,
     val idleMinutes: Long = 0,
+    val rate: Int = SMOKE_RATE,
 ) {
     SMOKE("smoke", minutes = 10),
     COLD("cold", minutes = 10, idleMinutes = 30),
     DEPLOY("deploy", minutes = 12),
+    LIVE("live", minutes = 14, rate = SMOKE_RATE - 1),
     REPORT("report"),
     NOISY("noisy"),
     ;
@@ -157,17 +162,33 @@ class MixRun(
         val left = site.closeOpenSessions(staff)
         if (left > 0) out.println("Closed $left sessions an earlier run left open.")
         val guests = site.freeTables(staff).map { site.scan(site.qrToken(it.text("id"), staff)) }
+        // The screens count their requests apart, so they can't spend the budget the clean-up needs.
+        val screens =
+            if (profile == LoadProfile.LIVE) {
+                val budget = LiveScreens.requests(large.tableIds.size, minutes) * 2
+                val screensApi = StagingApi(base, env("VERCEL_AUTOMATION_BYPASS_SECRET"), budget, out)
+                LiveScreens(screensApi, LoadSite(screensApi, large), out, dir)
+            } else {
+                null
+            }
         try {
             val items = site.orderableItems(guests.first().token, ITEMS)
             check(items.isNotEmpty()) { "${large.name} has no item a guest can order without options" }
             if (profile.idleMinutes > 0) staff = afterIdle(site, large)
             val sessions = guests.map { it.sessionId }.distinct()
             File(dir, "sessions.txt").writeText(sessions.joinToString("\n", postfix = "\n"))
+            if (screens != null) {
+                screens.start(guests)
+                // k6's staff token must last its whole run: 15 minutes from now.
+                staff = site.signIn(large.manager)
+            }
             val result = k6(fixtures(large.id, staff, items, guests))
             File(dir, "acked.txt").writeText(result.acked.joinToString("\n", postfix = "\n"))
+            val live = screens?.finish(result.wrote) ?: true
             staff = site.signIn(large.manager)
-            return check(result, sessions.flatMap { site.orderIds(it, staff) }.toSet())
+            return maxOf(check(result, sessions.flatMap { site.orderIds(it, staff) }.toSet()), if (live) 0 else 1)
         } finally {
+            screens?.stop()
             guests.map { it.sessionId }.distinct().forEach { site.close(it, staff) }
             out.println("The driver sent ${api.sent} requests; ${guests.size} sessions closed.")
         }
@@ -179,12 +200,14 @@ class MixRun(
         driver: Int,
         force: Boolean,
     ): Boolean {
-        val planned = profile.requests(rate, minutes) + driver
+        val screens = if (profile == LoadProfile.LIVE) LiveScreens.requests(large.tableIds.size, minutes) else 0
+        val planned = profile.requests(rate, minutes) + driver + screens
         out.println(
             "Load run $run (${profile.label}) on $base: $rate requests a second for $minutes minutes, " +
                 "at ${large.tableIds.size} tables of ${large.name}; about $planned requests (test-plan §9 allows $RUN_LIMIT a run).",
         )
         if (profile.idleMinutes > 0) out.println("It waits ${profile.idleMinutes} minutes without a request after the setup.")
+        if (screens > 0) out.println("Screens on ${large.name} poll the event log meanwhile: about $screens of those requests.")
         val allowed = planned <= RUN_LIMIT || force
         if (!allowed) out.println("Refused: above $RUN_LIMIT requests. Add --force to run it anyway.")
         return allowed
@@ -236,6 +259,7 @@ class MixRun(
     /** What k6 reported: the orders it saw acknowledged, the unexpected answers, the slow requests and its summary. */
     private class K6Result(
         val acked: Set<String>,
+        val wrote: List<Wrote>,
         val fails: List<String>,
         val slow: List<Instant>,
         val summary: JsonObject?,
@@ -249,8 +273,10 @@ class MixRun(
                 K6_ENV.flatMap { listOf("-e", it) } +
                 listOf("-v", "${dir.absolutePath}:/out:rw", "-v", "${File("deploy/load").absolutePath}:/scripts:ro", IMAGE) +
                 listOf("run", "--quiet", "--include-system-env-vars", "--log-format=raw", "/scripts/mix.js")
-        val values = listOf(fixtures, env("VERCEL_AUTOMATION_BYPASS_SECRET"), profile.label, rate.toString(), minutes.toString())
+        val values =
+            listOf(fixtures, env("VERCEL_AUTOMATION_BYPASS_SECRET"), profile.label, rate.toString(), minutes.toString(), env("LIVE_PUSH"))
         val acked = mutableSetOf<String>()
+        val wrote = mutableListOf<Wrote>()
         val fails = mutableListOf<String>()
         val slow = mutableListOf<Instant>()
         var summary: JsonObject? = null
@@ -263,18 +289,39 @@ class MixRun(
                 .start()
         process.inputStream.bufferedReader().forEachLine { line ->
             when (line.substringBefore(' ')) {
-                "ACK" -> acked += line.substringAfter(' ')
-                "FAIL" -> fails += line.also { out.println("   $it") }
-                "SLOW" -> slow += Instant.parse(line.split(' ')[1])
-                "SUMMARY" -> summary = Json.parseToJsonElement(line.substringAfter(' ')).jsonObject
-                else -> out.println("   $line")
+                "ACK" -> {
+                    acked += line.substringAfter(' ')
+                }
+
+                "WROTE" -> {
+                    // WROTE <epoch ms> <session id> <order id> <version>
+                    val fields = line.split(' ').drop(1)
+                    val (ms, session, id) = fields
+                    wrote += Wrote(Instant.ofEpochMilli(ms.toLong()), session, id, fields.last().toInt(), Instant.now())
+                }
+
+                "FAIL" -> {
+                    fails += line.also { out.println("   $it") }
+                }
+
+                "SLOW" -> {
+                    slow += Instant.parse(line.split(' ')[1])
+                }
+
+                "SUMMARY" -> {
+                    summary = Json.parseToJsonElement(line.substringAfter(' ')).jsonObject
+                }
+
+                else -> {
+                    out.println("   $line")
+                }
             }
         }
         val exit = process.waitFor()
         watch?.stop()
         // 99: a threshold wasn't met, which the result reports; anything else means k6 didn't finish.
         check(exit == 0 || exit == K6_THRESHOLDS_FAILED) { "k6's container exited with $exit" }
-        return K6Result(acked, fails, slow, summary, started)
+        return K6Result(acked, wrote, fails, slow, summary, started)
     }
 
     private fun check(
@@ -308,12 +355,17 @@ class MixRun(
             .ifEmpty { "none" }
 
     private val LoadProfile.tests: String
-        get() = if (this == LoadProfile.DEPLOY) "ST-09, ST-19" else "ST-01, ST-02"
+        get() =
+            when (this) {
+                LoadProfile.DEPLOY -> "ST-09, ST-19"
+                LoadProfile.LIVE -> "ST-03, ST-10"
+                else -> "ST-01, ST-02"
+            }
 
     private companion object {
         /** Pinned, like ZAP's image; 1.3.0 is k6's release of 2025-09. */
         const val IMAGE = "grafana/k6:1.3.0"
-        val K6_ENV = listOf("LOAD_FIXTURES", "BYPASS", "PROFILE", "RATE", "MINUTES")
+        val K6_ENV = listOf("LOAD_FIXTURES", "BYPASS", "PROFILE", "RATE", "MINUTES", "LIVE_PUSH")
         const val K6_THRESHOLDS_FAILED = 99
 
         /** Three sign-ins, two table lists, the menu, and room for a sign-in's retries. */
