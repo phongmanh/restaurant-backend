@@ -99,15 +99,23 @@ const val HSTS_VALUE = "max-age=63072000; includeSubDomains"
  * `Cache-Control: no-store` on every API response, unless the route set its own (the menu reads
  * send `private, no-cache` with an `ETag`; §2, CR-004). Not Ktor's `DefaultHeaders`, whose
  * `Server` header would name the framework and its version.
+ *
+ * Each is added only when it's absent: a problem response passes through `onCallRespond` twice
+ * (the failed call, then the problem body), and appending both times sent the headers twice (ZAP
+ * rule 10035, ST-11).
  */
 private val ResponseHeaders =
     createApplicationPlugin("ResponseHeaders") {
         onCallRespond { call, _ ->
-            call.response.header(HttpHeaders.StrictTransportSecurity, HSTS_VALUE)
-            call.response.header("X-Content-Type-Options", "nosniff")
-            if (call.request.path().startsWith("/v1/") && call.response.headers[HttpHeaders.CacheControl] == null) {
-                call.response.header(HttpHeaders.CacheControl, "no-store")
+            fun once(
+                name: String,
+                value: String,
+            ) {
+                if (call.response.headers[name] == null) call.response.header(name, value)
             }
+            once(HttpHeaders.StrictTransportSecurity, HSTS_VALUE)
+            once("X-Content-Type-Options", "nosniff")
+            if (call.request.path().startsWith("/v1/")) once(HttpHeaders.CacheControl, "no-store")
         }
     }
 

@@ -21,7 +21,8 @@ import kotlin.test.assertTrue
  * deployed pieces count: one limit per kind of subject (an IP, a staff member), and the WAF.
  *
  * The limits are fixed windows aligned to the minute (core-and-auth §11), so each burst starts at
- * the top of a minute and fits inside it. While a window is spent, the other tests' calls wait
+ * the top of a minute and fits inside it. The WAF rule is 300 a minute per IP, as §11 sets it (Q-20;
+ * it was 60 until 2026-10-18, which kept `auth.refresh`'s 120 out of reach). While a window is spent, the other tests' calls wait
  * it out ([StagingApi] retries a `429`).
  */
 class AbuseLimitsTest {
@@ -33,10 +34,16 @@ class AbuseLimitsTest {
         val statuses = mutableListOf<String>()
         var appLimit: StagingApi.Response? = null
         var edge: StagingApi.Response? = null
+        var spoofed: StagingApi.Response? = null
         for (i in 1..SIGN_IN_BURST) {
             val response = api.call("POST", "/v1/auth/sign-in", unknownAccount(i), waitOut429 = false)
             statuses += if (response.fromEdge) "edge ${response.status}" else "${response.status}"
-            if (response.status == StagingApi.TOO_MANY_REQUESTS && !response.fromEdge) appLimit = appLimit ?: response
+            if (response.status == StagingApi.TOO_MANY_REQUESTS && !response.fromEdge && appLimit == null) {
+                appLimit = response
+                // The limit counts by the IP Vercel's edge sets (ASVS 5.0 V4.1.3, V15.3.4): headers the
+                // client sends naming another IP must not open a fresh allowance.
+                spoofed = api.call("POST", "/v1/auth/sign-in", unknownAccount(0), headers = SPOOFED_IP, waitOut429 = false)
+            }
             if (response.fromEdge) {
                 edge = response
                 break
@@ -50,10 +57,32 @@ class AbuseLimitsTest {
         assertEquals("rate_limited", limited.code)
         val retryAfter = requireNotNull(limited.header("Retry-After")) { "the app's 429 carries Retry-After" }.toLong()
         assertTrue(retryAfter in 1..WINDOW_S, "Retry-After is the rest of the minute: $retryAfter")
+        val spoof = requireNotNull(spoofed)
+        assertEquals(
+            StagingApi.TOO_MANY_REQUESTS to "rate_limited",
+            spoof.status to spoof.code,
+            "X-Real-IP and X-Forwarded-For from the client don't change the IP the limit counts",
+        )
 
         val waf = requireNotNull(edge) { "the edge never answered 429 in $SIGN_IN_BURST requests: is the WAF rule on? $counts" }
         assertEquals(StagingApi.TOO_MANY_REQUESTS, waf.status, "the WAF's answer")
-        println("[ST-14] the WAF answered after ${statuses.size} requests (rule: 60 per 60 s per IP)")
+        println(
+            "[ST-14] the WAF answered after ${statuses.size} requests (rule: 300 per 60 s per IP); a spoofed client IP was still limited",
+        )
+        waitForNextMinute()
+    }
+
+    @Test
+    fun `ST-14 past 120 refreshes a minute from one IP the app answers 429`() {
+        topOfMinute()
+        val body = buildJsonObject { put("audience", "staff") }
+        val statuses = (1..REFRESH_LIMIT + 1).map { api.call("POST", "/v1/auth/refresh", body, waitOut429 = false) }
+        val counts = statuses.map { if (it.fromEdge) "edge ${it.status}" else "${it.status}" }.groupingBy { it }.eachCount()
+        assertTrue(statuses.take(REFRESH_LIMIT).all { it.status == UNAUTHORIZED }, "the first 120 are answered (no cookie: 401): $counts")
+        val last = statuses.last()
+        assertEquals(StagingApi.TOO_MANY_REQUESTS to "rate_limited", last.status to last.code, "the 121st is the app's 429: $counts")
+        assertTrue(last.header("Retry-After") != null, "with Retry-After")
+        println("[ST-14] refresh burst: $counts")
         waitForNextMinute()
     }
 
@@ -134,8 +163,13 @@ class AbuseLimitsTest {
         const val SIGN_IN_LIMIT = 30
         const val REPORT_LIMIT = 30
 
-        /** Past the WAF's 60 a minute, with room for a WAF window that doesn't start on the minute. */
-        const val SIGN_IN_BURST = 125
+        const val REFRESH_LIMIT = 120
+
+        /** Past the WAF's 300 a minute, with room for a WAF window that doesn't start on the minute. */
+        const val SIGN_IN_BURST = 610
+
+        /** Documentation addresses (RFC 5737), never the caller's. */
+        val SPOOFED_IP = mapOf("X-Real-IP" to "203.0.113.7", "X-Forwarded-For" to "198.51.100.9")
         const val WINDOW_S = 60L
         const val START_SLACK_S = 5L
         const val MILLIS = 1_000L

@@ -38,6 +38,6 @@
 | L2 | The client IP is read from `x-real-ip` (`core/http/Http.kt`), which Vercel's edge sets. Anywhere else a client could set it, and the IP goes into audit records and rate-limit keys | None on Vercel | Check in Phase 5, and again if CR-001 moves the service off Vercel |
 
 ## 4. Not covered
-- The running service from outside (ZAP scan) and the ASVS checklist: Phase 5, as planned.
-- Dependency vulnerabilities: no scan was run in this review.
+- The running service from outside (ZAP scan) and the ASVS checklist: done in Phase 5 step 6a, [asvs-checklist.md](asvs-checklist.md).
+- Dependency vulnerabilities: no scan was run in this review (still none: asvs-checklist.md F-3).
 - Vercel, Neon, Ably and Upstash settings (who can sign in to them, their keys): outside the code.
