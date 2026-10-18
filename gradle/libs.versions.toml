@@ -10,6 +10,10 @@ ktor = "3.6.0"
 kotlinxSerialization = "1.11.0"
 logback = "1.6.5"
 logstashEncoder = "9.0"
+# Raised over what java-jwt, Flyway (2.x) and the logstash encoder (3.x) bring: fixes for High
+# advisories that CI's Grype check found (F-3, step 6a).
+jackson2 = "2.22.3"
+jackson3 = "3.1.7"
 uuidGenerator = "5.2.0"
 exposed = "1.5.1"
 postgresql = "42.7.14"
@@ -28,11 +32,14 @@ ktlintGradle = "14.2.0"
 ktlint = "1.8.0"
 detekt = "1.23.8"
 kover = "0.9.11"
+cyclonedx = "3.4.1"
 # Phase 5 step 4 (2026-10-17): metrics pushed over OTLP (ADR-0009); the version Ktor 3.6.0's metrics plugin is built on.
 micrometer = "1.17.1"
 
 [libraries]
 ktor-bom = { module = "io.ktor:ktor-bom", version.ref = "ktor" }
+jackson2-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson2" }
+jackson3-bom = { module = "tools.jackson:jackson-bom", version.ref = "jackson3" }
 ktor-server-core = { module = "io.ktor:ktor-server-core" }
 ktor-server-netty = { module = "io.ktor:ktor-server-netty" }
 ktor-server-config-yaml = { module = "io.ktor:ktor-server-config-yaml" }
@@ -77,3 +84,4 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintGradle" }
 kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
+cyclonedx = { id = "org.cyclonedx.bom", version.ref = "cyclonedx" }

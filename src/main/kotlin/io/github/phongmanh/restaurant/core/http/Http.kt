@@ -94,8 +94,16 @@ fun Application.installHttp(settings: HttpSettings) {
 const val HSTS_VALUE = "max-age=63072000; includeSubDomains"
 
 /**
+ * The service sends JSON only, so a browser that renders a response anyway may load nothing, run
+ * nothing and be framed by no one (ASVS V3.4.3, V3.4.6; F-2, step 6a).
+ */
+const val CSP_VALUE = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+
+/**
  * The headers every response carries (architecture §11, HTTP hardening): `Strict-Transport-Security`
- * and `X-Content-Type-Options: nosniff`, so a browser never reads a JSON body as another type. And
+ * and `X-Content-Type-Options: nosniff`, so a browser never reads a JSON body as another type;
+ * [CSP_VALUE], and `Referrer-Policy: no-referrer`, so a link followed from a response sends no URL
+ * (ASVS V3.4.5). And
  * `Cache-Control: no-store` on every API response, unless the route set its own (the menu reads
  * send `private, no-cache` with an `ETag`; §2, CR-004). Not Ktor's `DefaultHeaders`, whose
  * `Server` header would name the framework and its version.
@@ -115,6 +123,8 @@ private val ResponseHeaders =
             }
             once(HttpHeaders.StrictTransportSecurity, HSTS_VALUE)
             once("X-Content-Type-Options", "nosniff")
+            once("Content-Security-Policy", CSP_VALUE)
+            once("Referrer-Policy", "no-referrer")
             if (call.request.path().startsWith("/v1/")) once(HttpHeaders.CacheControl, "no-store")
         }
     }

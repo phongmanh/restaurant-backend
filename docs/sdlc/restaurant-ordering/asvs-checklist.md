@@ -1,8 +1,8 @@
 # ASVS 5.0 Level 2 checklist and ZAP scan (ST-11)
 
-> v0.2, 2026-10-18 · Phase 5 step 6a · Reviewed by the owner 2026-10-18 (Q-21) · Test-plan §4 ST-11 (NFR-SEC-01) · Builds on [security-review.md](security-review.md)
+> v0.3, 2026-10-18 · Phase 5 step 6a · Reviewed by the owner 2026-10-18 (Q-21); D-2, F-2, F-3 and F-6 fixed · Test-plan §4 ST-11 (NFR-SEC-01) · Builds on [security-review.md](security-review.md)
 
-**In plain words:** OWASP's Application Security Verification Standard (ASVS) is a list of checks a secure application should pass, and NFR-SEC-01 asks for its Level 2. This document goes through every Level 1 and 2 requirement of version 5.0.0 (253 of them) and says, for each, whether the service meets it and how we know. ZAP is a free scanner that attacks the running service from outside, the way an attacker's tools would; it ran against staging with the contract as its map. Most requirements are met. The checklist found one real defect (D-2: the database connection doesn't check the server's certificate) and six smaller gaps, each with a suggested fix for you to choose. ZAP found no real High; one defect it found (a header sent twice) is fixed in this step.
+**In plain words:** OWASP's Application Security Verification Standard (ASVS) is a list of checks a secure application should pass, and NFR-SEC-01 asks for its Level 2. This document goes through every Level 1 and 2 requirement of version 5.0.0 (253 of them) and says, for each, whether the service meets it and how we know. ZAP is a free scanner that attacks the running service from outside, the way an attacker's tools would; it ran against staging with the contract as its map. Most requirements are met. The checklist found one real defect (D-2: the database connection doesn't check the server's certificate) and six smaller gaps. You chose on 2026-10-18 (Q-21): D-2, F-2, F-3 and F-6 are now fixed in code, F-4 and F-5 are accepted for release 1, and F-7 stays a residual risk on the free plans (R-19). The first dependency scan (F-3) found High advisories in Jackson and the base image, fixed in the same change. ZAP found no real High; one defect it found (a header sent twice) is fixed in this step.
 
 ## 1. Scope and method
 - **Standard:** [OWASP ASVS 5.0.0](https://github.com/OWASP/ASVS/releases/tag/v5.0.0_release), its flat JSON export (CC BY-SA 4.0). Level 1 and 2: 253 requirements; Level 3 is out of scope.
@@ -94,9 +94,9 @@ And one platform limit: V4.1.2, Vercel redirects plain HTTP to HTTPS for every p
 
 | Status | Requirements |
 |---|---|
-| Met | 140 |
-| Partly | 17 |
-| Gap | 11 |
+| Met | 150 |
+| Partly | 14 |
+| Gap | 4 |
 | Deviation | 3 |
 | Platform | 8 |
 | Apps | 8 |
@@ -163,10 +163,10 @@ Each L1 and L2 requirement of ASVS 5.0.0 by its ID, with a short label of ours (
 | V3.3.4 | 2 | `HttpOnly`, token only in `Set-Cookie` | Met | `HttpOnly`; the refresh token never appears in a body |
 | V3.4.1 | 1 | HSTS, 1 year, subdomains | Partly | The service sends `max-age=63072000; includeSubDomains` on every response (`Http.kt`); ZAP found it twice on problem responses (rule 10035), fixed in this step and tested once per response. Vercel's own errors and redirects carry Vercel's header |
 | V3.4.2 | 1 | CORS allow-list | Met | Ktor `CORS` with the configured origins only, no credentials (`Http.kt`) |
-| V3.4.3 | 2 | Content-Security-Policy | Gap | Not sent. For a JSON API, `default-src 'none'; frame-ancestors 'none'; base-uri 'none'` is enough (finding F-2) |
+| V3.4.3 | 2 | Content-Security-Policy | Met | Every response sends `default-src 'none'; frame-ancestors 'none'; base-uri 'none'`, enough for a JSON API (`ResponseHeaders`, `HttpConventionsTest`; F-2 fixed) |
 | V3.4.4 | 2 | `nosniff` everywhere | Met | Every service response (`Http.kt`) |
-| V3.4.5 | 2 | Referrer-Policy | Gap | Not sent; `no-referrer` (finding F-2). The web apps set their own |
-| V3.4.6 | 2 | CSP `frame-ancestors` | Gap | Not sent (finding F-2) |
+| V3.4.5 | 2 | Referrer-Policy | Met | Every response sends `no-referrer` (F-2 fixed). The web apps set their own |
+| V3.4.6 | 2 | CSP `frame-ancestors` | Met | `frame-ancestors 'none'` in every response's CSP (F-2 fixed) |
 | V3.5.1 | 1 | CSRF without preflight reliance | Met | Every state change but refresh and sign-out takes a bearer token in `Authorization`, which a cross-site request can't add |
 | V3.5.2 | 1 | Preflight can't be skipped | Met | Cookie-authenticated `/v1/auth/*` POSTs require `Content-Type: application/json` (not CORS-safelisted, so a preflight happens and the allow-list refuses), plus `SameSite=Strict` |
 | V3.5.3 | 1 | Safe methods don't change state | Met | No `GET` changes anything (contract; reading a QR code doesn't rotate it) |
@@ -218,7 +218,7 @@ Each L1 and L2 requirement of ASVS 5.0.0 by its ID, with a short label of ours (
 | V6.2.8 | 1 | Password checked as received | Met | NFC normalisation only, no truncation or case change (§8.6) |
 | V6.2.9 | 2 | 64 characters allowed | Met | `MAX_LENGTH = 64` |
 | V6.2.10 | 2 | No forced rotation | Met | Passwords don't expire |
-| V6.2.11 | 2 | Context words used | Gap | As V6.1.2 (finding F-6) |
+| V6.2.11 | 2 | Context words used | Gap | As V6.1.2 (finding F-5) |
 | V6.2.12 | 2 | Breached-password check | Partly | The common list holds the passwords most seen in breaches; no check against a full breach corpus (e.g. HIBP's k-anonymity API), which would add an outbound dependency |
 | V6.3.1 | 1 | Brute-force controls built | Met | IT-AUTH-02/13 in CI; ST-14 on staging (Upstash, WAF) |
 | V6.3.2 | 1 | No default accounts | Met | The first admin comes from the operator command's invitation (restaurants §5); the seed's accounts exist on staging only |
@@ -293,7 +293,7 @@ V10.1.1, V10.1.2, V10.2.1, V10.2.2, V10.3.1, V10.3.2, V10.3.3, V10.3.4, V10.4.1,
 ### V11 Cryptography
 | ID | L | Requirement | Status | Evidence |
 |---|---|---|---|---|
-| V11.1.1 | 2 | Key management policy | Partly | Keys rotate by `kid`/key ID (`EcKeySet`, `SecretBox`) and deploy/README.md has 'Rotating a secret'; no written policy on lifetimes and who may hold each key (see the inventory below; finding F-7) |
+| V11.1.1 | 2 | Key management policy | Met | Keys rotate by `kid`/key ID (`EcKeySet`, `SecretBox`); deploy/README.md "Key policy" says who holds each key, how long it lives and that exposure means rotating the same day (from the inventory below; F-6 fixed) |
 | V11.1.2 | 2 | Cryptographic inventory | Met | This document's 'Cryptographic inventory' |
 | V11.2.1 | 2 | Validated libraries | Met | Bouncy Castle (Argon2id), the JDK (AES-GCM, ECDSA, SHA-256, `SecureRandom`), java-jwt |
 | V11.2.2 | 2 | Crypto agility | Met | Key IDs on JWTs, QR codes and TOTP ciphertexts; PHC strings let Argon2id parameters rise with re-hash at sign-in |
@@ -316,10 +316,10 @@ V10.1.1, V10.1.2, V10.2.1, V10.2.2, V10.3.1, V10.3.2, V10.3.3, V10.3.4, V10.4.1,
 | V12.1.3 | 2 | mTLS client certificates | N/A | None used |
 | V12.2.1 | 1 | TLS for all client traffic | Met | HTTPS only; Vercel redirects plain HTTP (V4.1.2) |
 | V12.2.2 | 1 | Publicly trusted certificates | Platform | Vercel-issued certificates for `*.vercel.app`; a custom domain gets one too |
-| V12.3.1 | 2 | TLS for every outbound connection | Partly | Upstash, Ably and the OTLP endpoint over HTTPS; PostgreSQL over TLS (`sslmode=require`), but see V12.3.2 |
-| V12.3.2 | 2 | TLS clients validate certificates | Gap | The database URLs use `sslmode=require`, which in pgjdbc encrypts but doesn't check the server's certificate or name (finding F-1). The HTTPS clients validate (JDK defaults) |
+| V12.3.1 | 2 | TLS for every outbound connection | Met | Upstash, Ably and the OTLP endpoint over HTTPS; PostgreSQL over TLS with `sslmode=verify-full`, which `JdbcTarget` requires for any host but this machine (D-2 fixed) |
+| V12.3.2 | 2 | TLS clients validate certificates | Met | The database: `sslmode=verify-full` with the JDK's trust store checks Neon's certificate and name; `JdbcTarget` refuses a weaker mode off `localhost` (`JdbcTargetTest`; D-2 fixed, once the deployed URLs are updated). The HTTPS clients validate (JDK defaults) |
 | V12.3.3 | 2 | TLS between internal services | Met | No internal HTTP services; the function talks only to the providers above |
-| V12.3.4 | 2 | Trusted certificates internally | Partly | As V12.3.2 for the database; the rest use publicly trusted CAs |
+| V12.3.4 | 2 | Trusted certificates internally | Met | Every connection, the database's included, checks a publicly trusted CA (V12.3.2) |
 
 ### V13 Configuration
 | ID | L | Requirement | Status | Evidence |
@@ -354,10 +354,10 @@ V10.1.1, V10.1.2, V10.2.1, V10.2.2, V10.3.1, V10.3.2, V10.3.3, V10.3.4, V10.4.1,
 ### V15 Secure Coding and Architecture
 | ID | L | Requirement | Status | Evidence |
 |---|---|---|---|---|
-| V15.1.1 | 1 | Remediation time frames | Gap | No written time frames for vulnerable dependencies (finding F-3) |
-| V15.1.2 | 2 | SBOM | Gap | No SBOM; versions are pinned in `gradle/libs.versions.toml` from Maven Central (finding F-3) |
+| V15.1.1 | 1 | Remediation time frames | Met | deploy/README.md "Vulnerable dependencies": Critical 7 days, High 30 days, others with the next release (F-3 fixed) |
+| V15.1.2 | 2 | SBOM | Met | CI writes two CycloneDX SBOMs, kept 90 days: the runtime libraries from Gradle (`cyclonedxBom`) and the image's JRE and OS packages (Syft); versions are pinned in `gradle/libs.versions.toml` (F-3 fixed) |
 | V15.1.3 | 2 | Resource-heavy functions documented | Met | Argon2id (4 slots, 2 s wait → 503), reports (10 s statement timeout, 31 days), architecture §9–10 |
-| V15.2.1 | 1 | Components within time frames | Gap | Unknown: no dependency scan has run (security-review.md §4; finding F-3) |
+| V15.2.1 | 1 | Components within time frames | Met | CI's Grype check fails on a High or Critical with a fix, in the libraries and the image. Its first run (2026-10-18) found High advisories in Jackson 2.22.0 and 3.0.1 (through java-jwt, Flyway and the logstash encoder) and Critical and High ones in the base image's Pebble binary; Jackson is raised by its BOMs to 2.22.3 and 3.1.7, and Pebble is removed from the image. None remain (F-3 fixed) |
 | V15.2.2 | 2 | Availability defences | Met | Argon2id slots, statement timeouts, 64 KB bodies, page limits ≤ 200, rate limits |
 | V15.2.3 | 2 | No extraneous functionality | Met | Test fakes live in the test source sets; the seed and ZAP tools in `systemTest`, never in the jar |
 | V15.3.1 | 1 | Only required fields returned | Met | Explicit response classes per operation; no password hashes, token hashes or TOTP secrets leave the service (contract check on every response) |
