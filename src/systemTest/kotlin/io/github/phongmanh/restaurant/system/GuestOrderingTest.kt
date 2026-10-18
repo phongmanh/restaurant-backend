@@ -202,8 +202,8 @@ class GuestOrderingTest {
         return api
             .expect(
                 OK,
-                "PATCH",
-                "/v1/staff/menu/items/$itemId",
+                "POST",
+                "/v1/staff/menu/items/$itemId/update",
                 buildJsonObject {
                     put("price", vnd(price))
                 },

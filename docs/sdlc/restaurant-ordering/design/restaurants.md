@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: the eight §15 questions decided by the owner on 2026-10-15 |
+| Version | 1.2 ([CR-012](../cr/CR-012-updates-through-post.md), approved 2026-10-18: the profile and member edits as `POST …/update`, the `PATCH` deprecated). 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.2: the eight §15 questions decided by the owner on 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `restaurants` (architecture §4) |
 | Requirements | FR-040 onboard, FR-041 staff, FR-043 suspend, FR-044 profile; FR-042 and NFR-SEC-02 (isolation of these endpoints); NFR-SEC-03 (audit read); NFR-PRIV-01 (staff data export and erasure) |
@@ -95,7 +95,7 @@ Admin routes and a token of the wrong group (§15 Q1): a valid **staff** token o
 The admin view (`GET /v1/admin/restaurants/{restaurantId}`) adds `owner_contact`, `suspended_at`, `suspension_reason` and `created_at`.
 
 ### 4.2 Edit
-`PATCH /v1/staff/restaurant` (manager) and `PATCH /v1/admin/restaurants/{restaurantId}` (admin) take `If-Match`. The body contains only the fields to change; `owner_contact` is accepted on the admin route only.
+`POST /v1/staff/restaurant/update` (manager) and `POST /v1/admin/restaurants/{restaurantId}/update` (admin) take `If-Match` (§11: the `PATCH` forms are deprecated, CR-012). The body contains only the fields to change; `owner_contact` is accepted on the admin route only.
 - **Validation:**
   - `name` 1–100 characters; `address` 1–300 characters;
   - `time_zone` must be an IANA region ID that the JDK knows (`ZoneId.of`, region IDs only, so `UTC+7` → 400);
@@ -166,7 +166,7 @@ Manager routes are under `/v1/staff/members`. Admins have the same operations un
 | List | `GET /v1/staff/members?status=&role=&limit=&cursor=` | Page of members sorted by `display_name`, then `id`. Anonymised accounts aren't listed |
 | Read | `GET /v1/staff/members/{staffId}` | `200` + `ETag` |
 | Invite | `POST /v1/staff/members` `{"email", "display_name", "phone"?, "role"}` | `201` `{"member", "invitation": {"link", "expires_at"}}` |
-| Edit | `PATCH /v1/staff/members/{staffId}` + `If-Match` `{"display_name"?, "phone"?, "role"?}` | `200` + new `ETag` |
+| Edit | `POST /v1/staff/members/{staffId}/update` + `If-Match` `{"display_name"?, "phone"?, "role"?}` | `200` + new `ETag` |
 | Deactivate | `POST /v1/staff/members/{staffId}/deactivate` | `200` member |
 | Reactivate | `POST /v1/staff/members/{staffId}/reactivate` | `200` member |
 | Re-issue invitation | `POST /v1/staff/members/{staffId}/invitation` | `201` `{"link", "expires_at"}`; the old link stops working |
@@ -232,16 +232,16 @@ Platform admins handle requests from staff members, because the request goes to 
 - The legal deadline for answering a request is part of TBD-4 and the legal review.
 
 ## 11. Endpoints
-All of these go into `core/http/Endpoints.kt` and the contract.
+All of these go into `core/http/Endpoints.kt` and the contract. An update is `POST <path>/update` with `If-Match`; the same update as `PATCH <path>` is kept for compatibility within `/v1`, deprecated, because Vercel's edge answers a successful `PATCH` with its own `412` (D-1, [CR-012](../cr/CR-012-updates-through-post.md)). Both are in the registry and the contract, with one handler.
 
 | Method and path | Who | Idempotency / If-Match | Allowed when suspended | Success |
 |---|---|---|---|---|
 | `GET /v1/staff/restaurant` | Staff, all roles | — | Yes | 200 + ETag |
-| `PATCH /v1/staff/restaurant` | Manager | If-Match | No | 200 + ETag |
+| `POST /v1/staff/restaurant/update` | Manager | If-Match | No | 200 + ETag |
 | `GET /v1/staff/members` | Manager | — | No | 200 page |
 | `POST /v1/staff/members` | Manager | — | No | 201 |
 | `GET /v1/staff/members/{staffId}` | Manager | — | No | 200 + ETag |
-| `PATCH /v1/staff/members/{staffId}` | Manager | If-Match | No | 200 + ETag |
+| `POST /v1/staff/members/{staffId}/update` | Manager | If-Match | No | 200 + ETag |
 | `POST /v1/staff/members/{staffId}/deactivate` | Manager | — | No | 200 |
 | `POST /v1/staff/members/{staffId}/reactivate` | Manager | — | No | 200 |
 | `POST /v1/staff/members/{staffId}/invitation` | Manager | — | No | 201 |
@@ -250,7 +250,7 @@ All of these go into `core/http/Endpoints.kt` and the contract.
 | `GET /v1/admin/restaurants` | Admin | — | n/a | 200 page (`?status=`, `?q=` name prefix) |
 | `POST /v1/admin/restaurants` | Admin | Idempotency-Key | n/a | 201 |
 | `GET /v1/admin/restaurants/{restaurantId}` | Admin | — | n/a | 200 + ETag |
-| `PATCH /v1/admin/restaurants/{restaurantId}` | Admin | If-Match | n/a | 200 + ETag |
+| `POST /v1/admin/restaurants/{restaurantId}/update` | Admin | If-Match | n/a | 200 + ETag |
 | `POST /v1/admin/restaurants/{restaurantId}/suspend` | Admin | — | n/a | 200 |
 | `POST /v1/admin/restaurants/{restaurantId}/reactivate` | Admin | — | n/a | 200 |
 | `GET`, `POST /v1/admin/restaurants/{restaurantId}/members` and the six member operations below it | Admin | as the staff routes | n/a | as the staff routes |

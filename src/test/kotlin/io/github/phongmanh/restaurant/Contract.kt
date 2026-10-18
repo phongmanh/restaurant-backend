@@ -26,6 +26,8 @@ object Contract {
          * `[{staffBearer}, {adminBearer}]`. An empty set (`{}`) allows a call without credentials.
          */
         val security: List<Set<String>>,
+        /** `deprecated: true`: kept for compatibility within `/v1` only (the `PATCH` updates, CR-012). */
+        val deprecated: Boolean,
     )
 
     private val methods = setOf("get", "put", "post", "delete", "patch", "head", "options", "trace")
@@ -46,6 +48,7 @@ object Contract {
                     allowedWhenSuspended = operation["x-allowed-when-suspended"],
                     auth = operation["x-auth"],
                     security = (operation["security"] as List<*>? ?: emptyList<Any>()).map { map(it).keys },
+                    deprecated = operation["deprecated"] == true,
                 )
             }
         }

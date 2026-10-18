@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Restaurant ordering API
-  version: 1.0.1
+  version: 1.1.0
   description: |
     Contract for the restaurant ordering service (`docs/sdlc/restaurant-ordering/`).
     Hand-written in Phase 3 and frozen at G3 on 2026-10-15 (architecture §5, ADR-0007). Changes need a CR;
@@ -18,6 +18,8 @@ info:
     `413 payload_too_large` and `415 unsupported_media_type` (operations with a body),
     `426 client_upgrade_required`, `500 internal_error` and `503 service_unavailable`.
     An operation lists one of them only when it has its own reason to (CR-010).
+    An update of a versioned resource is `POST <path>/update` with `If-Match`; the `PATCH` forms are
+    deprecated and kept only for compatibility within `/v1`, because Vercel's edge answers them `412` (CR-012).
 servers:
   - url: https://api.example.invalid
     description: Placeholder until the environments' URLs are fixed
@@ -307,6 +309,39 @@ paths:
       tags: [restaurants]
       operationId: updateOwnRestaurant
       summary: Edit your restaurant's profile (manager)
+      deprecated: true
+      description: "Kept for compatibility within `/v1`; use `POST /v1/staff/restaurant/update`. Through Vercel's edge this answers `412` even when the change is saved (D-1, CR-012)."
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestaurantUpdate' }
+      responses:
+        '200':
+          description: Updated
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Restaurant' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/restaurant/update:
+    post:
+      tags: [restaurants]
+      operationId: updateOwnRestaurantPost
+      summary: "Edit your restaurant's profile (manager)"
+      description: "The update of `/v1/staff/restaurant`, sent as `POST`; clients use this form. It takes the same body, `If-Match` and rules as the `PATCH`, which Vercel's edge answers with its own `412` after the change is saved (D-1, CR-012)."
       security:
         - staffBearer: []
       x-allowed-when-suspended: false
@@ -410,6 +445,43 @@ paths:
       tags: [staff]
       operationId: updateMember
       summary: Change name, phone or role (role change ends their sessions)
+      deprecated: true
+      description: "Kept for compatibility within `/v1`; use `POST /v1/staff/members/{staffId}/update`. Through Vercel's edge this answers `412` even when the change is saved (D-1, CR-012)."
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberUpdate' }
+      responses:
+        '200':
+          description: Updated
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/members/{staffId}/update:
+    parameters:
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [staff]
+      operationId: updateMemberPost
+      summary: "Change name, phone or role (role change ends their sessions)"
+      description: "The update of `/v1/staff/members/{staffId}`, sent as `POST`; clients use this form. It takes the same body, `If-Match` and rules as the `PATCH`, which Vercel's edge answers with its own `412` after the change is saved (D-1, CR-012)."
       security:
         - staffBearer: []
       x-allowed-when-suspended: false
@@ -639,6 +711,41 @@ paths:
       operationId: updateRestaurant
       x-allowed-when-suspended: true
       summary: Edit a restaurant, including the owner contact
+      deprecated: true
+      description: "Kept for compatibility within `/v1`; use `POST /v1/admin/restaurants/{restaurantId}/update`. Through Vercel's edge this answers `412` even when the change is saved (D-1, CR-012)."
+      security:
+        - adminBearer: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminRestaurantUpdate' }
+      responses:
+        '200':
+          description: Updated
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminRestaurant' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/admin/restaurants/{restaurantId}/update:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+    post:
+      tags: [admin]
+      operationId: updateRestaurantPost
+      x-allowed-when-suspended: true
+      summary: "Edit a restaurant, including the owner contact"
+      description: "The update of `/v1/admin/restaurants/{restaurantId}`, sent as `POST`; clients use this form. It takes the same body, `If-Match` and rules as the `PATCH`, which Vercel's edge answers with its own `412` after the change is saved (D-1, CR-012)."
       security:
         - adminBearer: []
       parameters:
@@ -795,6 +902,44 @@ paths:
       operationId: updateRestaurantMember
       x-allowed-when-suspended: true
       summary: Change name, phone or role (role change ends their sessions)
+      deprecated: true
+      description: "Kept for compatibility within `/v1`; use `POST /v1/admin/restaurants/{restaurantId}/members/{staffId}/update`. Through Vercel's edge this answers `412` even when the change is saved (D-1, CR-012)."
+      security:
+        - adminBearer: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberUpdate' }
+      responses:
+        '200':
+          description: Updated
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/admin/restaurants/{restaurantId}/members/{staffId}/update:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+      - $ref: '#/components/parameters/StaffId'
+    post:
+      tags: [staff]
+      operationId: updateRestaurantMemberPost
+      x-allowed-when-suspended: true
+      summary: "Change name, phone or role (role change ends their sessions)"
+      description: "The update of `/v1/admin/restaurants/{restaurantId}/members/{staffId}`, sent as `POST`; clients use this form. It takes the same body, `If-Match` and rules as the `PATCH`, which Vercel's edge answers with its own `412` after the change is saved (D-1, CR-012)."
       security:
         - adminBearer: []
       parameters:
@@ -1214,6 +1359,8 @@ paths:
       tags: [menu]
       operationId: updateMenuCategory
       summary: 'Edit a category (manager)'
+      deprecated: true
+      description: "Kept for compatibility within `/v1`; use `POST /v1/staff/menu/categories/{categoryId}/update`. Through Vercel's edge this answers `412` even when the change is saved (D-1, CR-012)."
       security:
         - staffBearer: []
       x-allowed-when-suspended: false
@@ -1254,6 +1401,41 @@ paths:
           description: 'Deleted'
           headers:
             X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/menu/categories/{categoryId}/update:
+    parameters:
+      - $ref: '#/components/parameters/CategoryId'
+    post:
+      tags: [menu]
+      operationId: updateMenuCategoryPost
+      summary: "Edit a category (manager)"
+      description: "The update of `/v1/staff/menu/categories/{categoryId}`, sent as `POST`; clients use this form. It takes the same body, `If-Match` and rules as the `PATCH`, which Vercel's edge answers with its own `412` after the change is saved (D-1, CR-012)."
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuCategoryUpdate' }
+      responses:
+        '200':
+          description: 'Updated'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuCategory' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1342,6 +1524,8 @@ paths:
       tags: [menu]
       operationId: updateMenuItem
       summary: 'Edit an item; option_groups, when sent, replaces the whole set (manager)'
+      deprecated: true
+      description: "Kept for compatibility within `/v1`; use `POST /v1/staff/menu/items/{itemId}/update`. Through Vercel's edge this answers `412` even when the change is saved (D-1, CR-012)."
       security:
         - staffBearer: []
       x-allowed-when-suspended: false
@@ -1385,6 +1569,41 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/menu/items/{itemId}/update:
+    parameters:
+      - $ref: '#/components/parameters/ItemId'
+    post:
+      tags: [menu]
+      operationId: updateMenuItemPost
+      summary: "Edit an item; option_groups, when sent, replaces the whole set (manager)"
+      description: "The update of `/v1/staff/menu/items/{itemId}`, sent as `POST`; clients use this form. It takes the same body, `If-Match` and rules as the `PATCH`, which Vercel's edge answers with its own `412` after the change is saved (D-1, CR-012)."
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuItemUpdate' }
+      responses:
+        '200':
+          description: 'Updated'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffMenuItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/PreconditionFailed' }
         '428': { $ref: '#/components/responses/PreconditionRequired' }
 
@@ -1676,6 +1895,8 @@ paths:
       tags: [tables]
       operationId: updateTable
       summary: 'Edit or disable a table (manager)'
+      deprecated: true
+      description: "Kept for compatibility within `/v1`; use `POST /v1/staff/tables/{tableId}/update`. Through Vercel's edge this answers `412` even when the change is saved (D-1, CR-012)."
       security:
         - staffBearer: []
       x-allowed-when-suspended: false
@@ -1716,6 +1937,41 @@ paths:
           description: 'Deleted'
           headers:
             X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /v1/staff/tables/{tableId}/update:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+    post:
+      tags: [tables]
+      operationId: updateTablePost
+      summary: "Edit or disable a table (manager)"
+      description: "The update of `/v1/staff/tables/{tableId}`, sent as `POST`; clients use this form. It takes the same body, `If-Match` and rules as the `PATCH`, which Vercel's edge answers with its own `412` after the change is saved (D-1, CR-012)."
+      security:
+        - staffBearer: []
+      x-allowed-when-suspended: false
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TableUpdate' }
+      responses:
+        '200':
+          description: 'Updated'
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiningTable' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }

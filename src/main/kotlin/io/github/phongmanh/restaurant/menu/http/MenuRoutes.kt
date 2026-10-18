@@ -5,6 +5,7 @@ import io.github.phongmanh.restaurant.core.http.Endpoints
 import io.github.phongmanh.restaurant.core.http.adminCaller
 import io.github.phongmanh.restaurant.core.http.caller
 import io.github.phongmanh.restaurant.core.http.endpoint
+import io.github.phongmanh.restaurant.core.http.endpoints
 import io.github.phongmanh.restaurant.core.http.etagOf
 import io.github.phongmanh.restaurant.core.http.holdsCurrent
 import io.github.phongmanh.restaurant.core.http.requestMeta
@@ -110,7 +111,7 @@ class MenuEditRoutes(
             edits.reorderCategories(editor, call.receive<CategoryOrderRequest>().toOrder(), call.requestMeta())
             call.respond(HttpStatusCode.NoContent)
         }
-        route.endpoint(e.UPDATE_MENU_CATEGORY) {
+        route.endpoints(e.UPDATE_MENU_CATEGORY, e.UPDATE_MENU_CATEGORY_POST) {
             val editor = MenuEditor.of(call.staffCaller())
             val changes = call.receive<CategoryUpdateRequest>().toChanges()
             val category = edits.updateCategory(editor, call.categoryIdParam(), call.requireIfMatch(), changes, call.requestMeta())
@@ -139,7 +140,7 @@ class MenuEditRoutes(
             call.response.header(HttpHeaders.ETag, etagOf(item.version))
             call.respond(HttpStatusCode.Created, StaffMenuItem.of(item))
         }
-        route.endpoint(e.UPDATE_MENU_ITEM) {
+        route.endpoints(e.UPDATE_MENU_ITEM, e.UPDATE_MENU_ITEM_POST) {
             val editor = MenuEditor.of(call.staffCaller())
             val changes = call.receive<ItemRequest>().toChanges()
             respondItem(call, edits.updateItem(editor, call.itemIdParam(), call.requireIfMatch(), changes, call.requestMeta()))

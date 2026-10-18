@@ -66,6 +66,22 @@ abstract class EndpointGroup {
         allowedWhenSuspended: Boolean,
         qrCredential: Boolean = false,
     ): Endpoint = Endpoint(method, path, idempotencyKey, ifMatch, allowedWhenSuspended, qrCredential).also { declared += it }
+
+    /**
+     * The `POST <path>/update` twin of a `PATCH` update, which clients send instead (CR-012): Vercel's
+     * edge turns a `PATCH`'s `200` into its own `412` after the change is saved (D-1). It copies the
+     * `PATCH`'s flags, so the two can't differ, and the route binds one handler to both.
+     */
+    protected fun postTwin(patch: Endpoint): Endpoint {
+        require(patch.method == HttpMethod.Patch) { "$patch isn't a PATCH" }
+        return endpoint(
+            HttpMethod.Post,
+            "${patch.path}/update",
+            idempotencyKey = patch.idempotencyKey,
+            ifMatch = patch.ifMatch,
+            allowedWhenSuspended = patch.allowedWhenSuspended,
+        )
+    }
 }
 
 /**
@@ -115,6 +131,7 @@ object Endpoints {
     object Restaurants : EndpointGroup() {
         val GET_OWN_RESTAURANT = endpoint(HttpMethod.Get, "/v1/staff/restaurant", allowedWhenSuspended = true)
         val UPDATE_OWN_RESTAURANT = endpoint(HttpMethod.Patch, "/v1/staff/restaurant", ifMatch = true, allowedWhenSuspended = false)
+        val UPDATE_OWN_RESTAURANT_POST = postTwin(UPDATE_OWN_RESTAURANT)
     }
 
     object Staff : EndpointGroup() {
@@ -122,6 +139,7 @@ object Endpoints {
         val INVITE_MEMBER = endpoint(HttpMethod.Post, "/v1/staff/members", allowedWhenSuspended = false)
         val GET_MEMBER = endpoint(HttpMethod.Get, "/v1/staff/members/{staffId}", allowedWhenSuspended = false)
         val UPDATE_MEMBER = endpoint(HttpMethod.Patch, "/v1/staff/members/{staffId}", ifMatch = true, allowedWhenSuspended = false)
+        val UPDATE_MEMBER_POST = postTwin(UPDATE_MEMBER)
         val DEACTIVATE_MEMBER = endpoint(HttpMethod.Post, "/v1/staff/members/{staffId}/deactivate", allowedWhenSuspended = false)
         val REACTIVATE_MEMBER = endpoint(HttpMethod.Post, "/v1/staff/members/{staffId}/reactivate", allowedWhenSuspended = false)
         val INVITATION_MEMBER = endpoint(HttpMethod.Post, "/v1/staff/members/{staffId}/invitation", allowedWhenSuspended = false)
@@ -138,6 +156,7 @@ object Endpoints {
                 ifMatch = true,
                 allowedWhenSuspended = true,
             )
+        val UPDATE_RESTAURANT_MEMBER_POST = postTwin(UPDATE_RESTAURANT_MEMBER)
         val DEACTIVATE_RESTAURANT_MEMBER =
             endpoint(HttpMethod.Post, "/v1/admin/restaurants/{restaurantId}/members/{staffId}/deactivate", allowedWhenSuspended = true)
         val REACTIVATE_RESTAURANT_MEMBER =
@@ -159,6 +178,7 @@ object Endpoints {
         val GET_RESTAURANT = endpoint(HttpMethod.Get, "/v1/admin/restaurants/{restaurantId}", allowedWhenSuspended = true)
         val UPDATE_RESTAURANT =
             endpoint(HttpMethod.Patch, "/v1/admin/restaurants/{restaurantId}", ifMatch = true, allowedWhenSuspended = true)
+        val UPDATE_RESTAURANT_POST = postTwin(UPDATE_RESTAURANT)
         val SUSPEND_RESTAURANT = endpoint(HttpMethod.Post, "/v1/admin/restaurants/{restaurantId}/suspend", allowedWhenSuspended = true)
         val REACTIVATE_RESTAURANT =
             endpoint(HttpMethod.Post, "/v1/admin/restaurants/{restaurantId}/reactivate", allowedWhenSuspended = true)
@@ -181,6 +201,7 @@ object Endpoints {
         val REORDER_MENU_CATEGORIES = endpoint(HttpMethod.Put, "/v1/staff/menu/categories/order", allowedWhenSuspended = false)
         val UPDATE_MENU_CATEGORY =
             endpoint(HttpMethod.Patch, "/v1/staff/menu/categories/{categoryId}", ifMatch = true, allowedWhenSuspended = false)
+        val UPDATE_MENU_CATEGORY_POST = postTwin(UPDATE_MENU_CATEGORY)
         val DELETE_MENU_CATEGORY =
             endpoint(HttpMethod.Delete, "/v1/staff/menu/categories/{categoryId}", ifMatch = true, allowedWhenSuspended = false)
         val REORDER_MENU_ITEMS =
@@ -188,6 +209,7 @@ object Endpoints {
         val CREATE_MENU_ITEM = endpoint(HttpMethod.Post, "/v1/staff/menu/items", allowedWhenSuspended = false)
         val GET_MENU_ITEM = endpoint(HttpMethod.Get, "/v1/staff/menu/items/{itemId}", allowedWhenSuspended = false)
         val UPDATE_MENU_ITEM = endpoint(HttpMethod.Patch, "/v1/staff/menu/items/{itemId}", ifMatch = true, allowedWhenSuspended = false)
+        val UPDATE_MENU_ITEM_POST = postTwin(UPDATE_MENU_ITEM)
         val DELETE_MENU_ITEM = endpoint(HttpMethod.Delete, "/v1/staff/menu/items/{itemId}", ifMatch = true, allowedWhenSuspended = false)
         val SET_MENU_ITEM_SOLD_OUT = endpoint(HttpMethod.Put, "/v1/staff/menu/items/{itemId}/sold-out", allowedWhenSuspended = false)
         val PUT_MENU_ITEM_IMAGE = endpoint(HttpMethod.Put, "/v1/staff/menu/items/{itemId}/image", allowedWhenSuspended = false)
@@ -205,6 +227,7 @@ object Endpoints {
         val ROTATE_ALL_QR_CODES = endpoint(HttpMethod.Post, "/v1/staff/tables/qr-codes/rotate-all", allowedWhenSuspended = false)
         val GET_TABLE = endpoint(HttpMethod.Get, "/v1/staff/tables/{tableId}", allowedWhenSuspended = false)
         val UPDATE_TABLE = endpoint(HttpMethod.Patch, "/v1/staff/tables/{tableId}", ifMatch = true, allowedWhenSuspended = false)
+        val UPDATE_TABLE_POST = postTwin(UPDATE_TABLE)
         val DELETE_TABLE = endpoint(HttpMethod.Delete, "/v1/staff/tables/{tableId}", ifMatch = true, allowedWhenSuspended = false)
         val GET_QR_CODE = endpoint(HttpMethod.Get, "/v1/staff/tables/{tableId}/qr-code", allowedWhenSuspended = false)
         val ROTATE_QR_CODE = endpoint(HttpMethod.Post, "/v1/staff/tables/{tableId}/qr-code/rotate", allowedWhenSuspended = false)

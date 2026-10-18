@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.3 (0.3: the auto-close job and `SessionAccess.lockForClose` from [orders](orders.md) §16): CR-005 approved and the six §13 questions decided by the owner on 2026-10-15 |
+| Version | 1.2 ([CR-012](../cr/CR-012-updates-through-post.md), approved 2026-10-18: the table edit as `POST …/update`, the `PATCH` deprecated). 1.1 (CR-009, approved 2026-10-17: aligned with the Phase 4 build). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.3 (0.3: the auto-close job and `SessionAccess.lockForClose` from [orders](orders.md) §16): CR-005 approved and the six §13 questions decided by the owner on 2026-10-15 |
 | Date | 2026-10-15 |
 | Package | `tables` (architecture §4) |
 | Requirements | FR-001 QR → session, FR-008 waiter call (Should), FR-030 tables, FR-031 QR codes, FR-032 floor view and sessions; FR-042, NFR-SEC-02 (session isolation), NFR-SEC-04 (scan limits), NFR-PRIV-01 |
@@ -197,7 +197,7 @@ CREATE INDEX waiter_calls_open_ix ON waiter_calls (restaurant_id, created_at) WH
 | Floor view | `GET /v1/staff/tables` | Waiter, manager | Every undeleted table, sorted by `area`, then `number`, each with `state: "free" \| "occupied"`. An occupied table also shows `session: {id, opened_at, order_count, running_total, stale, open_calls}` (FR-032). The counts and totals come from `orders` through the `SessionSummaries` port, in one batch call for all open sessions |
 | Create | `POST /v1/staff/tables` `{"number", "area"?, "seats"?}` | Manager | Duplicate number (case-insensitive) → `409 duplicate_name` |
 | Read | `GET /v1/staff/tables/{tableId}` | Waiter, manager | `ETag` |
-| Edit | `PATCH /v1/staff/tables/{tableId}` + `If-Match` | Manager | `number`, `area`, `seats`, `enabled`. Disabling with an open session → `409 table_has_open_session` (FR-030) |
+| Edit | `POST /v1/staff/tables/{tableId}/update` + `If-Match` | Manager | `number`, `area`, `seats`, `enabled`. Disabling with an open session → `409 table_has_open_session` (FR-030) |
 | Delete | `DELETE /v1/staff/tables/{tableId}` + `If-Match` | Manager | Soft delete. With an open session → `409 table_has_open_session`. The table's printed codes stop working |
 | QR code | `GET /v1/staff/tables/{tableId}/qr-code` | Manager | `{"url", "key_version"}`. The staff app draws the QR image itself |
 | All QR codes | `GET /v1/staff/tables/qr-codes` | Manager | The same for every table, for printing a sheet |
@@ -225,7 +225,7 @@ The QR endpoints don't return a token to store: the URL is the only form of the 
 - **`openSessionsFor(restaurantId)`** lists open sessions with their table numbers, for the floor view and the kitchen feed.
 
 ## 8. Endpoints
-All of these go into `core/http/Endpoints.kt` and the contract.
+All of these go into `core/http/Endpoints.kt` and the contract. An update is `POST <path>/update` with `If-Match`; the same update as `PATCH <path>` is kept for compatibility within `/v1`, deprecated, because Vercel's edge answers a successful `PATCH` with its own `412` (D-1, [CR-012](../cr/CR-012-updates-through-post.md)). Both are in the registry and the contract, with one handler.
 
 | Method and path | Who | Idempotency / If-Match | Allowed when suspended | Success |
 |---|---|---|---|---|
@@ -235,7 +235,7 @@ All of these go into `core/http/Endpoints.kt` and the contract.
 | `GET /v1/staff/tables` | Waiter, manager | — | No | 200 |
 | `POST /v1/staff/tables` | Manager | — | No | 201 |
 | `GET /v1/staff/tables/{tableId}` | Waiter, manager | — | No | 200 + ETag |
-| `PATCH /v1/staff/tables/{tableId}` | Manager | If-Match | No | 200 + ETag |
+| `POST /v1/staff/tables/{tableId}/update` | Manager | If-Match | No | 200 + ETag |
 | `DELETE /v1/staff/tables/{tableId}` | Manager | If-Match | No | 204 |
 | `GET /v1/staff/tables/{tableId}/qr-code` | Manager | — | No | 200 |
 | `POST /v1/staff/tables/{tableId}/qr-code/rotate` | Manager | — | No | 200 |

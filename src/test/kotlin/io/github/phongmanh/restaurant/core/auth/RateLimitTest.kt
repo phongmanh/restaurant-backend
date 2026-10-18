@@ -13,6 +13,7 @@ import io.github.phongmanh.restaurant.support.MutableClock
 import io.github.phongmanh.restaurant.support.TestDatabase
 import io.github.phongmanh.restaurant.support.authApp
 import io.github.phongmanh.restaurant.support.field
+import io.github.phongmanh.restaurant.support.postJson
 import io.github.phongmanh.restaurant.support.signIn
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -48,6 +49,24 @@ class RateLimitTest {
 
             clock.advance(retryAfter.seconds)
             assertEquals(HttpStatusCode.Unauthorized, client.signIn("nobody@pho.example").status, "the next window")
+        }
+    }
+
+    /** Staging's WAF can't be trusted to let 121 refreshes through (ST-14, Q-20), so this is the check. */
+    @Test
+    fun `IT-AUTH-13 the 121st refresh from one IP in a minute is 429 with Retry-After`() {
+        val clock = MutableClock()
+        authApp(clock, limiter = null) {
+            val refresh = """{"audience": "staff"}"""
+            repeat(120) { assertEquals(HttpStatusCode.Unauthorized, client.postJson("/v1/auth/refresh", refresh).status) }
+            val limited = client.postJson("/v1/auth/refresh", refresh)
+            assertEquals(HttpStatusCode.TooManyRequests, limited.status)
+            assertEquals("rate_limited", limited.field("code"))
+            val retryAfter = limited.headers[HttpHeaders.RetryAfter]!!.toLong()
+            assertTrue(retryAfter in 1..60, "Retry-After $retryAfter")
+
+            clock.advance(retryAfter.seconds)
+            assertEquals(HttpStatusCode.Unauthorized, client.postJson("/v1/auth/refresh", refresh).status, "the next window")
         }
     }
 

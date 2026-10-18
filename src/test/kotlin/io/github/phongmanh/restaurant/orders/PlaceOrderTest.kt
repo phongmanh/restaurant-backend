@@ -124,7 +124,7 @@ class PlaceOrderTest {
         ordersApp {
             val f = client.floor()
             client.api(Endpoints.Menu.SET_MENU_ITEM_SOLD_OUT, f.kitchen, "itemId" to f.tea, body = """{"sold_out": true}""")
-            client.api(Endpoints.Menu.UPDATE_MENU_ITEM, f.manager, "itemId" to f.pho, body = """{"active": false}""") {
+            client.api(Endpoints.Menu.UPDATE_MENU_ITEM_POST, f.manager, "itemId" to f.pho, body = """{"active": false}""") {
                 header(HttpHeaders.IfMatch, "\"0\"")
             }
             val response = client.guestOrder(f.guest, orderBody(line(f.pho, options = listOf(f.small)), line(f.tea)))
@@ -173,7 +173,7 @@ class PlaceOrderTest {
             val first = client.placed(f.guest, line(f.tea))
             val second = client.placed(f.guest, line(f.pho, options = listOf(f.small)))
             client.api(
-                Endpoints.Menu.UPDATE_MENU_ITEM,
+                Endpoints.Menu.UPDATE_MENU_ITEM_POST,
                 f.manager,
                 "itemId" to f.tea,
                 body = """{"price": {"amount": "9000", "currency": "VND"}}""",

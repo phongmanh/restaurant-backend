@@ -2,7 +2,7 @@
 
 | Version | Status | Owner | Reviewers |
 |---|---|---|---|
-| 1.5 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR); CR-004, CR-005, CR-006 and CR-008 applied 2026-10-15, CR-011 on 2026-10-17 | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
+| 1.6 | Approved at G2 on 2026-10-15 with conditions (baseline; changes need a CR); CR-004, CR-005, CR-006 and CR-008 applied 2026-10-15, CR-011 on 2026-10-17, CR-012 on 2026-10-18 | Manh Nguyen (tech lead) | Senior backend dev TBD, client dev TBD, QA TBD, security TBD, operations TBD |
 
 **Version history**
 
@@ -14,6 +14,7 @@
 | 1.3 | 2026-10-15 | [CR-006](cr/CR-006-record-orders-decisions.md): figures from the orders design. Placing an order is ≈ 13 statements, not ≈ 6; the audit log (every staff order step, ≈ 400k rows/day) is added to the database size. Changed: §6, §9 |
 | 1.4 | 2026-10-15 | [CR-008](cr/CR-008-architecture-g3-alignment.md): aligned with the Phase 3 designs at the G3 consistency pass. The stale device-data retention step is gone (no device data is stored, CR-005); the job list names the seven jobs the designs run. Changed: §6, §10 |
 | 1.5 | 2026-10-17 | [CR-011](cr/CR-011-free-staging-as-production-deploy.md): on the free plans, staging is its own Vercel project's production deployment (public alias removed, Deployment Protection on) on its own Neon project, not a preview of a `staging` branch: Vercel Cron runs only on production deployments, and a preview scales to zero after 30 s. Changed: §8 |
+| 1.6 | 2026-10-18 | [CR-012](cr/CR-012-updates-through-post.md): Vercel's edge evaluates `If-Match` on a `PATCH` against the function's response `ETag`, after the function has run, so updates are `POST <path>/update`; the seven `PATCH` updates stay, deprecated. Changed: §8 (Edge) |
 
 Baseline: [requirements.md](requirements.md) v1.6 (G1 2026-10-13; CR-002 and CR-003 2026-10-14; CR-004 to CR-007 2026-10-15). All five spikes in §17 are closed and every ADR is Accepted (ADR-0002 with conditions). G2 approved by the owner on 2026-10-15 with one condition: TBD-10 (data residency, legal review) is settled before G5, by a region change or, if storage in Vietnam is required, a CR to change provider (§8, R-04). Accepted free-plan residual risks: R-11 to R-14. The cost estimate (TBD-11) was deferred on 2026-10-15 because the project stays on free plans.
 
@@ -241,6 +242,7 @@ Shared `api-contract` KMP module with the clients: **not now**. TBD-2 is decided
   - Vercel WAF with managed rules and rate-limit rules per IP and path (ADR-0008);
   - CDN caching only for menu images (on the storage's CDN);
   - `X-Forwarded-For` trusted only as set by Vercel (S-1 confirms the header).
+  - Vercel's edge evaluates `If-Match` on a `PATCH` against the function's response `ETag`, after the function has run, and answers its own `412` to every successful update, with or without an `ETag` (D-1; the Q-19 spike). `POST`, `PUT` and `DELETE` pass. So an update is `POST <path>/update`; the seven `PATCH` updates of contract 1.0 stay for compatibility, deprecated (CR-012, core-and-auth §5).
 - **Health:** `/health/live` and `/health/ready` for the smoke tests and the uptime monitor. Vercel has no liveness probes; failed instances are replaced per request.
 - **Rollout:**
   - Every merge to `main` builds a preview deployment.

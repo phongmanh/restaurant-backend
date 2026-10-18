@@ -21,16 +21,19 @@ import kotlin.test.assertTrue
  * deployed pieces count: one limit per kind of subject (an IP, a staff member), and the WAF.
  *
  * The limits are fixed windows aligned to the minute (core-and-auth §11), so each burst starts at
- * the top of a minute and fits inside it. The WAF rule is 300 a minute per IP, as §11 sets it (Q-20;
- * it was 60 until 2026-10-18, which kept `auth.refresh`'s 120 out of reach). While a window is spent, the other tests' calls wait
- * it out ([StagingApi] retries a `429`).
+ * the top of a minute and fits inside it. The WAF rule is 300 a minute per IP, as §11 sets it (Q-20).
+ * `auth.refresh`'s 120 isn't burst here: the WAF's count doesn't follow its window on the free plan
+ * (after two quiet minutes it still answered all 121 refreshes once), so the refresh limit is CI's
+ * alone (IT-AUTH-13; owner, 2026-10-18). While a window is spent, the other tests' calls wait it out
+ * ([StagingApi] retries a `429`).
  */
 class AbuseLimitsTest {
     private val api = Staging.api
 
     @Test
     fun `ST-14 past 30 sign-ins a minute from one IP the app answers 429, and past the WAF rule the edge does`() {
-        topOfMinute()
+        // A fresh minute, not just an early second: a test before this one may have signed in in this one.
+        waitForNextMinute()
         val statuses = mutableListOf<String>()
         var appLimit: StagingApi.Response? = null
         var edge: StagingApi.Response? = null
@@ -69,20 +72,6 @@ class AbuseLimitsTest {
         println(
             "[ST-14] the WAF answered after ${statuses.size} requests (rule: 300 per 60 s per IP); a spoofed client IP was still limited",
         )
-        waitForNextMinute()
-    }
-
-    @Test
-    fun `ST-14 past 120 refreshes a minute from one IP the app answers 429`() {
-        topOfMinute()
-        val body = buildJsonObject { put("audience", "staff") }
-        val statuses = (1..REFRESH_LIMIT + 1).map { api.call("POST", "/v1/auth/refresh", body, waitOut429 = false) }
-        val counts = statuses.map { if (it.fromEdge) "edge ${it.status}" else "${it.status}" }.groupingBy { it }.eachCount()
-        assertTrue(statuses.take(REFRESH_LIMIT).all { it.status == UNAUTHORIZED }, "the first 120 are answered (no cookie: 401): $counts")
-        val last = statuses.last()
-        assertEquals(StagingApi.TOO_MANY_REQUESTS to "rate_limited", last.status to last.code, "the 121st is the app's 429: $counts")
-        assertTrue(last.header("Retry-After") != null, "with Retry-After")
-        println("[ST-14] refresh burst: $counts")
         waitForNextMinute()
     }
 
@@ -162,8 +151,6 @@ class AbuseLimitsTest {
     private companion object {
         const val SIGN_IN_LIMIT = 30
         const val REPORT_LIMIT = 30
-
-        const val REFRESH_LIMIT = 120
 
         /** Past the WAF's 300 a minute, with room for a WAF window that doesn't start on the minute. */
         const val SIGN_IN_BURST = 610

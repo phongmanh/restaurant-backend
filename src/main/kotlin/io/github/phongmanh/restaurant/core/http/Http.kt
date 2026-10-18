@@ -164,6 +164,20 @@ fun Route.endpoint(
     }
 }
 
+/**
+ * Declares one handler for a `PATCH` update and its `POST <path>/update` twin (CR-012), so the two
+ * can't drift apart. Each route authenticates as [endpoint] does.
+ */
+fun Route.endpoints(
+    patch: Endpoint,
+    post: Endpoint,
+    body: RoutingHandler,
+) {
+    require(post.method == HttpMethod.Post && post.path == "${patch.path}/update") { "$post isn't the twin of $patch" }
+    endpoint(patch, body)
+    endpoint(post, body)
+}
+
 /** The caller [Route.endpoint] authenticated. Only on routes of the staff, admin and guest groups. */
 fun ApplicationCall.caller(): Caller = attributes[CallerKey]
 

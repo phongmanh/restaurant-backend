@@ -4,6 +4,7 @@ import io.github.phongmanh.restaurant.core.application.Caller
 import io.github.phongmanh.restaurant.core.http.Endpoints
 import io.github.phongmanh.restaurant.core.http.caller
 import io.github.phongmanh.restaurant.core.http.endpoint
+import io.github.phongmanh.restaurant.core.http.endpoints
 import io.github.phongmanh.restaurant.core.http.etagOf
 import io.github.phongmanh.restaurant.core.http.job
 import io.github.phongmanh.restaurant.core.http.requestMeta
@@ -79,7 +80,7 @@ class StaffTableRoutes(
             val floor = FloorStaff.of(call.staffCaller())
             respondTable(call, tables.get(floor, call.tableIdParam()))
         }
-        route.endpoint(e.UPDATE_TABLE) {
+        route.endpoints(e.UPDATE_TABLE, e.UPDATE_TABLE_POST) {
             val manager = TableManager.of(call.staffCaller())
             val changes = call.receive<TableUpdateRequest>().toChanges()
             respondTable(call, tables.update(manager, call.tableIdParam(), call.requireIfMatch(), changes, call.requestMeta()))

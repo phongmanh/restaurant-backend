@@ -62,7 +62,7 @@ class StaffSessionTest {
             )
 
             val disabled = client.table(a.managerToken, "2", """, "seats": 2""").str("id")
-            client.api(e.UPDATE_TABLE, a.managerToken, "tableId" to disabled, body = """{"enabled": false}""", configure = ifMatch(0))
+            client.api(e.UPDATE_TABLE_POST, a.managerToken, "tableId" to disabled, body = """{"enabled": false}""", configure = ifMatch(0))
             assertEquals("table_unavailable", client.api(e.OPEN_SESSION_BY_STAFF, waiter, "tableId" to disabled).problem())
             val deleted = client.table(a.managerToken, "3").str("id")
             client.api(e.DELETE_TABLE, a.managerToken, "tableId" to deleted, configure = ifMatch(0))

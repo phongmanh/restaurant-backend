@@ -69,7 +69,7 @@ class MenuEditTest {
             val bun = client.item(a.managerToken, noodles, "Bún bò")
             val rename =
                 client.api(
-                    e.UPDATE_MENU_ITEM,
+                    e.UPDATE_MENU_ITEM_POST,
                     a.managerToken,
                     "itemId" to bun.str("id"),
                     body = """{"name_vi": "phở"}""",
@@ -78,7 +78,7 @@ class MenuEditTest {
             assertEquals("duplicate_name", rename.problem())
             val move =
                 client.api(
-                    e.UPDATE_MENU_ITEM,
+                    e.UPDATE_MENU_ITEM_POST,
                     a.managerToken,
                     "itemId" to bun.str("id"),
                     body = """{"category_id": "$rice"}""",
@@ -87,7 +87,7 @@ class MenuEditTest {
             assertEquals(HttpStatusCode.OK, move.status, "the name is free in the other category")
             assertEquals(rice, move.json().str("category_id"))
             assertEquals("duplicate_name", client.newCategory(a.managerToken, "cơm").problem())
-            val empty = client.api(e.UPDATE_MENU_ITEM, a.managerToken, "itemId" to bun.str("id"), body = "{}", configure = ifMatch(1))
+            val empty = client.api(e.UPDATE_MENU_ITEM_POST, a.managerToken, "itemId" to bun.str("id"), body = "{}", configure = ifMatch(1))
             assertEquals(listOf(""), empty.errorFields())
         }
 
@@ -101,7 +101,14 @@ class MenuEditTest {
             assertEquals(listOf("/name_vi", "/name_en"), badCategory.errorFields())
             assertEquals(listOf("/name_vi"), client.api(e.CREATE_MENU_CATEGORY, a.managerToken, body = "{}").errorFields())
             for ((body, fields) in mapOf("{}" to listOf(""), """{"name_vi": "  "}""" to listOf("/name_vi"))) {
-                val edit = client.api(e.UPDATE_MENU_CATEGORY, a.managerToken, "categoryId" to rice, body = body, configure = ifMatch(0))
+                val edit =
+                    client.api(
+                        e.UPDATE_MENU_CATEGORY_POST,
+                        a.managerToken,
+                        "categoryId" to rice,
+                        body = body,
+                        configure = ifMatch(0),
+                    )
                 assertEquals(HttpStatusCode.BadRequest, edit.status, body)
                 assertEquals(fields, edit.errorFields(), body)
             }
@@ -116,12 +123,15 @@ class MenuEditTest {
             val item = client.item(a.managerToken, cat, "Phở bò").str("id")
             val patch = """{"price": {"amount": "70000", "currency": "VND"}}"""
 
-            assertEquals("precondition_required", client.api(e.UPDATE_MENU_ITEM, a.managerToken, "itemId" to item, body = patch).problem())
+            assertEquals(
+                "precondition_required",
+                client.api(e.UPDATE_MENU_ITEM_POST, a.managerToken, "itemId" to item, body = patch).problem(),
+            )
             assertEquals(
                 "precondition_failed",
-                client.api(e.UPDATE_MENU_ITEM, a.managerToken, "itemId" to item, body = patch, configure = ifMatch(7)).problem(),
+                client.api(e.UPDATE_MENU_ITEM_POST, a.managerToken, "itemId" to item, body = patch, configure = ifMatch(7)).problem(),
             )
-            val ok = client.api(e.UPDATE_MENU_ITEM, a.managerToken, "itemId" to item, body = patch, configure = ifMatch(0))
+            val ok = client.api(e.UPDATE_MENU_ITEM_POST, a.managerToken, "itemId" to item, body = patch, configure = ifMatch(0))
             assertEquals(HttpStatusCode.OK, ok.status)
             assertEquals("\"1\"", ok.headers[HttpHeaders.ETag])
             assertEquals("70000", ok.json().obj("price").str("amount"))
@@ -132,7 +142,7 @@ class MenuEditTest {
             assertEquals("precondition_required", client.api(e.DELETE_MENU_CATEGORY, a.managerToken, "categoryId" to cat).problem())
             val catPatch =
                 client.api(
-                    e.UPDATE_MENU_CATEGORY,
+                    e.UPDATE_MENU_CATEGORY_POST,
                     a.managerToken,
                     "categoryId" to cat,
                     body = """{"active": false}""",
@@ -158,7 +168,7 @@ class MenuEditTest {
                 assertEquals("forbidden", client.newCategory(token, "Cơm").problem())
                 assertEquals("forbidden", client.newItem(token, cat, "Bún").problem())
                 assertEquals("forbidden", client.api(e.CREATE_MENU_ITEM, token, body = """{"price": 1}""").problem(), "role before input")
-                assertEquals("forbidden", client.api(e.UPDATE_MENU_ITEM, token, "itemId" to item, body = "{}").problem())
+                assertEquals("forbidden", client.api(e.UPDATE_MENU_ITEM_POST, token, "itemId" to item, body = "{}").problem())
                 assertEquals("forbidden", client.api(e.REORDER_MENU_CATEGORIES, token, body = "{}").problem())
                 assertEquals(HttpStatusCode.OK, client.api(e.GET_STAFF_MENU, token).status, "every role reads the menu")
                 assertEquals(HttpStatusCode.OK, client.api(e.GET_MENU_ITEM, token, "itemId" to item).status)
@@ -196,14 +206,26 @@ class MenuEditTest {
             val t = a.managerToken
             val calls =
                 listOf(
-                    client.api(e.UPDATE_MENU_CATEGORY, t, "categoryId" to catB, body = """{"active": false}""", configure = ifMatch(0)),
+                    client.api(
+                        e.UPDATE_MENU_CATEGORY_POST,
+                        t,
+                        "categoryId" to catB,
+                        body = """{"active": false}""",
+                        configure = ifMatch(0),
+                    ),
                     client.api(e.DELETE_MENU_CATEGORY, t, "categoryId" to catB, configure = ifMatch(0)),
                     client.api(e.REORDER_MENU_ITEMS, t, "categoryId" to catB, body = """{"item_ids": ["$itemB"]}"""),
                     client.newItem(t, catB, "Bún"),
                     client.api(e.GET_MENU_ITEM, t, "itemId" to itemB),
-                    client.api(e.UPDATE_MENU_ITEM, t, "itemId" to itemB, body = """{"active": false}""", configure = ifMatch(0)),
-                    client.api(e.UPDATE_MENU_ITEM, t, "itemId" to itemA, body = """{"category_id": "$catB"}""", configure = ifMatch(0)),
-                    client.api(e.UPDATE_MENU_ITEM, t, "itemId" to itemA, body = optionGroupsWithId(groupB), configure = ifMatch(0)),
+                    client.api(e.UPDATE_MENU_ITEM_POST, t, "itemId" to itemB, body = """{"active": false}""", configure = ifMatch(0)),
+                    client.api(
+                        e.UPDATE_MENU_ITEM_POST,
+                        t,
+                        "itemId" to itemA,
+                        body = """{"category_id": "$catB"}""",
+                        configure = ifMatch(0),
+                    ),
+                    client.api(e.UPDATE_MENU_ITEM_POST, t, "itemId" to itemA, body = optionGroupsWithId(groupB), configure = ifMatch(0)),
                     client.api(e.DELETE_MENU_ITEM, t, "itemId" to itemB, configure = ifMatch(0)),
                     client.api(e.SET_MENU_ITEM_SOLD_OUT, t, "itemId" to itemB, body = """{"sold_out": true}"""),
                     client.api(e.GET_MENU_ITEM, t, "itemId" to "not-a-uuid"),
@@ -232,7 +254,7 @@ class MenuEditTest {
             assertEquals(1, menuAudit(a.id).count { it == "menu.item.sold_out_changed" })
 
             val edit =
-                client.api(e.UPDATE_MENU_ITEM, a.managerToken, "itemId" to item, body = """{"name_en": "Beef pho"}""") {
+                client.api(e.UPDATE_MENU_ITEM_POST, a.managerToken, "itemId" to item, body = """{"name_en": "Beef pho"}""") {
                     header(HttpHeaders.IfMatch, etag)
                 }
             assertEquals(HttpStatusCode.OK, edit.status, "sold out doesn't change the item's version")
@@ -354,14 +376,14 @@ class MenuEditTest {
             val cat = client.category(a.managerToken, "Phở")
             val item = client.item(a.managerToken, cat, "Phở bò", extra = optionGroup("Size", "Lớn")).str("id")
             client.api(
-                e.UPDATE_MENU_ITEM,
+                e.UPDATE_MENU_ITEM_POST,
                 a.managerToken,
                 "itemId" to item,
                 body = """{"price": {"amount": "70000", "currency": "VND"}}""",
                 configure = ifMatch(0),
             )
             client.api(
-                e.UPDATE_MENU_CATEGORY,
+                e.UPDATE_MENU_CATEGORY_POST,
                 a.managerToken,
                 "categoryId" to cat,
                 body = """{"name_en": "Noodles"}""",

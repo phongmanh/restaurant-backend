@@ -66,17 +66,17 @@ class TableTest {
             assertEquals("forbidden", client.api(e.GET_TABLE, kitchen, "tableId" to id).problem(), "kitchen has no floor view")
             assertEquals(HttpStatusCode.OK, client.api(e.GET_TABLE, waiter, "tableId" to id).status)
 
-            assertEquals("precondition_required", client.api(e.UPDATE_TABLE, t, "tableId" to id, body = """{"seats": 6}""").problem())
+            assertEquals("precondition_required", client.api(e.UPDATE_TABLE_POST, t, "tableId" to id, body = """{"seats": 6}""").problem())
             assertEquals(
                 "precondition_failed",
-                client.api(e.UPDATE_TABLE, t, "tableId" to id, body = """{"seats": 6}""", configure = ifMatch(3)).problem(),
+                client.api(e.UPDATE_TABLE_POST, t, "tableId" to id, body = """{"seats": 6}""", configure = ifMatch(3)).problem(),
             )
             for ((body, fields) in mapOf("{}" to listOf(""), """{"number": " ", "seats": 0}""" to listOf("/number", "/seats"))) {
-                val bad = client.api(e.UPDATE_TABLE, t, "tableId" to id, body = body, configure = ifMatch(0))
+                val bad = client.api(e.UPDATE_TABLE_POST, t, "tableId" to id, body = body, configure = ifMatch(0))
                 assertEquals(HttpStatusCode.BadRequest, bad.status, body)
                 assertEquals(fields, bad.errorFields(), body)
             }
-            val edited = client.api(e.UPDATE_TABLE, t, "tableId" to id, body = """{"seats": 6, "area": ""}""", configure = ifMatch(0))
+            val edited = client.api(e.UPDATE_TABLE_POST, t, "tableId" to id, body = """{"seats": 6, "area": ""}""", configure = ifMatch(0))
             assertEquals("\"1\"", edited.headers[HttpHeaders.ETag])
             val editedBody = edited.json()
             assertFalse("area" in editedBody, "an empty area removes it")
@@ -86,13 +86,13 @@ class TableTest {
             val (_, sessionId) = client.seat(client.qrToken(t, id))
             assertEquals(
                 "table_has_open_session",
-                client.api(e.UPDATE_TABLE, t, "tableId" to id, body = """{"enabled": false}""", configure = ifMatch(1)).problem(),
+                client.api(e.UPDATE_TABLE_POST, t, "tableId" to id, body = """{"enabled": false}""", configure = ifMatch(1)).problem(),
             )
             assertEquals("table_has_open_session", client.api(e.DELETE_TABLE, t, "tableId" to id, configure = ifMatch(1)).problem())
             Guests.closeSession(TableSessionId(UUID.fromString(sessionId)))
             assertEquals(
                 HttpStatusCode.OK,
-                client.api(e.UPDATE_TABLE, t, "tableId" to id, body = """{"enabled": false}""", configure = ifMatch(1)).status,
+                client.api(e.UPDATE_TABLE_POST, t, "tableId" to id, body = """{"enabled": false}""", configure = ifMatch(1)).status,
             )
             assertEquals(HttpStatusCode.NoContent, client.api(e.DELETE_TABLE, t, "tableId" to id, configure = ifMatch(2)).status)
             assertEquals("not_found", client.api(e.GET_TABLE, t, "tableId" to id).problem())
@@ -119,7 +119,7 @@ class TableTest {
                 "not_found",
                 client
                     .api(
-                        e.UPDATE_TABLE,
+                        e.UPDATE_TABLE_POST,
                         a.managerToken,
                         "tableId" to bTable,
                         body = """{"seats": 2}""",
