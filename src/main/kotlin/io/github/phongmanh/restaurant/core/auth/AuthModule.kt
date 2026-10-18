@@ -49,7 +49,7 @@ fun authModule(
         single { auth.totpKeys }
         single { auth.emailHmac }
         single<RateLimiter> {
-            rateLimits.upstash?.let { UpstashRateLimiter(it.restUrl, it.token) } ?: LocalRateLimiter(get())
+            rateLimits.upstash?.let { UpstashRateLimiter(it.restUrl, it.token, it.keyPrefix) } ?: LocalRateLimiter(get())
         }
         single { RateLimits(get(), get(), rateLimits.timeout, get()) }
 

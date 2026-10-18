@@ -16,7 +16,7 @@ It is not a launch with real customers. The gate log keeps what such a launch st
 ## 2. What ships
 | Item | Value |
 |---|---|
-| Code | `main` at the release commit (§3's fixes on top of the G5 baseline `9fce6f8`), tagged `release/1.0.0`; version `1.0.0` (Q-25, decided) |
+| Code | `main` at the release commit (§3's fixes on top of the G5 baseline `9fce6f8`), tagged `release/1.0.1`; version `1.0.1`: `release/1.0.0` (Q-25) plus CR-015's key prefix, which production needs. `release/1.0.0` stays where it is, since a published tag isn't moved |
 | Image | `Dockerfile.vercel`, built by Vercel from that commit (Vercel builds from source; CI's `image` job builds the same file but doesn't push it) |
 | Contract | `docs/api/openapi.yaml` 1.1.1, 100 operations (the seven deprecated `PATCH` twins included) |
 | Migrations | V1 to V11, all expand-only; production starts from an empty database |
@@ -41,7 +41,7 @@ It is built the way staging was (deploy/README.md, staging runbook steps 1–12)
 | Vercel project | `restaurant-staging` | `restaurant-production`, same Hobby account, disconnected from GitHub at once |
 | Public domain | Removed; Deployment Protection on, test clients send the bypass header Removed, as on staging: Deployment Protection on, test clients send the bypass header (Q-24, decided) |
 | Neon | Project `restaurant-staging`, Singapore, PostgreSQL 18 | Project `restaurant-production`, same settings |
-| Upstash | `restaurant-staging`, Singapore | `restaurant-production`, Singapore. Check at setup whether the free plan allows a second database |
+| Upstash | `restaurant-staging`, Singapore | Staging's database, keys prefixed `production:` (CR-015, approved 2026-10-18): the free plan allows one database per account |
 | Grafana Cloud | The free stack | The same stack; see P-3 |
 | Settings file | `deploy/staging/staging.env` | `deploy/production/production.env` (committed): `APP_ENV=production`, `AUTH_ISSUER=https://restaurant-production.vercel.app`, `https` app URLs, `LIVE_PUSH=off` |
 | Secrets | `deploy/staging/.env.staging` | `deploy/production/.env.production`, made by `generateSecrets`. No key or password is shared with staging (key policy) |
@@ -104,3 +104,5 @@ Filled during the release.
 | 1 | PR #39 merged (P-1 to P-4, version `1.0.0`); CI `build`, `contract` and `image` passed; release commit `main` `35826b8` | 2026-10-18 | PR #39 |
 | 2 | Staging redeployed from `35826b8` (deployment `pyojll743`, `dpl_3CrqS9Ee4qjixwPAV9JUa2o6XW6T`). Smoke: `/health` 200 with the bypass header, 302 without; `restaurant-staging-ecru.vercel.app` answers 404 `DEPLOYMENT_NOT_FOUND`; start-up clean (both pools, ready in 2.2–2.4 s). `restaurant-staging-liam-36c7.vercel.app` still pointed at the earlier deployment (a manual alias since ST-19 doesn't follow new deploys); the owner moved it with `vercel alias set`, and it answers 302 without the header. System suite run `tn419f`: 32 tests, 29 passed, 0 failed, 3 skipped (ST-08's restore drill, run only on request); 970 requests. Log review: ST-15 nothing found in 1,007 lines, ST-18 both request IDs found | 2026-10-18 | `build/test-results/systemTest/` |
 | 3 | Annotated tag `release/1.0.0` pushed, pointing at `35826b8` (the commit staging passed in step 2) | 2026-10-18 | tag `release/1.0.0` |
+| 4 | Neon project `restaurant-production` (Singapore, PostgreSQL 18); Upstash shared with staging (CR-015). Vercel project `restaurant-production` (`prj_SpK4IOtHUOuWGnmhmUnKA0vs59Ro`) linked from the repository root: no Git link (checked through the API), Deployment Protection on, no deployment yet. Protection Bypass for Automation secret created by the owner and stored in `.env.production` (32 characters; not read back). WAF rule `auth-per-ip` from `deploy/production/waf-auth-per-ip.json` (`rules add --json`, then `publish`), read back with `rules inspect`: active, valid, path prefix `/v1/auth/`, fixed window 60 per 60 s per IP; no pending draft. The probe waits for step 9, when a deployment exists | 2026-10-18 | `deploy/production/waf-auth-per-ip.json` |
+| 6 | Migrations on production, run by the owner (the auto-mode check blocks Claude): 11 applied, V1 to V11, PostgreSQL 18.6, 8.5 s; the roles' creation raised no error (R-15). The service's first connection as `app` and `app_platform` confirms it | 2026-10-18 | owner's terminal |

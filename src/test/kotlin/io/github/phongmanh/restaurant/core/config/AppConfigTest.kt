@@ -157,6 +157,7 @@ class AppConfigTest {
                 ),
             )
         assertFalse("upstash-secret" in staging.toString(), "no secret in toString")
+        assertEquals("staging:", staging.rateLimits.upstash?.keyPrefix, "keys carry the environment (CR-015)")
         assertFailsWith<IllegalStateException> { AppConfig.load(config("auth.emailHmacKey" to "c2hvcnQ=")) }
     }
 

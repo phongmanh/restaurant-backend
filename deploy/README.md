@@ -174,7 +174,7 @@ Edit the line in `.env.staging`, run step 9, then step 10: a deployment reads it
 ### Key policy (ASVS V11.1.1, F-6)
 Every key and secret is listed in [asvs-checklist.md §5.1](../docs/sdlc/restaurant-ordering/asvs-checklist.md). The rules for all of them:
 
-- **Who holds them:** the owner only. They live in the Vercel project's environment variables and in each environment's `.env.<environment>` on the owner's machine (mode `600`, ignored by git). Never in git, CI, chat, tickets or logs. Staging and production never share a key or a password.
+- **Who holds them:** the owner only. They live in the Vercel project's environment variables and in each environment's `.env.<environment>` on the owner's machine (mode `600`, ignored by git). Never in git, CI, chat, tickets or logs. Staging and production never share a key or a password, with one exception on the free plans: the Upstash database and its token (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`), since the free plan allows one database per account. Each environment's keys carry its name (CR-015, R-22). Rotating that token means sending the new one to **both** projects and deploying both before revoking the old one.
 - **Exposure means rotate now.** A secret is exposed when it has been committed, pasted or printed anywhere another person or tool can read it (a chat, a shared terminal, a screenshot), or when someone who could read it loses their access. Rotate it the same day, with "Rotating a secret" above.
 - **How long each lives:**
 
