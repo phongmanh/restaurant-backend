@@ -5,7 +5,7 @@ The service runs as a container on Vercel (architecture §8, ADR-0002), built fr
 | Environment | Vercel project | Database | Live updates, rate limits | Runbook |
 |---|---|---|---|---|
 | staging (free plans, Phase 5) | `restaurant-staging` on the Hobby test account `liam-36c7`; the production deployment, public alias removed (CR-011) | Neon free plan, its own project, Singapore | Ably free app `restaurant-staging`; Upstash free database, Singapore; metrics to Grafana Cloud's free plan (TBD-12) | Below |
-| production | Not set up: it needs paid plans (TBD-11) and TBD-10 | | | |
+| production (free plans, release 1, Phase 6) | `restaurant-production` on the same Hobby account; the production deployment, public alias removed (Q-24) | Neon free plan, its own project `restaurant-production`, Singapore | `LIVE_PUSH=off` (CR-013); Upstash shared with staging, keys prefixed `production:` (CR-015); metrics to the same Grafana stack, `deployment_environment="production"` | [Production runbook](#production-runbook) |
 
 ## What the service needs
 The non-secret settings for staging are in [`staging/staging.env`](staging/staging.env), and that file is committed. The secrets go in `staging/.env.staging`, which git ignores (`.env*`). Never commit that file, print it, or paste it into chat.
@@ -202,3 +202,37 @@ Time frames, from the day a fix is available:
 | Medium, Low | The next release |
 
 To check locally, run the same commands as CI's `build` and `image` jobs (`.github/workflows/ci.yml`): `./gradlew cyclonedxBom` and its Grype line, then `docker build --file Dockerfile.vercel --tag restaurant-backend:ci .` and the image job's two `docker run` lines.
+
+## Production runbook
+Release 1 runs on free plans, a learning project with test data only (release-checklist §1). Production is built the way staging is, with the differences in release-checklist §4. Steps marked **you** are the owner's: the auto-mode safety check blocks Claude from production deploys, from production's database, from writing secrets to Vercel and from merging. Every `vercel` command names `--project restaurant-production`, and an owner's command stays on one short line (CLAUDE.md).
+
+| Part | Production |
+|---|---|
+| Vercel project | `restaurant-production`, Hobby account `liam-36c7`, no Git link. Protected domain `restaurant-production-liam-36c7.vercel.app`; the public `restaurant-production.vercel.app` is removed after every deploy |
+| Settings, secrets | [`production/production.env`](production/production.env) (committed); `production/.env.production` (git-ignored, mode `600`), made by `generateSecrets`, no key or password shared with staging beside CR-015's Upstash pair |
+| WAF | `auth-per-ip`, 60 per 60 s, from [`production/waf-auth-per-ip.json`](production/waf-auth-per-ip.json) (staging step 8's way: `rules edit --json`, `firewall publish`, read back with `rules inspect`) |
+| Seeded accounts | `production/.accounts.production` (git-ignored, mode `600`) |
+
+### Setting it up (once)
+1. **You:** Neon project `restaurant-production` (Singapore, PostgreSQL 18), roles and database as staging step 1.
+2. **Claude:** `./gradlew generateSecrets --args="deploy/production/.env.production --db-host <pooled host> --db-name restaurant"`.
+3. **You:** fill in `DATABASE_URL_MIGRATOR_DIRECT`, the Upstash pair (staging's database, CR-015), the Grafana OTLP header with production's own token, and the bypass secret (staging steps 4 and 7).
+4. **You:** `vercel link` (new project `restaurant-production`), then `vercel git disconnect --yes` at once; then the WAF rule above.
+5. **You:** the migrations, as staging step 5 with `.env.production`.
+
+### Releasing
+1. **Claude (PR), you (merge):** the release commit on `main`, CI green; staging redeployed from it and its smoke check and AT subset passed; tag `release/<version>` (release-checklist §5 steps 1–3).
+2. **You:** migrations first if the release adds one (they are expand-only, so the running deployment keeps working).
+3. **You:** `sh deploy/release.sh production --env`. It sends the variables, deploys, removes the public domain and checks it no longer answers `200`. Send Claude the deployment URL it prints.
+4. **Claude:** the smoke check, as staging step 11 on production's domains: `/health` 200 with the bypass header and refused without it, no alias answering `200` without it (`vercel alias ls`), start-up lines clean, `log-review.py --project restaurant-production --accounts deploy/production/.accounts.production` within the hour.
+5. **You:** `sh deploy/run-task.sh production system` for the system suite. On a fresh database, `sh deploy/run-task.sh production seed` first.
+
+### Rolling back
+Switch the protected domain back to the previous deployment: `sh deploy/switch.sh production <deployment ID>` (the ID in `restaurant-production-<ID>-liam-36c7.vercel.app`, from `vercel ls restaurant-production`). It times the switch until `/health` answers `200`; the 2026-10-19 rehearsal took 2 s each way. Then Claude checks with `vercel alias ls` that the domain moved. Not `vercel rollback`: it moves the public domain, which is removed (ST-19).
+
+- **Roll back when:** `/health` fails for 5 minutes; any 5xx on order placement that isn't a platform cold start; a contract mismatch in the smoke run; a secret or personal data in the logs (then also rotate, key policy).
+- **Don't restore the database for a code problem.** A restore loses everything written since the restore point; it's for a data problem only, by the restore drill's runbook above (RTO 13 min measured).
+- No alert rule is loaded in Grafana (R-21, Q-27): nothing warns of an incident. `deploy/observability/load.sh` would load them, with a working rules token in `.env.grafana`.
+
+### Rotating a secret
+Edit the line in `.env.production`, then `sh deploy/release.sh production --env`: a deployment reads its variables when it starts. For a signing key, keep the old public key in the set until the tokens it signed have expired (core-and-auth §8).

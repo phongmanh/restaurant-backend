@@ -91,10 +91,10 @@ The first **48 hours** after step 9. That covers two cron cycles, because Hobby 
 - [x] Q-24 and Q-25 decided (2026-10-18)
 
 **Exit (G6, Launch accepted):**
-- [ ] Steps 8–13 done, each with its evidence in §9
-- [ ] Watch period exited cleanly (§7)
-- [ ] deploy/README.md has a production runbook (this checklist's §4–§6 as steps) and the environments table names production
-- [ ] RTM and STATUS updated; accepted risks carried into the G6 row
+- [x] Steps 8–13 done, each with its evidence in §9 (step 13 ended early by the owner, 2026-10-19)
+- [ ] Watch period exited cleanly (§7). **Not met:** the owner ended it after the day-1 review ("no more monitor for now", 2026-10-19). Day 1 was clean; the cron cycles on production weren't checked and no alert is loaded (R-21, R-23). For the owner's G6 decision
+- [x] deploy/README.md has a production runbook (this checklist's §4–§6 as steps) and the environments table names production
+- [x] RTM and STATUS updated (RTM Release column filled); accepted risks carried into the G6 row when the owner fills it
 
 ## 9. Evidence
 Filled during the release.
@@ -116,3 +116,4 @@ Filled during the release.
 | 11 | Run by the owner (`deploy/run-task.sh production system`), run `tn4pzw`, 5 min 50 s, 705 requests: 32 tests, 0 failures, 3 skipped (ST-08's restore drill, which runs only in a drill); every response checked against the contract. Vercel's records for the run: 704, no `5xx` (200 ×417, 201 ×57, 204 ×28, 400 ×4, 401 ×42, 403 ×55, 404 ×58, 409 ×11, 412 ×1, 429 ×31: the suite's negative cases, the abuse-limit tests and the WAF's `auth-per-ip`, waited out). `log-review.py`: no personal data, secret or token in 721 lines | 2026-10-19 | `build/test-results/systemTest` |
 | 12 | Run by the owner (`deploy/switch.sh`). Second deployment `blmz4e4fk` (`dpl_DQu8FD4UwokSdt4qHtLpcQ3MYQej`, from the same tree, made by `deploy/release.sh production` at 01:26:55 UTC); both answered `/health` 200 through the bypass header before the switch. Rollback to `hgpiz00l3` at 01:35:54 UTC: alias set in 1 s, `/health` 200 after 2 s. Forward to `blmz4e4fk` at 01:37:22 UTC: 1 s, 200 after 2 s. After each, `vercel alias ls` showed the protected domain on the intended deployment, `restaurant-production.vercel.app` answered `404` and the protected domain `302` without the header. Production now serves `blmz4e4fk`; `hgpiz00l3` is the rollback target | 2026-10-19 | checked by Claude |
 | 13 (day 1) | Logs: `log-review.py --project restaurant-production --since 1h` (Hobby keeps an hour) at about 01:45 UTC: 7 requests, no `5xx` (five `/health` from the step 12 checks, two `GET /` `404` on `blmz4e4fk` just after it was ready); 4 start-ups, application started in 2.4 s; of 91 lines the service's are all INFO, the rest the JDK's known start-up warnings (`sun.misc.Unsafe`, native access; 8 per start-up); no personal data, secret or token. Grafana: production's requests arrive (`ktor_http_server_requests_milliseconds_count`, `deployment_environment="production"`, last 3 h: 325 `2xx`, 134 `4xx`, no `5xx`). Alert states: none, because no rule is loaded in the stack (`load.sh` never ran since ST-07's live half was dropped; R-21). `.env.grafana` was refilled by the owner (it held two values of five); its service-account token reads the stack, its rules token is refused by the ruler (`401`) | 2026-10-19 | checked by Claude |
+| 13 (end) | Ended by the owner after the day-1 review ("no more monitor for now. finish all"). Not done: day 2's review, the five cron jobs' runs on production (`…_timestamp_seconds`), two clean cron cycles. Production keeps running `blmz4e4fk`; rollback target `hgpiz00l3` | 2026-10-19 | STATUS Decisions |
