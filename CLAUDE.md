@@ -20,6 +20,7 @@ Multi-restaurant ordering backend (Kotlin, Ktor 3, JDK 25, PostgreSQL), run as a
 | `docs/api/openapi.yaml` (repo root) | The API contract, 1.0.0, frozen at G3 (2026-10-15); 1.0.1 since CR-010 (2026-10-17); 1.1.0 since CR-012 (2026-10-18); 1.1.1 since CR-013 (2026-10-18, descriptions only). Changing it needs a CR, and within `/v1` only additively |
 | rtm.md, test-plan.md | Traceability and test plan |
 | cost-estimate.md | Monthly cost (TBD-11), v0.2 for the owner's review; S-3 confirmed the Ably line |
+| `docs/handbook/` (repo root) | Readable guides written after G6: business overview, technical reference, operations handbook, user guides, build-from-scratch (web and mobile). Not baselined: the documents above win, and a change to a procedure, limit or screen updates the guide in the same PR |
 
 ## Process rules
 - One phase at a time; gates are the owner's decision. Never mark a gate or a CR approved yourself.
