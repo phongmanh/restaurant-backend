@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.1 ([CR-012](../cr/CR-012-updates-through-post.md), approved 2026-10-18: updates are `POST <path>/update`, §5; IT-CORE-11, §15). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.6 (0.6: §4 key list per CR-005; 0.5: menu reads and the image route as exceptions in §2, CR-004): the five §16 questions decided by the owner on 2026-10-15; 0.3–0.4 add the changes from [restaurants](restaurants.md) §14 (one-time secrets, suspension check, sign-in when suspended, staff token on admin routes → 404). |
+| Version | 1.2 ([CR-016](../cr/CR-016-rewrite-apps-need-cors.md), approved 2026-10-30: the staff and admin web apps' origins go on the CORS allow-list too, §2). 1.1 ([CR-012](../cr/CR-012-updates-through-post.md), approved 2026-10-18: updates are `POST <path>/update`, §5; IT-CORE-11, §15). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.6 (0.6: §4 key list per CR-005; 0.5: menu reads and the image route as exceptions in §2, CR-004): the five §16 questions decided by the owner on 2026-10-15; 0.3–0.4 add the changes from [restaurants](restaurants.md) §14 (one-time secrets, suspension check, sign-in when suspended, staff token on admin routes → 404). |
 | Date | 2026-10-15 |
 | Package | `core` (shared kernel and staff/admin sign-in), per architecture §4 |
 | Requirements | FR-010, FR-042 (the shared parts), NFR-REL-02 (idempotency), NFR-SEC-01 to 04, NFR-PRIV-01 (logs, staff data), NFR-COMPAT-01, NFR-OBS-01 (request ID) |
@@ -59,7 +59,7 @@ Staff paths carry no restaurant ID: the restaurant always comes from the caller 
 | `Retry-After` | Response | On every 429 and 503, in seconds |
 | `Cache-Control: no-store` | Response | On every `/v1/guest`, `/v1/staff`, `/v1/admin` and `/v1/auth` response, except the guest and staff menu reads, which send `private, no-cache` with an `ETag` (menu §2, CR-004) |
 
-**CORS.** An allow-list of the web apps' origins, from config. Allowed request headers: `Authorization`, `Content-Type`, `Idempotency-Key`, `If-Match`, `X-Client`. Exposed response headers: `ETag`, `Location`, `Retry-After`, `X-Request-ID`, `Idempotent-Replayed`. Credentials are never allowed cross-origin: the staff and admin web apps call the API through a same-origin rewrite (§8.3), so CORS only serves the customer web app, which sends a bearer token and no cookies.
+**CORS.** An allow-list of every web app's origin, from config: the customer web app, which calls the API directly, and the staff and admin web apps, whose `/api` rewrite forwards the browser's `Origin` header. An unlisted origin gets `403` (CR-016). Allowed request headers: `Authorization`, `Content-Type`, `Idempotency-Key`, `If-Match`, `X-Client`. Exposed response headers: `ETag`, `Location`, `Retry-After`, `X-Request-ID`, `Idempotent-Replayed`. Credentials are never allowed cross-origin: the staff and admin apps' refresh cookie belongs to the app's own address (§8.3), and the customer web app sends a bearer token and no cookies.
 
 ## 3. Error model
 Every error is RFC 9457 problem details, `Content-Type: application/problem+json`:

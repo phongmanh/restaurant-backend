@@ -2,7 +2,7 @@
 
 | ID | Status | Raised | Raised by | Decides | Baseline affected |
 |---|---|---|---|---|---|
-| CR-016 | Proposed | 2026-10-30 | Claude, from the staff web app's first sign-in against production (Q-29) | Manh Nguyen (product owner) | design/core-and-auth.md v1.1 (§2 CORS) |
+| CR-016 | Approved | 2026-10-30 | Claude, from the staff web app's first sign-in against production (Q-29) | Manh Nguyen (product owner) | design/core-and-auth.md v1.1 (§2 CORS) |
 
 ## Summary
 A web app that reaches the API through its own `/api` rewrite still needs its origin on the API's CORS allow-list (`ALLOWED_ORIGINS`). The rewrite forwards the browser's `Origin` header, the API sees a host other than its own, and Ktor's CORS plugin refuses the request with a bare `403`. Core-and-auth §2 says CORS "only serves the customer web app"; that sentence is wrong and this CR corrects it. Credentials still never cross origins.
@@ -48,4 +48,4 @@ No cost. A redeploy of production's settings, about two minutes.
 ## Decision
 | Date | Decision (Approved / Rejected / Deferred) | By | Notes |
 |---|---|---|---|
-| | | | |
+| 2026-10-30 | Approved | Manh Nguyen (product owner) | "approve CR-016". Applied the same day: core-and-auth v1.2 (§2 CORS). The settings were already live in deployment `q4zr9cdzp` |
