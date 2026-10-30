@@ -70,8 +70,9 @@ fun Application.installHttp(settings: HttpSettings) {
         format { call -> "${call.response.status()?.value} ${call.request.httpMethod.value} ${call.request.path()}" }
     }
     install(CORS) {
-        // Only the customer web app calls cross-origin, with a bearer token and no cookies; the staff
-        // and admin web apps go through a same-origin rewrite (§2, §8.3).
+        // Every web app's origin must be listed, or the plugin answers 403: the customer web app calls
+        // cross-origin with a bearer token and no cookies, and the staff and admin web apps' same-origin
+        // rewrite forwards the browser's Origin header (§2, §8.3; CR-016).
         settings.allowedOrigins.forEach { allowHost(it.substringAfter("://"), schemes = listOf(it.substringBefore("://"))) }
         listOf(HttpMethod.Get, HttpMethod.Post, HttpMethod.Put, HttpMethod.Patch, HttpMethod.Delete).forEach(::allowMethod)
         listOf(HttpHeaders.Authorization, HttpHeaders.ContentType, IDEMPOTENCY_KEY_HEADER, HttpHeaders.IfMatch, X_CLIENT_HEADER)
