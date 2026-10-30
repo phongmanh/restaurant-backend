@@ -12,7 +12,7 @@ This handbook gathers the day-to-day and emergency procedures in one place. The 
 | Purpose | System, load and security tests | Release 1, **test data only** (release-checklist §1) |
 | Vercel project | `restaurant-staging`, Hobby account `liam-36c7` | `restaurant-production`, same account |
 | Protected domain (use this) | `restaurant-staging-liam-36c7.vercel.app` | `restaurant-production-liam-36c7.vercel.app` |
-| Public domain | `restaurant-staging-ecru.vercel.app`: **removed after every deploy** | `restaurant-production.vercel.app`: **removed after every deploy** |
+| Public domain | `restaurant-staging-ecru.vercel.app`: **removed after every deploy** | `restaurant-production.vercel.app`: **kept public**, the address the client apps call (Q-29) |
 | Access | Deployment Protection; clients send `x-vercel-protection-bypass` | The same |
 | Database | Neon project `restaurant-staging`, Singapore, PostgreSQL 18 | Neon project `restaurant-production`, same settings |
 | Rate-limit store | Upstash `restaurant-staging`, keys `staging:rl:…` | The same database, keys `production:rl:…` (CR-015) |
@@ -28,7 +28,7 @@ This handbook gathers the day-to-day and emergency procedures in one place. The 
 - Point-in-time restore reaches back **6 hours** (R-14).
 - Cron jobs run **once a day** (±59 min).
 - Runtime logs are kept **one hour**, with no drain (R-20).
-- Vercel's own rollback doesn't work here, because it moves the public domain, which is removed (§5).
+- Vercel's own rollback isn't used: it moves only the public domain, and on staging, where that domain is removed, it failed (§5).
 
 ## 2. Who does what
 The auto-mode safety check stops Claude from production deploys, production's database, writing secrets to Vercel and merging pull requests. So the owner runs those, and Claude prepares, checks and records.
@@ -60,7 +60,7 @@ No alert rule is loaded in Grafana yet (R-21), so nothing warns of trouble. Unti
 | Daily, if production is in use | Requests and errors | Grafana → *service overview*, environment production | No `5xx` other than an occasional cold-start timeout |
 | Daily | Logs of the last hour | `vercel logs -p restaurant-production --json` (or `python3 -I deploy/staging/log-review.py --project restaurant-production --accounts deploy/production/.accounts.production --since 1h`) | No `ERROR` lines; the review reports no personal data or secret |
 | The day after any deploy | Cron runs | Vercel → `restaurant-production` → Cron Jobs; Grafana job gauges `…_timestamp_seconds` | One run of each of the 5 jobs in the last day, each successful (R-23: never checked on production yet) |
-| After any deploy | Public domain | `curl -s -o /dev/null -w '%{http_code}' https://restaurant-production.vercel.app/health` | Anything but `200` |
+| After any deploy | Public domain | `curl -s -o /dev/null -w '%{http_code}' https://restaurant-production.vercel.app/health` | Anything but `200` (it's public since Q-29; staging's must not answer `200`) |
 | Weekly | Dependabot PRs | GitHub | Merged or triaged; High/Critical with a fix within 30 days, Critical within 7 |
 | Weekly | Free-plan usage | Vercel usage, Neon usage, Upstash commands, Grafana active series | Below 80 % of each free allowance (Grafana: 10k active series, R-17) |
 | Monthly | Secret ages | Key policy table (§7) | Nothing older than its lifetime |
@@ -78,7 +78,7 @@ A release is the same build that passed staging, promoted to production. Migrati
     ./gradlew --no-daemon migrate)
    ```
    Don't `source` the file: the shell would mangle the JSON values and the `&` in URLs.
-5. **Deploy** (owner): `sh deploy/release.sh production --env`. It sends the variables, deploys, removes the public domain and checks it no longer answers `200`. Note the deployment URL it prints.
+5. **Deploy** (owner): `sh deploy/release.sh production --env`. It sends the variables, deploys, points the protected domain at the new deployment and checks that the public domain answers `200`. Note the deployment URL it prints.
 6. **Smoke check** (Claude): `/health` answers `200` with the bypass header and is refused without it; `vercel alias ls` shows no alias answering `200` without it; the start-up lines are clean; the log review within the hour is clean.
 7. **System suite** (owner): `sh deploy/run-task.sh production system`. On a fresh database, `sh deploy/run-task.sh production seed` first.
 8. **Watch** for a day: §3's daily checks, plus one run of each cron job.
@@ -98,7 +98,7 @@ A release is the same build that passed staging, promoted to production. Migrati
 2. `sh deploy/switch.sh production <deployment ID>`. It points the protected domain at that deployment and times it until `/health` answers `200`.
 3. Claude confirms with `vercel alias ls` that the domain moved.
 
-**Don't** use `vercel rollback` or the dashboard's Instant Rollback: they move the public domain, which is removed (on staging they answered `500` or changed nothing, ST-19). **Don't** restore the database for a code problem: a restore loses every write since the restore point. Database restores are for data problems only (§6). The alert runbooks in `deploy/observability/runbooks.md` still say "Instant Rollback"; use this procedure instead.
+**Don't** use `vercel rollback` or the dashboard's Instant Rollback: they move only the public domain, not the protected one, and on staging, where the public domain is removed, they answered `500` or changed nothing (ST-19). `switch.sh` moves both on production. **Don't** restore the database for a code problem: a restore loses every write since the restore point. Database restores are for data problems only (§6). The alert runbooks in `deploy/observability/runbooks.md` still say "Instant Rollback"; use this procedure instead.
 
 After a manual alias switch the protected domain no longer follows new deploys automatically; the next `release.sh` run moves it again, and `vercel alias ls` shows where it points.
 
@@ -174,7 +174,7 @@ G6's conditions (STATUS gate log). Each is a project of its own, not a routine t
 | 4 | Alerts loaded and fired once | `deploy/observability/load.sh` run with `.env.grafana`; contact point set; ST-07's live half (`injectErrors`) fires and clears the burn alerts (R-21) |
 | 5 | Cron runs checked | Each job's run seen on production (R-23) |
 | 6 | Designed jobs built | The purge job, the audit export, staff anonymisation (technical reference §11; Q-28) |
-| 7 | Client apps and real domains | `STAFF_APP_URL`, `ADMIN_APP_URL`, `CUSTOMER_APP_URL`, `ALLOWED_ORIGINS`, `AUTH_COOKIE_PATH` set to the real apps; the contract's `servers` filled in |
+| 7 | Client apps and real domains | `STAFF_APP_URL`, `ADMIN_APP_URL`, `CUSTOMER_APP_URL`, `ALLOWED_ORIGINS` set to the real apps (production's `AUTH_COOKIE_PATH` is `/api/v1/auth` since Q-29); the contract's `servers` filled in |
 | 8 | A second person on call | Someone besides the owner can deploy, roll back and restore |
 
 ## 10. Operator tasks
