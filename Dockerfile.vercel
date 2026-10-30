@@ -19,7 +19,7 @@ COPY src/main/ src/main/
 RUN ./gradlew --no-daemon --quiet buildFatJar \
     && cp build/libs/*-all.jar /workspace/app.jar
 
-FROM eclipse-temurin:25-jre@sha256:dbb43d81099eec91e0800226ed2296d03146ee7857165b95112372ad0d67e87f AS runtime
+FROM eclipse-temurin:25-jre@sha256:ecdc0adb37bde1a281c4d245a3cd535004b1fc8322d560f5b09463b248c81df0 AS runtime
 # The Ubuntu base ships Canonical's Pebble (`/usr/bin/pebble`, a Go service manager, no dpkg
 # package); the service never runs it, and its Go runtime carries advisories CI's Grype check
 # fails on (deploy/README.md "Vulnerable dependencies").
