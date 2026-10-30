@@ -174,7 +174,7 @@ G6's conditions (STATUS gate log). Each is a project of its own, not a routine t
 | 4 | Alerts loaded and fired once | `deploy/observability/load.sh` run with `.env.grafana`; contact point set; ST-07's live half (`injectErrors`) fires and clears the burn alerts (R-21) |
 | 5 | Cron runs checked | Each job's run seen on production (R-23) |
 | 6 | Designed jobs built | The purge job, the audit export, staff anonymisation (technical reference §11; Q-28) |
-| 7 | Client apps and real domains | `STAFF_APP_URL`, `ADMIN_APP_URL`, `CUSTOMER_APP_URL`, `ALLOWED_ORIGINS` set to the real apps (production's `AUTH_COOKIE_PATH` is `/api/v1/auth` since Q-29); the contract's `servers` filled in |
+| 7 | Client apps and real domains | `STAFF_APP_URL`, `ADMIN_APP_URL`, `CUSTOMER_APP_URL`, `ALLOWED_ORIGINS` set to the real apps, all three web apps (CR-016; the staff app's done) (production's `AUTH_COOKIE_PATH` is `/api/v1/auth` since Q-29); the contract's `servers` filled in |
 | 8 | A second person on call | Someone besides the owner can deploy, roll back and restore |
 
 ## 10. Operator tasks
