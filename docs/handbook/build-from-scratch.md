@@ -52,7 +52,7 @@ Each is the owner's, and each goes into the STATUS Decisions table when made. So
 
 | # | Decision | Why it's needed | Suggestion |
 |---|---|---|---|
-| D-A | **A public API address.** Production's public domain is removed and Deployment Protection is on (Q-24); a browser or phone can't send the bypass header | Real clients can't reach the API otherwise | A custom domain per environment (`api.<domain>`, `api.staging.<domain>`) attached to the Vercel project, with Deployment Protection's scope set so that domain is public. Reverses Q-24 for that environment |
+| D-A | **A public API address.** A browser or phone can't send the bypass header | Real clients can't reach the API otherwise | **Production decided (Q-29):** `restaurant-production.vercel.app` stays public. Later, a custom domain per environment (`api.<domain>`, `api.staging.<domain>`) attached to the Vercel project, with Deployment Protection's scope set so that domain is public |
 | D-B | **Domains** for the three web apps, on the same registrable domain as the API | The refresh cookie is `SameSite=Strict`, and App Links / Universal Links need a stable host | `order.<domain>`, `staff.<domain>`, `admin.<domain>`, `api.<domain>` |
 | D-C | **Client technology** | Architecture §4 leaves it to the client side; a shared contract module with the backend would need a new ADR | Web: React + TypeScript (§5.1). Mobile: Kotlin Multiplatform with Compose Multiplatform (§6.1). No module shared with the backend: the contract is the shared thing |
 | D-D | **Repositories** | One per client, as requirements §1 says | `restaurant-web` (monorepo, three apps) and `restaurant-mobile` |
@@ -356,9 +356,9 @@ The backend is ready for clients, but its settings and a few details assume none
 | Change | Where | Why |
 |---|---|---|
 | Public API domain per environment | Vercel project domains, Deployment Protection scope (D-A) | Clients can't send the bypass header |
-| `STAFF_APP_URL`, `ADMIN_APP_URL`, `CUSTOMER_APP_URL` | `deploy/<env>/<env>.env` | Today `*.production.example`; invitation, reset and QR links point there |
+| `STAFF_APP_URL`, `ADMIN_APP_URL`, `CUSTOMER_APP_URL` | `deploy/<env>/<env>.env` | Today `*.production.example`; invitation, reset and QR links point there. Set each from `vercel alias ls` after the app's first deploy, since Vercel may add a suffix to the name (Q-29) |
 | `ALLOWED_ORIGINS` | The same files | Add `https://order.<domain>` (the customer web app) |
-| `AUTH_COOKIE_PATH=/api/v1/auth` | The same files | The staff and admin apps' rewrite (§5.4); today `/v1/auth` |
+| `AUTH_COOKIE_PATH=/api/v1/auth` | The same files | The staff and admin apps' rewrite (§5.4); done on production (Q-29), staging still `/v1/auth` |
 | `AUTH_ISSUER` | The same files | The API's real public URL |
 | Known client names in metrics | `Metrics.client`'s known set (today the keys of `minClientVersions`: `customer-android`, `customer-ios`) | Otherwise `customer-web`, `staff-web` and `admin-web` all count as `other` |
 | Contract `servers` | `docs/api/openapi.yaml` (descriptions only, additive) | Today a placeholder |

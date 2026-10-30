@@ -5,7 +5,7 @@ The service runs as a container on Vercel (architecture §8, ADR-0002), built fr
 | Environment | Vercel project | Database | Live updates, rate limits | Runbook |
 |---|---|---|---|---|
 | staging (free plans, Phase 5) | `restaurant-staging` on the Hobby test account `liam-36c7`; the production deployment, public alias removed (CR-011) | Neon free plan, its own project, Singapore | Ably free app `restaurant-staging`; Upstash free database, Singapore; metrics to Grafana Cloud's free plan (TBD-12) | Below |
-| production (free plans, release 1, Phase 6) | `restaurant-production` on the same Hobby account; the production deployment, public alias removed (Q-24) | Neon free plan, its own project `restaurant-production`, Singapore | `LIVE_PUSH=off` (CR-013); Upstash shared with staging, keys prefixed `production:` (CR-015); metrics to the same Grafana stack, `deployment_environment="production"` | [Production runbook](#production-runbook) |
+| production (free plans, release 1, Phase 6) | `restaurant-production` on the same Hobby account; the production deployment; its public alias `restaurant-production.vercel.app` stays up for the client apps (Q-29, was removed under Q-24) | Neon free plan, its own project `restaurant-production`, Singapore | `LIVE_PUSH=off` (CR-013); Upstash shared with staging, keys prefixed `production:` (CR-015); metrics to the same Grafana stack, `deployment_environment="production"` | [Production runbook](#production-runbook) |
 
 ## What the service needs
 The non-secret settings for staging are in [`staging/staging.env`](staging/staging.env), and that file is committed. The secrets go in `staging/.env.staging`, which git ignores (`.env*`). Never commit that file, print it, or paste it into chat.
@@ -208,7 +208,7 @@ Release 1 runs on free plans, a learning project with test data only (release-ch
 
 | Part | Production |
 |---|---|
-| Vercel project | `restaurant-production`, Hobby account `liam-36c7`, no Git link. Protected domain `restaurant-production-liam-36c7.vercel.app`; the public `restaurant-production.vercel.app` is removed after every deploy |
+| Vercel project | `restaurant-production`, Hobby account `liam-36c7`, no Git link. Protected domain `restaurant-production-liam-36c7.vercel.app`; the public `restaurant-production.vercel.app` stays up, the API address the client apps call (Q-29). Its only guards are the WAF rule and the app's rate limits |
 | Settings, secrets | [`production/production.env`](production/production.env) (committed); `production/.env.production` (git-ignored, mode `600`), made by `generateSecrets`, no key or password shared with staging beside CR-015's Upstash pair |
 | WAF | `auth-per-ip`, 60 per 60 s, from [`production/waf-auth-per-ip.json`](production/waf-auth-per-ip.json) (staging step 8's way: `rules edit --json`, `firewall publish`, read back with `rules inspect`) |
 | Seeded accounts | `production/.accounts.production` (git-ignored, mode `600`) |
@@ -223,12 +223,12 @@ Release 1 runs on free plans, a learning project with test data only (release-ch
 ### Releasing
 1. **Claude (PR), you (merge):** the release commit on `main`, CI green; staging redeployed from it and its smoke check and AT subset passed; tag `release/<version>` (release-checklist §5 steps 1–3).
 2. **You:** migrations first if the release adds one (they are expand-only, so the running deployment keeps working).
-3. **You:** `sh deploy/release.sh production --env`. It sends the variables, deploys, removes the public domain and checks it no longer answers `200`. Send Claude the deployment URL it prints.
-4. **Claude:** the smoke check, as staging step 11 on production's domains: `/health` 200 with the bypass header and refused without it, no alias answering `200` without it (`vercel alias ls`), start-up lines clean, `log-review.py --project restaurant-production --accounts deploy/production/.accounts.production` within the hour.
+3. **You:** `sh deploy/release.sh production --env`. It sends the variables, deploys, points the protected domain at the new deployment and checks that the public domain answers `200` (Q-29). Send Claude the deployment URL it prints.
+4. **Claude:** the smoke check, as staging step 11 on production's domains: `/health` 200 on the protected domain with the bypass header and refused without it, `200` on the public `restaurant-production.vercel.app`, no other alias answering `200` without it (`vercel alias ls`), start-up lines clean, `log-review.py --project restaurant-production --accounts deploy/production/.accounts.production` within the hour.
 5. **You:** `sh deploy/run-task.sh production system` for the system suite. On a fresh database, `sh deploy/run-task.sh production seed` first.
 
 ### Rolling back
-Switch the protected domain back to the previous deployment: `sh deploy/switch.sh production <deployment ID>` (the ID in `restaurant-production-<ID>-liam-36c7.vercel.app`, from `vercel ls restaurant-production`). It times the switch until `/health` answers `200`; the 2026-10-19 rehearsal took 2 s each way. Then Claude checks with `vercel alias ls` that the domain moved. Not `vercel rollback`: it moves the public domain, which is removed (ST-19).
+Switch the protected and public domains back to the previous deployment: `sh deploy/switch.sh production <deployment ID>` (the ID in `restaurant-production-<ID>-liam-36c7.vercel.app`, from `vercel ls restaurant-production`). It times the switch until `/health` answers `200`; the 2026-10-19 rehearsal took 2 s each way. Then Claude checks with `vercel alias ls` that both domains moved. Not `vercel rollback`: it moves only the public domain, and on staging, where that domain is removed, it failed (ST-19).
 
 - **Roll back when:** `/health` fails for 5 minutes; any 5xx on order placement that isn't a platform cold start; a contract mismatch in the smoke run; a secret or personal data in the logs (then also rotate, key policy).
 - **Don't restore the database for a code problem.** A restore loses everything written since the restore point; it's for a data problem only, by the restore drill's runbook above (RTO 13 min measured).

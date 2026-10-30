@@ -352,7 +352,7 @@ A `RateLimiter` port with an Upstash adapter: fixed windows, key `<APP_ENV>:rl:<
 | `APP_ENV` | No | `dev` and `test` (local: rate limits counted in memory), `staging`, `production` (extra start-up checks); prefixes Upstash keys and tags metrics `deployment.environment` |
 | `PORT` | No | 8080 |
 | `AUTH_ISSUER` | No | The tokens' `iss`; a fixed name, since each deployment URL differs |
-| `AUTH_COOKIE_PATH` | No | The refresh cookie's path: `/v1/auth` until a web app's `/api` rewrite exists, then `/api/v1/auth` |
+| `AUTH_COOKIE_PATH` | No | The refresh cookie's path: `/api/v1/auth` on production (Q-29), for the web apps' `/api` rewrite; `/v1/auth` where clients call the API directly |
 | `STAFF_APP_URL`, `ADMIN_APP_URL`, `CUSTOMER_APP_URL` | No | Where invitation, reset and QR links point. Placeholders (`*.production.example`) until the apps exist |
 | `ALLOWED_ORIGINS` | No | CORS allow-list |
 | `LIVE_PUSH` | No | `off` (release 1) or `ably` |
@@ -392,7 +392,7 @@ Committed non-secret files: `deploy/staging/staging.env`, `deploy/production/pro
 CI (`.github/workflows/ci.yml`) has three jobs: **build** (the above, plus the libraries' SBOM and Grype: High or Critical with a fix fails), **contract** (Redocly lint, oasdiff against the G3 tag) and **image** (builds `Dockerfile.vercel`, its SBOM with Syft, Grype). Dependabot proposes weekly updates for Gradle, Actions and the pinned Docker base images.
 
 ## 16. Deployment in one paragraph
-Vercel builds the image from source for each project (`restaurant-staging`, `restaurant-production`), both on the free Hobby account, both production deployments of their own projects with the public alias removed and Deployment Protection on (test clients send the bypass header). Each has its own Neon project in Singapore; they share one Upstash database with environment-prefixed keys. Migrations run first, from the owner's machine, and are expand-only, so the running deployment keeps working. A release is `deploy/release.sh production --env`; a rollback is `deploy/switch.sh production <deployment ID>` (2 s measured). The [operations handbook](operations-handbook.md) has the procedures.
+Vercel builds the image from source for each project (`restaurant-staging`, `restaurant-production`), both on the free Hobby account, both production deployments of their own projects with Deployment Protection on (test clients send the bypass header). Staging's public alias is removed after every deploy; production's `restaurant-production.vercel.app` stays public for the client apps (Q-29). Each has its own Neon project in Singapore; they share one Upstash database with environment-prefixed keys. Migrations run first, from the owner's machine, and are expand-only, so the running deployment keeps working. A release is `deploy/release.sh production --env`; a rollback is `deploy/switch.sh production <deployment ID>` (2 s measured). The [operations handbook](operations-handbook.md) has the procedures.
 
 ## 17. Known limits and technical debt
 | Item | Why it exists | Tracked as |
