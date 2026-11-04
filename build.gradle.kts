@@ -194,6 +194,14 @@ tasks.register<JavaExec>("seedStaging") {
     workingDir = rootDir
 }
 
+tasks.register<JavaExec>("inviteAdmin") {
+    group = "staging"
+    description = "<deployment URL>: invites INVITE_ADMIN_EMAIL as a platform admin, signed in as the seeded admin"
+    classpath = systemTest.runtimeClasspath
+    mainClass = "io.github.phongmanh.restaurant.staging.InviteAdminKt"
+    workingDir = rootDir
+}
+
 tasks.register<JavaExec>("generateHistory") {
     group = "staging"
     description = "<deployment URL>: restaurant L and 49 smaller ones, with a scaled year of sales"
