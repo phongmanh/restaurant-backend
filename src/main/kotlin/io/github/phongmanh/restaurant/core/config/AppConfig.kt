@@ -47,6 +47,7 @@ data class AppConfig(
         /** `openssl rand -hex 16` makes one: 128 random bits, so the bearer can't be guessed. */
         private const val MIN_CRON_SECRET_CHARS = 32
         private const val DEFAULT_STEP_S = 10L
+        private const val DEFAULT_REFRESH_GRACE_SECONDS = 10
 
         /**
          * Reads and checks the settings. The service refuses to start if a secret is missing, or if a
@@ -207,6 +208,13 @@ data class AppConfig(
                 emailHmac = EmailHmac(decodeKey(hmacKey)),
                 cookiePath = config.property("auth.cookiePath").getString(),
                 links = links,
+                refreshGrace =
+                    (config.propertyOrNull("auth.refreshGraceSeconds")?.getString()?.toInt() ?: DEFAULT_REFRESH_GRACE_SECONDS)
+                        .also {
+                            check(it in 0..AuthSettings.MAX_REFRESH_GRACE_SECONDS) {
+                                "auth.refreshGraceSeconds (REFRESH_GRACE_SECONDS) must be 0 to ${AuthSettings.MAX_REFRESH_GRACE_SECONDS}"
+                            }
+                        }.seconds,
                 argon2 =
                     Argon2Settings(
                         memoryKib = int("auth.argon2.memoryKib"),

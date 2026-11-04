@@ -35,14 +35,8 @@ data class StaffSession(
     val expiresAt: Instant,
 )
 
-/** What a refresh token's hash finds, used or not. */
-data class RefreshTokenState(
-    val sessionId: StaffSessionId,
-    val used: Boolean,
-)
-
 /**
- * `staff_sessions`, `staff_refresh_tokens` and `staff_mfa_challenges` (core-and-auth §9). Every
+ * `staff_sessions` and `staff_mfa_challenges` (core-and-auth §9); refresh tokens are in [RefreshTokenRepository]. Every
  * check of a time takes `now` from the service's clock, so tests can move it.
  */
 class StaffSessionRepository {
@@ -107,46 +101,6 @@ class StaffSessionRepository {
             .prepareStatement(
                 "UPDATE staff_sessions SET revoked_at = ?, revoke_reason = ? WHERE staff_id = ? AND revoked_at IS NULL RETURNING id",
             ).use { it.bind(now, reason.value, staffId.value).list { rs -> StaffSessionId(rs.uuid("id")!!) } }
-
-    fun issueRefreshToken(
-        tx: TxScope,
-        hash: ByteArray,
-        sessionId: StaffSessionId,
-        issuedAt: Instant,
-        idleExpiresAt: Instant,
-    ) {
-        connection(tx)
-            .prepareStatement("INSERT INTO staff_refresh_tokens (token_hash, session_id, issued_at, idle_expires_at) VALUES (?, ?, ?, ?)")
-            .use { it.bind(hash, sessionId.value, issuedAt, idleExpiresAt).executeUpdate() }
-    }
-
-    /**
-     * Uses a refresh token in one atomic step (§8.3): only an unused, unexpired one, and only once,
-     * even when two requests bring it at the same moment. Returns its session.
-     */
-    fun useRefreshToken(
-        tx: TxScope,
-        hash: ByteArray,
-        now: Instant,
-    ): StaffSessionId? =
-        connection(tx)
-            .prepareStatement(
-                "UPDATE staff_refresh_tokens SET used_at = ? " +
-                    "WHERE token_hash = ? AND used_at IS NULL AND idle_expires_at > ? RETURNING session_id",
-            ).use { it.bind(now, hash, now).firstOrNull { rs -> StaffSessionId(rs.uuid("session_id")!!) } }
-
-    /** What a refresh token's hash finds, whether or not it can still be used. */
-    fun refreshTokenState(
-        tx: TxScope,
-        hash: ByteArray,
-    ): RefreshTokenState? =
-        connection(tx)
-            .prepareStatement("SELECT session_id, used_at FROM staff_refresh_tokens WHERE token_hash = ?")
-            .use {
-                it.bind(hash).firstOrNull { rs ->
-                    RefreshTokenState(StaffSessionId(rs.uuid("session_id")!!), rs.instant("used_at") != null)
-                }
-            }
 
     fun createMfaChallenge(
         tx: TxScope,

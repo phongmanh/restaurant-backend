@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.2 ([CR-016](../cr/CR-016-rewrite-apps-need-cors.md), approved 2026-10-30: the staff and admin web apps' origins go on the CORS allow-list too, §2). 1.1 ([CR-012](../cr/CR-012-updates-through-post.md), approved 2026-10-18: updates are `POST <path>/update`, §5; IT-CORE-11, §15). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.6 (0.6: §4 key list per CR-005; 0.5: menu reads and the image route as exceptions in §2, CR-004): the five §16 questions decided by the owner on 2026-10-15; 0.3–0.4 add the changes from [restaurants](restaurants.md) §14 (one-time secrets, suspension check, sign-in when suspended, staff token on admin routes → 404). |
+| Version | 1.3 ([CR-017](../cr/CR-017-refresh-grace-period.md), approved 2026-11-04: a refresh token just used gets a seconds-long grace period, so a page reloaded mid-refresh stays signed in, §8.3, §13, §15, §16 item 4). 1.2 ([CR-016](../cr/CR-016-rewrite-apps-need-cors.md), approved 2026-10-30: the staff and admin web apps' origins go on the CORS allow-list too, §2). 1.1 ([CR-012](../cr/CR-012-updates-through-post.md), approved 2026-10-18: updates are `POST <path>/update`, §5; IT-CORE-11, §15). 1.0 Approved at G3 on 2026-10-15 (baseline; changes need a CR). Last draft 0.6 (0.6: §4 key list per CR-005; 0.5: menu reads and the image route as exceptions in §2, CR-004): the five §16 questions decided by the owner on 2026-10-15; 0.3–0.4 add the changes from [restaurants](restaurants.md) §14 (one-time secrets, suspension check, sign-in when suspended, staff token on admin routes → 404). |
 | Date | 2026-10-15 |
 | Package | `core` (shared kernel and staff/admin sign-in), per architecture §4 |
 | Requirements | FR-010, FR-042 (the shared parts), NFR-REL-02 (idempotency), NFR-SEC-01 to 04, NFR-PRIV-01 (logs, staff data), NFR-COMPAT-01, NFR-OBS-01 (request ID) |
@@ -215,13 +215,15 @@ Body `{"mfa_token", "code"}`.
 - Success → a session with `amr = ["pwd","otp"]`, `audience = admin`, and the token response with `"audience": "admin"`.
 
 ### 8.3 Sessions and refresh: `POST /v1/auth/refresh`
-**In plain words:** the access token lives 15 min, so the staff app needs a way to get a new one without asking for the password again. That's the refresh token, kept in a cookie that page scripts can't read. Each use swaps it for a new one. If an old one ever comes back, someone has copied it, so the whole sign-in is ended.
+**In plain words:** the access token lives 15 min, so the staff app needs a way to get a new one without asking for the password again. That's the refresh token, kept in a cookie that page scripts can't read. Each use swaps it for a new one. If an old one comes back more than a few seconds later, someone has copied it, so the whole sign-in is ended. Within those seconds it's most likely the same browser, whose page was reloaded before the new cookie arrived, so it gets a fresh pair (CR-017).
 
 - A **staff session** is one sign-in: its ID is the `sid` claim. It ends 24 h after sign-in (`expires_at`), on sign-out, or when it's revoked.
 - A **refresh token** is 256 random bits, stored as a SHA-256 hash. It's valid until `min(issued_at + 12 h, session.expires_at)` and can be used once.
 - Body `{"audience": "staff" | "admin"}`; the token comes from the cookie for that audience.
 - The refresh is one atomic step: `UPDATE staff_refresh_tokens SET used_at = now() WHERE token_hash = ? AND used_at IS NULL AND idle_expires_at > now() RETURNING session_id`, and the session must be live. Then a new token is inserted for the same session, a new access token is signed, and the cookie is replaced.
-- **Reuse:** if the hash exists but `used_at` is set, revoke the session (`revoke_reason = 'refresh_reuse'`), audit it, clear the cookie and answer 401.
+- **Grace swap** (CR-017): if the hash exists and `used_at` is set, the token gets one more swap when it was used at most `auth.refreshGraceSeconds` ago (10 by default; 0 turns it off), isn't superseded, and has fewer than 3 grace swaps: `UPDATE staff_refresh_tokens SET grace_swaps = grace_swaps + 1 WHERE token_hash = ? AND used_at > ? AND superseded_at IS NULL AND grace_swaps < 3 AND idle_expires_at > now() RETURNING session_id`. With the session live and the same audience, it gets a new child token (a sibling of the first) and a new access token, `200` as for a normal refresh. The window counts from the server's first use, so a cold start delays both requests and doesn't use it up. A grace swap isn't audited; the counter `auth.refresh.grace` (tag `audience`) counts them.
+- **Parents and siblings:** every refresh token records the token it replaced (`parent_hash`). Using a token first closes its parent's grace (sets its `grace_swaps` to the cap), so a grace swap and a child's use take turns on the parent's row; then it marks its unused siblings used and superseded. Whichever sibling the browser ends up holding works, and the others stop: a superseded one that comes back is reuse.
+- **Reuse:** if the hash exists, `used_at` is set and the grace swap doesn't apply, revoke the session (`revoke_reason = 'refresh_reuse'`), audit it, clear the cookie and answer 401.
 - Any other failure → 401 with the cookie cleared.
 - A refresh doesn't run Argon2id and isn't audited (≈ 6/s at 5,000 staff), but it is rate limited per IP.
 
@@ -232,7 +234,7 @@ Body `{"mfa_token", "code"}`.
 
 All `/v1/auth/*` `POST`s need `Content-Type: application/json`. A cross-site form can't send that without a CORS preflight, which the allow-list refuses. With `SameSite=Strict` that covers CSRF.
 
-**Two tabs.** If two tabs of the staff app refresh with the same token at once, the second looks like reuse and ends the session. The staff and admin apps serialise refreshes across tabs (the Web Locks API or a `BroadcastChannel`), and the server keeps the strict reuse rule with no grace period (owner, 2026-10-15). This is a requirement on the web apps.
+**Two tabs and reloads.** If two tabs of the staff app refresh with the same token at once, the second would look like reuse. The staff and admin apps still serialise refreshes across tabs (the Web Locks API or a `BroadcastChannel`), a requirement on the web apps, so grace swaps stay rare. A reload can't be serialised that way: the page's lock is released when it unloads, while its refresh is still running on the server. The grace swap covers that case (CR-017, which revisits the owner's 2026-10-15 decision in §16 item 4).
 
 ### 8.4 Sign-out: `POST /v1/auth/sign-out`
 Body `{"audience"}`, plus the cookie, plus the access token when the app still has one. Revoke the session found by either, clear the cookie, audit, and answer `204`. Answer 204 even when nothing matched, so the app can always sign out cleanly.
@@ -467,6 +469,7 @@ Everything is in `AppConfig`, from `application.yaml` with env substitution (arc
 | `auth.totpEncryptionKeys` | Yes | AES-256 keys by ID; new secrets use the current one, old ones are read by the ID stored with them |
 | `auth.emailHmacKey` | Yes | For `email_hmac` in the audit log |
 | `auth.cookiePath` | No | `/api/v1/auth`, the path the browser sees through the rewrite (§8.3) |
+| `auth.refreshGraceSeconds` | No | `REFRESH_GRACE_SECONDS`, 10 by default, 0 to 30; 0 is the strict reuse rule (§8.3, CR-017) |
 | `auth.argon2` | No | `m=19456, t=2, p=1`; max 4 concurrent; slot wait 2 s |
 | `http.allowedOrigins` | No | The web apps' origins |
 | `http.minClientVersions` | No | e.g. `customer-android: 1.0.0`, `customer-ios: 1.0.0` |
@@ -487,7 +490,7 @@ One Gradle module, packages by feature (ADR-0001). `<base>` is the root package 
   auth/
     domain/      StaffAccount, StaffSession, PasswordPolicy, LockoutPolicy
     application/ SignInService, MfaService, RefreshService, LinkService, PasswordService, StaffAccounts (port for restaurants)
-    persistence/ StaffAccountRepository, StaffSessionRepository, LinkTokenRepository
+    persistence/ StaffAccountRepository, StaffSessionRepository, RefreshTokenRepository (CR-017), LinkTokenRepository
     crypto/      Argon2Hasher (Bouncy Castle), JwtSigner/Verifier (ES256), Totp, AesGcm, SecureTokens
     http/        AuthRoutes (/v1/auth/*), staff and admin authentication providers
 ```
@@ -507,12 +510,14 @@ These go into the integration suite (test-plan §2: `testApplication` + Testcont
 | IT-AUTH-04 | A lock doesn't stop an existing refresh token | FR-010 (owner, 2026-10-15) |
 | IT-AUTH-05 | Token cases from S-4: expired, forged, `alg: none`, wrong `kid`, wrong `iss`, admin token without `otp`, admin token on staff route → 401; a valid staff token on an admin route → 404 | FR-010, NFR-SEC-04 |
 | IT-AUTH-06 | Admin: sign-in → `mfa_required`; right code → admin token; reused code, used MFA token, expired MFA token → 401 | NFR-SEC-04 |
-| IT-AUTH-07 | Refresh rotates; the old token reused → 401 and the session revoked (the new token stops working too); audit entry | FR-010 |
+| IT-AUTH-07 | Refresh rotates; the old token reused after the grace period (and with the grace at 0) → 401 and the session revoked (the new token stops working too); audit entry | FR-010 |
 | IT-AUTH-08 | Refresh expires 12 h after its issue without use, and 24 h after sign-in even with use | FR-010 (owner, 2026-10-15) |
 | IT-AUTH-09 | Sign-out, password change, password reset, deactivation and role change → the next call with the old access token → 401 | FR-010 |
 | IT-AUTH-10 | Invitation: inspect → accept → sign-in; a used, replaced or expired link → 404 `link_invalid`; admin enrolment in two calls, wrong code keeps the link valid | FR-040, FR-041 |
 | IT-AUTH-11 | Password rules: 7 and 65 characters, a common password, the email's local part → 400 with the right `errors[0].code`; a 64-character password with spaces and emoji works | NFR-SEC-01 |
 | IT-AUTH-12 | Cookie attributes: `HttpOnly`, `Secure`, `SameSite=Strict`, the configured path, one name per audience; cleared on failed refresh | NFR-SEC-01 |
+| IT-AUTH-14 | Grace swap (CR-017): a used token again within the window → 200 and a working sibling; once one sibling is used the other → 401 and the session revoked; after the window → 401 and revoked; a 4th swap → 401 and revoked; a parent whose child was used → 401 and revoked | FR-010 |
+| IT-AUTH-15 | Grace swap (CR-017): three requests with the same used token at once → all 200, `grace_swaps` = 3, the session stays live; a child's use racing its parent's grace swaps → only 200 or 401, never a deadlock or 500 | FR-010 |
 | IT-AUTH-13 | Rate limits: the 31st sign-in from one IP in a minute → 429 with `Retry-After`; Redis down → served (fail open) | NFR-SEC-04 |
 | IT-CORE-01 | Idempotency: the same key and body three times → one change, identical responses, `Idempotent-Replayed: true` on the 2nd and 3rd; same key with another body → 422; two at once → one change | NFR-REL-02 |
 | IT-CORE-02 | Idempotency: a rejected request isn't stored; the retry is evaluated again | NFR-REL-02 |
@@ -532,7 +537,7 @@ The owner accepted all five recommendations. They're recorded in STATUS.md (Deci
 1. **Global `staff_accounts` table without RLS** (§9). Isolation for it is the repository's `restaurant_id` filter, checked by IT-CORE-07. No CR: architecture §4 leaves table names to Phase 3. Rejected alternative: `SECURITY DEFINER` lookups.
 2. **Same-origin rewrite** for the staff and admin web apps (`/api/*` → the API) in every environment; refresh cookie path `/api/v1/auth` (§8.3, §13). No custom domain is needed.
 3. **Rate limits in §11** as starting values.
-4. **Strict refresh-token reuse rule**; the web apps serialise refreshes across tabs (§8.3). Rejected alternative: a server grace period.
+4. **Strict refresh-token reuse rule**; the web apps serialise refreshes across tabs (§8.3). Rejected alternative: a server grace period. **Revisited 2026-11-04 by [CR-017](../cr/CR-017-refresh-grace-period.md):** a reload mid-refresh can't be serialised by the apps, so a used token gets a 10 s grace swap; the cross-tab rule stays.
 5. **ASSUMPTION-5 confirmed:** staff and admin access tokens live 15 min.
 
 **Also decided: one central endpoint registry** (owner, 2026-10-15). Every endpoint is declared in one place in the code, `core/http/Endpoints.kt`, as the path constants per route group. Feature route files use those constants, never string literals. A test compares the registered Ktor routes with both the registry and `docs/api/openapi.yaml`, and fails on any difference (architecture §12, API9). The rule is in CLAUDE.md.

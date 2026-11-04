@@ -1,6 +1,7 @@
 package io.github.phongmanh.restaurant.support
 
 import io.github.phongmanh.restaurant.core.application.RateLimiter
+import io.github.phongmanh.restaurant.core.config.AppConfig
 import io.github.phongmanh.restaurant.core.http.Endpoint
 import io.github.phongmanh.restaurant.core.http.caller
 import io.github.phongmanh.restaurant.core.http.endpoint
@@ -30,8 +31,10 @@ fun authApp(
     clock: MutableClock = MutableClock(),
     limiter: RateLimiter? = NoLimits,
     overrides: List<Module> = emptyList(),
+    config: AppConfig = TestDatabase.config,
     block: suspend ApplicationTestBuilder.() -> Unit,
 ) = testApp(
+    config = config,
     overrides =
         listOf(
             module {

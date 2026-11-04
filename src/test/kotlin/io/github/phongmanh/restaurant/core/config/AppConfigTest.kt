@@ -106,6 +106,14 @@ class AppConfigTest {
     }
 
     @Test
+    fun `the refresh grace period is 10 s unless set, and 0 to 30 s (CR-017)`() {
+        assertEquals(10.seconds, AppConfig.load(config()).auth.refreshGrace)
+        assertEquals(0.seconds, AppConfig.load(config("auth.refreshGraceSeconds" to "0")).auth.refreshGrace)
+        val e = assertFailsWith<IllegalStateException> { AppConfig.load(config("auth.refreshGraceSeconds" to "31")) }
+        assertTrue("REFRESH_GRACE_SECONDS" in e.message!!, e.message)
+    }
+
+    @Test
     fun `missing guest keys and cron secret stop startup`() {
         val e =
             assertFailsWith<IllegalStateException> {
