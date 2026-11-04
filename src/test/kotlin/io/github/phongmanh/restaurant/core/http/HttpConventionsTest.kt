@@ -171,7 +171,9 @@ class HttpConventionsTest {
                 assert(h in exposed) { "$h not exposed: $exposed" }
             }
 
+            // Refused outright, so a web app behind an /api rewrite, which forwards the Origin, needs its entry (CR-016).
             val other = client.get("/v1/test/ok") { header(HttpHeaders.Origin, "https://evil.example") }
+            assertEquals(HttpStatusCode.Forbidden, other.status)
             assertNull(other.headers[HttpHeaders.AccessControlAllowOrigin])
         }
 

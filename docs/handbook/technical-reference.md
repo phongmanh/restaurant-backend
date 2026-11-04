@@ -129,7 +129,7 @@ Each feature has the same layers, and dependencies point inwards:
 - **Lists**: cursor pagination, `?limit=` (default 50, max 200) and `?cursor=`; answer `{"items": [...], "next_cursor": "..."}`.
 - **Headers**: `X-Request-ID` on every response; `X-Client: <app>/<semver>` optional on requests (below the configured minimum → `426 client_upgrade_required`); `Idempotency-Key`, `ETag`/`If-Match`, `Retry-After` on every 429 and 503; `Cache-Control: no-store` on all `/v1` data except the menu reads (`private, no-cache` + `ETag`).
 - **Body limit**: 64 KB of JSON (`413 payload_too_large`).
-- **CORS**: an allow-list (`ALLOWED_ORIGINS`), for the customer web app only; credentials never cross origins. The staff and admin web apps call the API through a same-origin rewrite (`/api/*` → the API), so their refresh cookie belongs to the app's own address.
+- **CORS**: an allow-list (`ALLOWED_ORIGINS`) of every web app's origin; credentials never cross origins. The customer web app calls the API directly. The staff and admin web apps call it through a same-origin rewrite (`/api/*` → the API), so their refresh cookie belongs to the app's own address, but the rewrite forwards the browser's `Origin` header, so their origins are listed too; an unlisted origin gets a bare `403` (CR-016).
 
 ### Operations by tag
 | Tag | Operations | Highlights |
@@ -353,8 +353,8 @@ A `RateLimiter` port with an Upstash adapter: fixed windows, key `<APP_ENV>:rl:<
 | `PORT` | No | 8080 |
 | `AUTH_ISSUER` | No | The tokens' `iss`; a fixed name, since each deployment URL differs |
 | `AUTH_COOKIE_PATH` | No | The refresh cookie's path: `/api/v1/auth` on production (Q-29), for the web apps' `/api` rewrite; `/v1/auth` where clients call the API directly |
-| `STAFF_APP_URL`, `ADMIN_APP_URL`, `CUSTOMER_APP_URL` | No | Where invitation, reset and QR links point. Placeholders (`*.production.example`) until the apps exist |
-| `ALLOWED_ORIGINS` | No | CORS allow-list |
+| `STAFF_APP_URL`, `ADMIN_APP_URL`, `CUSTOMER_APP_URL` | No | Where invitation, reset and QR links point. Placeholders (`*.production.example`) until the apps exist; production's staff app is `https://restaurant-staff-web.vercel.app` (Q-29) |
+| `ALLOWED_ORIGINS` | No | CORS allow-list, comma-separated: every web app's origin, the staff and admin apps' too (CR-016). Production: `https://restaurant-staff-web.vercel.app` |
 | `LIVE_PUSH` | No | `off` (release 1) or `ably` |
 | `MIN_VERSION_CUSTOMER_ANDROID`, `MIN_VERSION_CUSTOMER_IOS` | No | Forced-update levers (`426`) |
 | `DATABASE_MAX_POOL_SIZE`, `DATABASE_PLATFORM_MAX_POOL_SIZE` | No | Hikari pools (up to 10 per instance) |

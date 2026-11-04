@@ -275,7 +275,7 @@ Show only what `GET /v1/auth/me`'s role allows; the server still checks every ca
 - The refresh token is an `HttpOnly; Secure; SameSite=Strict` cookie the page can't read. For the browser to keep it, the app calls the API **through its own origin**: a rewrite `/api/*` → `https://api.<domain>/*` in the app's `vercel.json`. The API then sets the cookie with `Path=/api/v1/auth` (`AUTH_COOKIE_PATH`).
 - On load and before the access token expires: `POST /api/v1/auth/refresh` with `{"audience": "staff"}`.
 - **Serialise refreshes across tabs.** Two tabs refreshing with the same token look like theft, and the server ends the sign-in. Use the Web Locks API (`navigator.locks.request("refresh-staff", …)`) or a `BroadcastChannel`, and share the new access token between tabs.
-- Same-origin calls need no CORS; the CSP can be strict (`default-src 'self'`).
+- The browser needs no CORS for same-origin calls, but the API does: the rewrite forwards the browser's `Origin` header (sent on every `POST`), so the app's origin goes on the API's `ALLOWED_ORIGINS`, or every write gets a bare `403` (CR-016). The CSP can be strict (`default-src 'self'`).
 
 **Kitchen board ergonomics:** large touch targets; one tap per step (each step is one `POST …/status` with `If-Match`); a sound or flash for a new `OrderPlaced`; keep the screen awake (Screen Wake Lock API); after a `412`, refresh that card only.
 
@@ -357,7 +357,7 @@ The backend is ready for clients, but its settings and a few details assume none
 |---|---|---|
 | Public API domain per environment | Vercel project domains, Deployment Protection scope (D-A) | Clients can't send the bypass header |
 | `STAFF_APP_URL`, `ADMIN_APP_URL`, `CUSTOMER_APP_URL` | `deploy/<env>/<env>.env` | Today `*.production.example`; invitation, reset and QR links point there. Set each from `vercel alias ls` after the app's first deploy, since Vercel may add a suffix to the name (Q-29) |
-| `ALLOWED_ORIGINS` | The same files | Add `https://order.<domain>` (the customer web app) |
+| `ALLOWED_ORIGINS` | The same files | Every web app's origin: `https://order.<domain>`, and the staff and admin apps' too, since their rewrite forwards the browser's `Origin` (CR-016) |
 | `AUTH_COOKIE_PATH=/api/v1/auth` | The same files | The staff and admin apps' rewrite (§5.4); done on production (Q-29), staging still `/v1/auth` |
 | `AUTH_ISSUER` | The same files | The API's real public URL |
 | Known client names in metrics | `Metrics.client`'s known set (today the keys of `minClientVersions`: `customer-android`, `customer-ios`) | Otherwise `customer-web`, `staff-web` and `admin-web` all count as `other` |
