@@ -42,7 +42,7 @@ The auto-mode safety check stops Claude from production deploys, production's da
 | Deploy production (`deploy/release.sh production --env`) | Yes | — |
 | Remove a public alias that answers `200` | Either | Yes (not blocked) |
 | Smoke checks, log reviews, system suite on staging | — | Yes |
-| Seed and system suite on production (`deploy/run-task.sh`) | Yes | — |
+| Seed, system suite and admin invitations on production (`deploy/run-task.sh`) | Yes | — |
 | Merge pull requests | Yes | — |
 | Record decisions and incidents in STATUS.md | — | Yes |
 
@@ -184,6 +184,13 @@ Nobody can invite the first admin through the API. With the environment's variab
 ./gradlew --no-daemon operator --args="invite-admin lan@example.com Lan"
 ```
 It prints a one-time invitation link once (never logged or stored). Opening it in the admin console sets a password and enrols TOTP. The same command with `reset-admin-totp <email>` resets the only active admin's authenticator, or issues a fresh link for an invited admin whose link expired. Both are audited with the system as the actor. On production the owner runs it (the safety check blocks Claude from production's database).
+
+### More platform admins
+Once an admin is active, the operator command refuses ("another admin is active"), and an admin invites the next one: in the admin console, or from the terminal, signed in as the seeded admin from the environment's `.accounts` file:
+```
+sh deploy/run-task.sh production invite-admin lan@example.com Lan Nguyen
+```
+It prints the one-time invitation link once. Run it in your own terminal, not as a `!` command in Claude Code, which would put the link in the chat. The invitee opens the link and sets a password and TOTP, as the first admin did. The invitation is audited with the seeded admin as the actor.
 
 ### Onboarding a restaurant
 An admin calls `POST /v1/admin/restaurants` with an `Idempotency-Key`, the profile and the first manager's email. The answer holds a one-time invitation link (72 h) to pass on to the manager. A retry with the same key returns the same restaurant and a **fresh** link that replaces the first. See [user-guides.md §2](user-guides.md#2-platform-admin).

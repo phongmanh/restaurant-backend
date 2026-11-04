@@ -6,11 +6,12 @@
 #   deploy/run-task.sh production seed      # seedStaging
 #   deploy/run-task.sh production system    # systemTest
 #   deploy/run-task.sh production migrate   # Flyway migrations (deploy/README.md "Releasing" step 2)
+#   deploy/run-task.sh production invite-admin <email> <display name>   # a platform admin (inviteAdmin)
 set -eu
 
 case "${1:-}" in
   staging|production) env=$1 ;;
-  *) echo "usage: $0 staging|production seed|system|migrate" >&2; exit 2 ;;
+  *) echo "usage: $0 staging|production seed|system|migrate|invite-admin <email> <display name>" >&2; exit 2 ;;
 esac
 url="https://restaurant-$env-liam-36c7.vercel.app"
 
@@ -24,5 +25,12 @@ case "${2:-}" in
   seed) exec ./gradlew --no-daemon seedStaging --args="$url" ;;
   system) exec ./gradlew --no-daemon systemTest -PstagingUrl="$url" ;;
   migrate) exec ./gradlew --no-daemon migrate ;;
-  *) echo "usage: $0 staging|production seed|system|migrate" >&2; exit 2 ;;
+  invite-admin)
+    [ $# -ge 4 ] || { echo "usage: $0 $env invite-admin <email> <display name>" >&2; exit 2; }
+    shift 2
+    INVITE_ADMIN_EMAIL=$1; shift
+    INVITE_ADMIN_NAME="$*"
+    export INVITE_ADMIN_EMAIL INVITE_ADMIN_NAME
+    exec ./gradlew --no-daemon -q inviteAdmin --args="$url" ;;
+  *) echo "usage: $0 staging|production seed|system|migrate|invite-admin <email> <display name>" >&2; exit 2 ;;
 esac
