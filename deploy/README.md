@@ -222,9 +222,9 @@ Release 1 runs on free plans, a learning project with test data only (release-ch
 
 ### Releasing
 1. **Claude (PR), you (merge):** the release commit on `main`, CI green; staging redeployed from it and its smoke check and AT subset passed; tag `release/<version>` (release-checklist §5 steps 1–3).
-2. **You:** migrations first if the release adds one (they are expand-only, so the running deployment keeps working).
-3. **You:** `sh deploy/release.sh production --env`. It sends the variables, deploys, points the protected domain at the new deployment and checks that the public domain answers `200` (Q-29). Send Claude the deployment URL it prints.
-4. **Claude:** the smoke check, as staging step 11 on production's domains: `/health` 200 on the protected domain with the bypass header and refused without it, `200` on the public `restaurant-production.vercel.app`, no other alias answering `200` without it (`vercel alias ls`), start-up lines clean, `log-review.py --project restaurant-production --accounts deploy/production/.accounts.production` within the hour.
+2. **You:** migrations first if the release adds one (they are expand-only, so the running deployment keeps working): `sh deploy/run-task.sh production migrate`, which loads both env files and prints `migrations applied: <n>`.
+3. **You:** `sh deploy/release.sh production --env`. The env files are the only place to change a setting: `--env` replaces every variable they name, so a value set in Vercel's dashboard is lost on the next push (on 2026-11-04 the admin app's `ADMIN_APP_URL` and `ALLOWED_ORIGINS` went that way, and its sign-in got `403`). It sends the variables, deploys, points the protected domain at the new deployment and checks that the public domain answers `200` (Q-29). Send Claude the deployment URL it prints.
+4. **Claude:** the smoke check, as staging step 11 on production's domains: `/health` 200 on the protected domain with the bypass header and refused without it, `200` on the public `restaurant-production.vercel.app`, no other alias answering `200` without it (`vercel alias ls`), start-up lines clean, no `Failed to publish metrics` line (a `401` there means the OTLP header is wrong: on 2026-11-04 a stray character before `Authorization=` had kept production's metrics out of Grafana), `log-review.py --project restaurant-production --accounts deploy/production/.accounts.production` within the hour.
 5. **You:** `sh deploy/run-task.sh production system` for the system suite. On a fresh database, `sh deploy/run-task.sh production seed` first.
 
 ### Rolling back
