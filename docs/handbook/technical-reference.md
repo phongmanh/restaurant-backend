@@ -187,7 +187,7 @@ sequenceDiagram
 | Lockout | 10 failures in 15 min lock the account for 15 min, stored in PostgreSQL (works when Redis is down); same 401; existing refresh tokens keep working |
 | Admin MFA | TOTP (RFC 6238, 6 digits, 30 s, ±1 step), secret encrypted with AES-256-GCM; sign-in answers `mfa_required` + a 5-minute single-use `mfa_token`; `POST /v1/auth/mfa` finishes it; a time step can't be reused |
 | Access token | ES256 JWT, 15 min; `iss`, `aud` (`staff`/`admin`), `sub`, `sid`, `amr`, `kid`; 30 s leeway |
-| Refresh token | 256-bit random, stored as SHA-256; single use, rotated on every refresh; valid 12 h idle, 24 h from sign-in at most; reuse revokes the whole sign-in |
+| Refresh token | 256-bit random, stored as SHA-256; single use, rotated on every refresh; valid 12 h idle, 24 h from sign-in at most; a used token sent again within 10 s (`REFRESH_GRACE_SECONDS`) gets a fresh sibling, at most 3 times, for a page reloaded mid-refresh; after that, reuse revokes the whole sign-in (CR-017) |
 | Refresh cookie | `__Secure-rt-staff` / `__Secure-rt-admin`, `HttpOnly; Secure; SameSite=Strict`, path `AUTH_COOKIE_PATH` |
 | Invitations, resets | One-time 256-bit token, stored hashed, 72 h / 24 h, in the URL fragment (`https://<staff app>/invite#<token>`); a new link voids the old; never stored in an idempotent response or a log |
 | Ending access | A role change revokes sessions; deactivation, TOTP reset or erasure revokes sessions and voids every open link, in the same transaction |

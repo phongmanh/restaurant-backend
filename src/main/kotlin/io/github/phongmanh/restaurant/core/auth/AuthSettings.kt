@@ -7,6 +7,7 @@ import io.github.phongmanh.restaurant.core.auth.crypto.EmailHmac
 import io.github.phongmanh.restaurant.core.auth.crypto.SecretBox
 import io.github.phongmanh.restaurant.core.auth.persistence.LinkKind
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /** Sign-in settings (core-and-auth §13). The keys are parsed at startup, so a bad one stops it. */
 data class AuthSettings(
@@ -19,7 +20,19 @@ data class AuthSettings(
     val cookiePath: String,
     val argon2: Argon2Settings,
     val links: LinkUrls,
-)
+    /**
+     * How long a refresh token just used may be swapped once more (§8.3, CR-017): a page reloaded
+     * mid-refresh sends it again. Zero is the strict reuse rule.
+     */
+    val refreshGrace: Duration = DEFAULT_REFRESH_GRACE,
+) {
+    companion object {
+        val DEFAULT_REFRESH_GRACE: Duration = 10.seconds
+
+        /** The longest grace `auth.refreshGraceSeconds` may set: a longer one gives a thief more room. */
+        const val MAX_REFRESH_GRACE_SECONDS = 30
+    }
+}
 
 /**
  * Guest access (tables §2, §3.2; ADR-0006): the guest session tokens' keys, the QR codes' keys and

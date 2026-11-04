@@ -22,6 +22,9 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.jsonObject
 import java.security.SecureRandom
 import kotlin.test.BeforeTest
@@ -31,11 +34,12 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
-/** IT-AUTH-06 to IT-AUTH-09 and IT-AUTH-12 (core-and-auth §8.2–§8.4, §8.7). */
+/** IT-AUTH-06 to IT-AUTH-09, IT-AUTH-12, IT-AUTH-14 and IT-AUTH-15 (core-and-auth §8.2–§8.4, §8.7). */
 class SessionTest {
     private val email = "lan@pho.example"
     private val adminEmail = "ops@platform.example"
@@ -115,9 +119,24 @@ class SessionTest {
             assertTrue("auth.account.locked" in AuthFixtures.auditActions())
         }
 
+    /** The strict reuse rule of 2026-10-15: no grace period (§8.3, CR-017's `REFRESH_GRACE_SECONDS=0`). */
+    private val strict = TestDatabase.config.let { it.copy(auth = it.auth.copy(refreshGrace = Duration.ZERO)) }
+
+    private suspend fun HttpClient.rotate(token: String): String {
+        val response = refresh(token)
+        assertEquals(HttpStatusCode.OK, response.status)
+        return response.cookie(staffCookie)!!
+    }
+
+    private fun graceSwaps(): List<Int> =
+        AuthFixtures.query("SELECT grace_swaps FROM staff_refresh_tokens WHERE grace_swaps > 0 ORDER BY grace_swaps") { it.getInt(1) }
+
+    private fun revokeReasons(): List<String?> =
+        AuthFixtures.query("SELECT revoke_reason FROM staff_sessions ORDER BY started_at") { it.getString(1) }
+
     @Test
     fun `IT-AUTH-07 a refresh rotates, and reusing the old token ends the session`() =
-        authApp {
+        authApp(config = strict) {
             AuthFixtures.staff(AuthFixtures.restaurant(), email)
             val first = client.signIn(email).cookie(staffCookie)!!
             val rotated = client.refresh(first)
@@ -138,6 +157,73 @@ class SessionTest {
                 listOf("refresh_reuse"),
                 AuthFixtures.query("SELECT revoke_reason FROM staff_sessions") { it.getString(1) },
             )
+        }
+
+    @Test
+    fun `IT-AUTH-14 a token used seconds ago gets a fresh sibling, once a sibling is used the rest are reuse`() {
+        val clock = MutableClock()
+        authApp(clock) {
+            AuthFixtures.staff(AuthFixtures.restaurant(), email)
+
+            // A reload mid-refresh: the first answer is lost, the reloaded page sends the old token again.
+            val first = client.signIn(email).cookie(staffCookie)!!
+            val lost = client.rotate(first)
+            clock.advance(2.seconds)
+            val again = client.refresh(first)
+            assertEquals(HttpStatusCode.OK, again.status, "within the grace period")
+            val kept = again.cookie(staffCookie)!!
+            assertNotEquals(lost, kept)
+            assertEquals(HttpStatusCode.OK, client.probe(again.field("access_token")).status)
+            val next = client.rotate(kept)
+            assertEquals(HttpStatusCode.Unauthorized, client.refresh(lost).status, "its sibling was used first")
+            assertEquals(HttpStatusCode.Unauthorized, client.refresh(next).status, "so the whole session ended")
+            assertEquals(listOf<String?>("refresh_reuse"), revokeReasons())
+
+            // After the window the strict rule holds.
+            val late = client.signIn(email).cookie(staffCookie)!!
+            val child = client.rotate(late)
+            clock.advance(11.seconds)
+            assertEquals(HttpStatusCode.Unauthorized, client.refresh(late).status, "11 s after its use")
+            assertEquals(HttpStatusCode.Unauthorized, client.refresh(child).status)
+
+            // At most three grace swaps of one token.
+            val capped = client.signIn(email).cookie(staffCookie)!!
+            client.rotate(capped)
+            repeat(3) { client.rotate(capped) }
+            assertEquals(HttpStatusCode.Unauthorized, client.refresh(capped).status, "a 4th swap")
+
+            // Once a child is used, its parent coming back is a replay, even within the window.
+            val parent = client.signIn(email).cookie(staffCookie)!!
+            val grandchild = client.rotate(client.rotate(parent))
+            assertEquals(HttpStatusCode.Unauthorized, client.refresh(parent).status, "its child was used")
+            assertEquals(HttpStatusCode.Unauthorized, client.refresh(grandchild).status)
+
+            assertEquals(List<String?>(4) { "refresh_reuse" }, revokeReasons())
+            assertEquals(4, AuthFixtures.auditActions().count { it == "auth.refresh.reuse_detected" })
+        }
+    }
+
+    @Test
+    fun `IT-AUTH-15 grace swaps at once take turns, and never deadlock with a child's use`() =
+        authApp {
+            AuthFixtures.staff(AuthFixtures.restaurant(), email)
+            val first = client.signIn(email).cookie(staffCookie)!!
+            client.rotate(first)
+            val swaps = coroutineScope { (1..3).map { async { client.refresh(first) } }.awaitAll() }
+            assertEquals(List(3) { HttpStatusCode.OK }, swaps.map { it.status })
+            assertEquals(listOf(3), graceSwaps())
+            val sibling = swaps.first().cookie(staffCookie)!!
+            assertEquals(HttpStatusCode.OK, client.refresh(sibling).status, "the session is still live")
+
+            // A child's use racing its parent's grace swaps: each answer is 200 or 401, never a 500.
+            val parent = client.signIn(email).cookie(staffCookie)!!
+            val child = client.rotate(parent)
+            val raced =
+                coroutineScope {
+                    (listOf(async { client.refresh(child) }) + (1..3).map { async { client.refresh(parent) } }).awaitAll()
+                }
+            val statuses = raced.map { it.status }
+            assertTrue(statuses.all { it == HttpStatusCode.OK || it == HttpStatusCode.Unauthorized }, "$statuses")
         }
 
     @Test

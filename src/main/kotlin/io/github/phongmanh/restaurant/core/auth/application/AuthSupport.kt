@@ -12,6 +12,7 @@ import io.github.phongmanh.restaurant.core.auth.crypto.Audience
 import io.github.phongmanh.restaurant.core.auth.crypto.SecureTokens
 import io.github.phongmanh.restaurant.core.auth.domain.SessionPolicy
 import io.github.phongmanh.restaurant.core.auth.domain.StaffAccount
+import io.github.phongmanh.restaurant.core.auth.persistence.RefreshTokenRepository
 import io.github.phongmanh.restaurant.core.auth.persistence.StaffAccountRepository
 import io.github.phongmanh.restaurant.core.auth.persistence.StaffSession
 import io.github.phongmanh.restaurant.core.auth.persistence.StaffSessionRepository
@@ -38,6 +39,7 @@ class IssuedTokens(
 /** Starts sessions and swaps refresh tokens (§8.3). */
 class SessionIssuer(
     private val sessions: StaffSessionRepository,
+    private val refreshTokens: RefreshTokenRepository,
     private val accessTokens: AccessTokens,
     private val tokens: SecureTokens,
     private val ids: IdGenerator,
@@ -55,15 +57,16 @@ class SessionIssuer(
         return issue(tx, session, now)
     }
 
-    /** The next refresh token of a live [session], and a new access token. */
+    /** The next refresh token of a live [session], replacing the token [parentHash], and a new access token. */
     fun issue(
         tx: TxScope,
         session: StaffSession,
         now: Instant,
+        parentHash: ByteArray? = null,
     ): IssuedTokens {
         val refresh = tokens.generate()
         val idleExpiresAt = minOf(now.plus(SessionPolicy.REFRESH_IDLE), session.expiresAt)
-        sessions.issueRefreshToken(tx, SecureTokens.hash(refresh), session.id, now, idleExpiresAt)
+        refreshTokens.issue(tx, SecureTokens.hash(refresh), session.id, now, idleExpiresAt, parentHash)
         val access = accessTokens.sign(AccessClaims(session.staffId.value, session.id.value, session.audience, session.amr))
         return IssuedTokens(access, session.audience, refresh, idleExpiresAt)
     }
