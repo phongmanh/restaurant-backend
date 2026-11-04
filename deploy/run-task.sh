@@ -5,11 +5,12 @@
 #
 #   deploy/run-task.sh production seed      # seedStaging
 #   deploy/run-task.sh production system    # systemTest
+#   deploy/run-task.sh production migrate   # Flyway migrations (deploy/README.md "Releasing" step 2)
 set -eu
 
 case "${1:-}" in
   staging|production) env=$1 ;;
-  *) echo "usage: $0 staging|production seed|system" >&2; exit 2 ;;
+  *) echo "usage: $0 staging|production seed|system|migrate" >&2; exit 2 ;;
 esac
 url="https://restaurant-$env-liam-36c7.vercel.app"
 
@@ -22,5 +23,6 @@ done
 case "${2:-}" in
   seed) exec ./gradlew --no-daemon seedStaging --args="$url" ;;
   system) exec ./gradlew --no-daemon systemTest -PstagingUrl="$url" ;;
-  *) echo "usage: $0 staging|production seed|system" >&2; exit 2 ;;
+  migrate) exec ./gradlew --no-daemon migrate ;;
+  *) echo "usage: $0 staging|production seed|system|migrate" >&2; exit 2 ;;
 esac
