@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Restaurant ordering API
-  version: 1.1.1
+  version: 1.1.2
   description: |
     Contract for the restaurant ordering service (`docs/sdlc/restaurant-ordering/`).
     Hand-written in Phase 3 and frozen at G3 on 2026-10-15 (architecture §5, ADR-0007). Changes need a CR;
@@ -120,7 +120,9 @@ paths:
       x-allowed-when-suspended: true
       summary: Swap the refresh cookie for a new access token and a new refresh cookie
       description: |
-        The refresh token is single-use. Presenting one that was already used ends the
+        The refresh token is single-use. For a few seconds after its use (`REFRESH_GRACE_SECONDS`,
+        10 by default), presenting it again while the session is live returns a fresh pair, so a page
+        reloaded mid-refresh stays signed in (CR-017). Presenting a used token after that ends the
         whole session (core-and-auth §8.3).
       security:
         - refreshCookie: []

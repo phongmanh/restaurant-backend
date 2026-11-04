@@ -68,6 +68,9 @@ class ServiceMeters(
     /** A table session opened by a scan (FR-001); joining one doesn't count. */
     fun sessionOpened() = counter("sessions.opened").increment()
 
+    /** A refresh token used again within its grace period (core-and-auth §8.3, CR-017), by audience. */
+    fun refreshGrace(audience: String) = counter("auth.refresh.grace", "audience", audience).increment()
+
     /** One reconcile run [at]: days rebuilt, mismatches found, restaurants that failed, and the worst lag. */
     fun reconcile(
         days: Int,

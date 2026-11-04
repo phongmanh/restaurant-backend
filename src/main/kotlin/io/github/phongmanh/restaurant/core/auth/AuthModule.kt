@@ -27,6 +27,7 @@ import io.github.phongmanh.restaurant.core.auth.http.RefreshCookies
 import io.github.phongmanh.restaurant.core.auth.persistence.CallerRepository
 import io.github.phongmanh.restaurant.core.auth.persistence.LinkTokenRepository
 import io.github.phongmanh.restaurant.core.auth.persistence.PlatformAdminRepository
+import io.github.phongmanh.restaurant.core.auth.persistence.RefreshTokenRepository
 import io.github.phongmanh.restaurant.core.auth.persistence.StaffAccountRepository
 import io.github.phongmanh.restaurant.core.auth.persistence.StaffMemberRepository
 import io.github.phongmanh.restaurant.core.auth.persistence.StaffSessionRepository
@@ -62,6 +63,7 @@ fun authModule(
         single { StaffAccountRepository() }
         single { StaffTotpRepository() }
         single { StaffSessionRepository() }
+        single { RefreshTokenRepository() }
         single { LinkTokenRepository() }
         single { StaffMemberRepository() }
         single { PlatformAdminRepository() }
@@ -69,13 +71,13 @@ fun authModule(
 
         single { AuthAudit(get()) }
         single { CredentialFailures(get(), get()) }
-        single { SessionIssuer(get(), get(), get(), get()) }
+        single { SessionIssuer(get(), get(), get(), get(), get()) }
         single { Authentication(get(), get(), get(), get()) }
         // The GuestAuthenticator comes from the tables feature (tables §3.2).
         single<CallAuthenticator> { BearerAuthenticator(get(), get()) }
         single { SignInService(get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
         single { MfaService(get(), get(), get(), get(), get(), get(), get(), get(), get()) }
-        single { RefreshService(get(), get(), get(), get(), get(), get(), get()) }
+        single { RefreshService(get(), get(), get(), get(), get(), get(), get(), get(), get(), auth.refreshGrace) }
         single { LinkService(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
         single { PasswordService(get(), get(), get(), get(), get(), get(), get(), get(), get()) }
         single { AuthRateLimits(get(), get()) }

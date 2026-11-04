@@ -34,6 +34,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /** The auth cases of IT-CORE-05 (audit) and IT-CORE-09 (logs). */
 class AuthAuditAndLogsTest {
@@ -110,7 +111,11 @@ class AuthAuditAndLogsTest {
         repeat(10) { client.signIn("lan@pho.example", "wrong password") }
         clock.advance(16.minutes)
         val first = client.signIn("lan@pho.example").cookie("__Secure-rt-staff")!!
-        repeat(2) { client.postJson("/v1/auth/refresh", refresh) { header(HttpHeaders.Cookie, "__Secure-rt-staff=$first") } }
+        // Twice with the same token: the second, past the grace period (CR-017), is reuse.
+        repeat(2) {
+            client.postJson("/v1/auth/refresh", refresh) { header(HttpHeaders.Cookie, "__Secure-rt-staff=$first") }
+            clock.advance(11.seconds)
+        }
         val token = client.signIn("lan@pho.example").field("access_token")
         val change = """{"current_password": "${AuthFixtures.PASSWORD}", "new_password": "a brand new passphrase"}"""
         client.postJson("/v1/auth/password", change) { bearerAuth(token) }
