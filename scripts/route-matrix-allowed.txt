@@ -2,13 +2,3 @@
 # `python3 scripts/route-matrix.py --check` (the routeMatrix task in ./gradlew build) fails on a gap
 # not listed here, and on a line here that's no longer a gap, so the list only shrinks.
 # Format: METHOD /path column. Add a line only with the owner's waiver (G4 readiness §3).
-
-# FR-022 (Should): the image routes stay unbuilt until TBD-13 (image store). Waiver proposed for G4.
-PUT /v1/staff/menu/items/{itemId}/image 401
-PUT /v1/staff/menu/items/{itemId}/image 400
-PUT /v1/staff/menu/items/{itemId}/image 404
-PUT /v1/staff/menu/items/{itemId}/image 2xx
-DELETE /v1/staff/menu/items/{itemId}/image 401
-DELETE /v1/staff/menu/items/{itemId}/image 404
-DELETE /v1/staff/menu/items/{itemId}/image 2xx
-

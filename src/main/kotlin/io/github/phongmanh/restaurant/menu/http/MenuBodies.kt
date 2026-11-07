@@ -1,5 +1,6 @@
 package io.github.phongmanh.restaurant.menu.http
 
+import io.github.phongmanh.restaurant.menu.application.MenuImages
 import io.github.phongmanh.restaurant.menu.domain.Category
 import io.github.phongmanh.restaurant.menu.domain.Menu
 import io.github.phongmanh.restaurant.menu.domain.MenuItem
@@ -13,8 +14,8 @@ import kotlinx.serialization.Serializable
 /*
  * Request and response bodies of the menu feature, as `components.schemas` in the contract names
  * them. Request fields are all optional here so that a missing one is a `validation_failed` field
- * error (`required`) rather than an unreadable body. No response has an `image` yet: FR-022 isn't
- * built (TBD-13), and the contract makes the field optional.
+ * error (`required`) rather than an unreadable body. An item without a photo has no `image`: the
+ * contract makes the field optional.
  */
 
 /** `Money`: whole đồng as a string (CLAUDE.md, wire formats). */
@@ -25,6 +26,17 @@ data class MoneyBody(
 ) {
     companion object {
         fun of(amount: Long) = MoneyBody(amount.toString(), MenuRules.CURRENCY)
+    }
+}
+
+/** `MenuImage` (menu §6): the photo's two public URLs on the image store's domain. */
+@Serializable
+data class MenuImageBody(
+    val url: String,
+    @SerialName("thumb_url") val thumbUrl: String,
+) {
+    companion object {
+        fun of(imageKey: String?) = imageKey?.let { MenuImageBody(MenuImages.largeUrl(it), MenuImages.thumbUrl(it)) }
     }
 }
 
@@ -134,6 +146,7 @@ data class StaffMenuItem(
     val price: MoneyBody,
     val active: Boolean,
     @SerialName("sold_out") val soldOut: Boolean,
+    val image: MenuImageBody? = null,
     @SerialName("option_groups") val optionGroups: List<StaffOptionGroup>,
     val version: Int,
 ) {
@@ -149,6 +162,7 @@ data class StaffMenuItem(
                 price = MoneyBody.of(i.price),
                 active = i.active,
                 soldOut = i.soldOut,
+                image = MenuImageBody.of(i.imageKey),
                 optionGroups = i.optionGroups.map(StaffOptionGroup::of),
                 version = i.version,
             )
@@ -207,6 +221,7 @@ data class GuestMenuItem(
     val description: String?,
     val price: MoneyBody,
     @SerialName("sold_out") val soldOut: Boolean,
+    val image: MenuImageBody? = null,
     @SerialName("option_groups") val optionGroups: List<GuestOptionGroup>,
 )
 
@@ -259,6 +274,7 @@ data class GuestMenu(
                     MenuLanguages.pickOptional(lang, i.descriptionVi, i.descriptionEn),
                     MoneyBody.of(i.price),
                     i.soldOut,
+                    MenuImageBody.of(i.imageKey),
                     i.optionGroups.map(::group),
                 )
             val categories =

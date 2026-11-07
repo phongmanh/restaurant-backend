@@ -17,6 +17,7 @@ The non-secret settings for staging are in [`staging/staging.env`](staging/stagi
 | `DATABASE_URL_MIGRATOR_DIRECT` | Neon console: the `migrator` role's **direct** connection string (pooling off). Used by `./gradlew migrate` on your machine; never sent to Vercel |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Upstash console, the database's REST API section |
 | `ABLY_API_KEY` | Ably console, the app's API keys. Only with `LIVE_PUSH=ably`; release 1 runs `LIVE_PUSH=off` (CR-013, set in `staging.env`) and leaves it out |
+| `BLOB_READ_WRITE_TOKEN` | Vercel → Storage → the environment's own Blob store (`restaurant-staging-images`, `restaurant-production-images`), created with **public** access → its read-write token. Optional: without it the menus work and photo uploads answer `503 image_storage_unavailable` (menu §6, TBD-13). Don't connect the store to the project in Vercel's dashboard: that adds the variable there, and settings live in the env files only |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` | Grafana Cloud, the stack's OpenTelemetry (OTLP) connection: the endpoint, and the `Authorization=Basic …` header made with a token that can write metrics (ADR-0009, TBD-12) |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | Vercel project → Settings → Deployment Protection → Protection Bypass for Automation. Test clients send it as `x-vercel-protection-bypass`; never sent to the service |
 
@@ -37,6 +38,7 @@ Steps marked **you** are the owner's. The auto-mode safety check blocks Claude f
    - `DATABASE_URL_MIGRATOR_DIRECT`: the `migrator` connection string with **pooling off** (the host has no `-pooler`).
    - Upstash: create a free Redis database `restaurant-staging` in **AWS ap-southeast-1 (Singapore)**, then copy `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
    - Ably, only with `LIVE_PUSH=ably` (release 1 runs `off`, CR-013, so skip this): create an app `restaurant-staging`. Add an API key with only the **publish** and **subscribe** capabilities, on the resource `*`, and copy it into `ABLY_API_KEY`. The app holds only this environment's channels, and the tokens the service mints narrow it further, to one `restaurant.<id>.staff` or `session.<id>` channel each.
+   - Vercel Blob, for menu photos (FR-022): in Vercel → Storage, create a Blob store `restaurant-staging-images` with **public** access, without connecting it to a project, and copy its read-write token into `BLOB_READ_WRITE_TOKEN`. The service's live check runs with it in the shell: `BLOB_READ_WRITE_TOKEN=… ./gradlew test --tests '*VercelBlobLiveTest*'`.
    - Leave `VERCEL_AUTOMATION_BYPASS_SECRET` for step 7.
 5. **Claude: run the migrations** against Neon. This creates the roles, applies V1 onwards, and is the first check of R-15 (whether Neon's owner role can grant `BYPASSRLS`):
    ```
@@ -190,6 +192,7 @@ Every key and secret is listed in [asvs-checklist.md §5.1](../docs/sdlc/restaur
 | `EMAIL_HMAC_KEY` | Until exposed | A new key stops linking new sign-in failures to older ones |
 | `CRON_SECRET`, database passwords | 1 year | `app` and `app_platform`: new URLs from `generateSecrets`, then `migrate` (it resets both passwords), then step 9 and step 10. `migrator`: reset in the Neon console |
 | `ABLY_API_KEY`, `UPSTASH_REDIS_REST_TOKEN`, `OTEL_EXPORTER_OTLP_HEADERS`, `VERCEL_AUTOMATION_BYPASS_SECRET` | 1 year | Issue a new one in the provider's console, deploy, then revoke the old one |
+| `BLOB_READ_WRITE_TOKEN` | Until exposed | Rotate it in the Blob store's settings, put the new one in the env file, deploy; uploads answer `503` between the rotation and the deploy, and menus keep their photos |
 
 ### Vulnerable dependencies (ASVS V15.1.1, V15.2.1, F-3)
 CI lists what ships as two CycloneDX SBOMs, each kept 90 days as an artifact: `sbom-libraries`, the runtime classpath from Gradle (`./gradlew cyclonedxBom`), and `sbom-image`, the image's JRE and Ubuntu packages (Syft). Two, because a fat jar keeps no trace of the Gradle-published libraries (Ktor, Exposed, Kotlin), so an image scan alone misses them. Grype then fails the build on a **High or Critical vulnerability that has a fixed version**. One without a fix doesn't fail the build: it is tracked until a fix ships. A library's fix usually comes through a BOM or a version in `gradle/libs.versions.toml` (Jackson, step 6a). Dependabot opens weekly update PRs for the Gradle libraries and the workflow's actions (`.github/dependabot.yml`).
@@ -217,7 +220,7 @@ Release 1 runs on free plans, a learning project with test data only (release-ch
 ### Setting it up (once)
 1. **You:** Neon project `restaurant-production` (Singapore, PostgreSQL 18), roles and database as staging step 1.
 2. **Claude:** `./gradlew generateSecrets --args="deploy/production/.env.production --db-host <pooled host> --db-name restaurant"`.
-3. **You:** fill in `DATABASE_URL_MIGRATOR_DIRECT`, the Upstash pair (staging's database, CR-015), the Grafana OTLP header with production's own token, and the bypass secret (staging steps 4 and 7).
+3. **You:** fill in `DATABASE_URL_MIGRATOR_DIRECT`, the Upstash pair (staging's database, CR-015), the Grafana OTLP header with production's own token, the bypass secret (staging steps 4 and 7), and the read-write token of production's own Blob store `restaurant-production-images` (public, never staging's).
 4. **You:** `vercel link` (new project `restaurant-production`), then `vercel git disconnect --yes` at once; then the WAF rule above.
 5. **You:** the migrations, as staging step 5 with `.env.production`.
 

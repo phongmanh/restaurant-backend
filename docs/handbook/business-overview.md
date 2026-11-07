@@ -81,7 +81,7 @@ Release 1 (`1.0.1`) went live on 2026-10-19. Priorities are MoSCoW: **M**ust, **
 | | Reject one dish of an accepted order (FR-015) | S | Yes |
 | Menu | Categories and items: create, edit, reorder, hide, delete (FR-020) | M | Yes |
 | | Sold out with one tap (FR-021) | M | Yes |
-| | Photos of dishes (FR-022) | S | **No**: waits for the choice of image store (TBD-13) |
+| | Photos of dishes (FR-022) | S | **Built, not yet released** (2026-11-07): stored in Vercel Blob (TBD-13) |
 | | Options such as size or spice level, with price changes (FR-023) | S | Yes |
 | | Vietnamese and English names (FR-024) | S | Yes |
 | Tables | Tables, areas and seats (FR-030) | M | Yes |
@@ -146,10 +146,10 @@ From [cost-estimate.md](../sdlc/restaurant-ordering/cost-estimate.md) v0.3, a dr
 |---|---|---|
 | Release 1's design (screens refresh on a timer) | ≈ 1,030 – 1,300 | ≈ 3,000 – 3,840 |
 | With live push (Ably) | ≈ 1,540 – 1,740 | ≈ 3,700 – 4,350 |
-| Menu photos, if built | + ≈ 470 | + ≈ 1,420 |
+| Menu photos (built, not yet released) | + ≈ 470 | + ≈ 1,420 |
 | **Per restaurant, release 1's design** | **≈ $2.10 – 2.60** | **≈ $2.00 – 2.60** |
 
-What drives the bill, largest first: requests counted at Vercel's edge (every timer refresh is a request), the push provider if added, menu photos if built, then the database, which is cheap by comparison. Not included: staff, support, legal review, domain and app-store fees.
+What drives the bill, largest first: requests counted at Vercel's edge (every timer refresh is a request), the push provider if added, menu photos once released, then the database, which is cheap by comparison. Not included: staff, support, legal review, domain and app-store fees.
 
 ## 10. Where the project stands
 The project ran as six phases, each closed by a gate the owner decided.

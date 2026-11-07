@@ -16,6 +16,7 @@ import io.github.phongmanh.restaurant.menu.domain.NewItem
 import io.github.phongmanh.restaurant.menu.domain.OptionGroupInput
 import io.github.phongmanh.restaurant.menu.persistence.CategoryRepository
 import io.github.phongmanh.restaurant.menu.persistence.ItemRepository
+import io.github.phongmanh.restaurant.menu.persistence.MenuImageRepository
 import io.github.phongmanh.restaurant.menu.persistence.OptionRepository
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -35,6 +36,7 @@ class MenuEditService(
     private val categories: CategoryRepository,
     private val items: ItemRepository,
     private val options: OptionRepository,
+    private val retirements: MenuImageRepository,
     private val ids: IdGenerator,
 ) {
     /** A new category, last in the order. */
@@ -142,7 +144,10 @@ class MenuEditService(
             items.find(tx, restaurantId, id)!!
         }
 
-    /** Soft delete (FR-020): gone from every menu view; past order lines keep their snapshot. */
+    /**
+     * Soft delete (FR-020): gone from every menu view; past order lines keep their snapshot. Its
+     * photo leaves the store 30 days later (menu §6).
+     */
     suspend fun deleteItem(
         editor: MenuEditor,
         id: ItemId,
@@ -152,6 +157,7 @@ class MenuEditService(
         val current = items.find(tx, restaurantId, id) ?: throw DomainError.NotFound()
         if (current.version != version) throw DomainError.PreconditionFailed()
         items.delete(tx, restaurantId, id, now)
+        current.imageKey?.let { retirements.retire(tx, restaurantId, it, now.plus(MenuImages.RETIREMENT)) }
         changed("menu.item.deleted", ITEM_TARGET, id.value)
     }
 

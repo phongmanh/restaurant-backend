@@ -137,7 +137,7 @@ Each feature has the same layers, and dependencies point inwards:
 | auth | sign-in, mfa, refresh, sign-out, links/inspect, invitations/accept, password-resets/complete, password, me | Same `401 invalid_credentials` for every sign-in failure |
 | restaurants, staff, audit | profile read and update, members (invite, update, deactivate, reactivate, re-issue invitation, password reset), audit log | Manager-only writes; last-manager rule |
 | admin, privacy | restaurants (onboard, update, suspend, reactivate), members per restaurant, admins (invite, deactivate, reset, TOTP reset), audit, staff export and erase | Every admin read of the audit log is itself audited |
-| menu | guest menu, staff menu, categories and items CRUD and ordering, sold out, image (not built), admin menu read | Guest menu revalidated by `ETag` = menu version |
+| menu | guest menu, staff menu, categories and items CRUD and ordering, sold out, item photo (Vercel Blob; built 2026-11-07, not yet released), admin menu read | Guest menu revalidated by `ETag` = menu version |
 | tables | guest session open/join and read, waiter calls, floor view, tables CRUD, QR codes and rotation, staff open, move | One open session per table, enforced by a unique index |
 | orders | guest place, list, read, cancel, bill; staff place, list, read, status, reject line, bill, close, adjustments, bills of a day | Server pricing; all lines or none |
 | realtime | guest and staff events (catch-up), guest and staff realtime-token | Tokens answer `503` with `LIVE_PUSH=off` |
@@ -251,6 +251,7 @@ Eleven Flyway migrations, all expand-only, create these tables:
 | V9 event publishing | (outbox columns) | realtime |
 | V10 reconciliation | `sales_reconciliation` | reports |
 | V11 note retention | (columns for clearing correction notes) | orders |
+| V13 menu images | `menu_image_retirements` (photos waiting 30 days for deletion) | menu |
 
 ```mermaid
 erDiagram
@@ -315,7 +316,7 @@ Vercel Cron calls each with a `GET` and the cron secret. Each is idempotent, wor
 | Route | Schedule (Hobby) | Designed for Pro | Work |
 |---|---|---|---|
 | `/internal/jobs/sales-reconcile` | 20:00 | Hourly, each restaurant after its local 03:00 | Rebuild the last 2 days of daily aggregates; record it in `sales_reconciliation` |
-| `/internal/jobs/retention` | 20:15 | Daily | Runs every bound `RetentionTask`. Built: clearing order-line and correction notes 30 days after close |
+| `/internal/jobs/retention` | 20:15 | Daily | Runs every bound `RetentionTask`. Built: clearing order-line and correction notes 30 days after close; deleting replaced, removed and deleted items' photos from the store 30 days on (`menu_images`, 2026-11-07, not yet released) |
 | `/internal/jobs/event-purge` | 20:30 | Hourly | Delete events (and sent outbox rows) older than 7 days |
 | `/internal/jobs/session-auto-close` | 20:45 | Hourly | Close empty sessions idle for 2 h |
 | `/internal/jobs/outbox-sweep` | 21:00 | Every minute | Publish outbox rows a request didn't (no work with `LIVE_PUSH=off`) |
@@ -329,7 +330,6 @@ Found while writing this reference by comparing core-and-auth §10 and architect
 | `/internal/jobs/audit-export`: the day's audit entries to locked object storage | core-and-auth §12 | The audit log exists only in PostgreSQL |
 | Retention: anonymise staff 30 days after deactivation | architecture §6, restaurants §10 | Deactivated staff keep their name and email until erased by request (the erase endpoint works) |
 | Retention: archive orders and bills older than 2 years | architecture §6 | Nothing is 2 years old yet |
-| Retention: delete replaced menu images after 30 days | menu §6 | No images exist (FR-022 not built) |
 
 ## 12. Rate limits
 A `RateLimiter` port with an Upstash adapter: fixed windows, key `<APP_ENV>:rl:<policy>:<subject>:<window>` (the environment prefix because staging and production share one free database, CR-015). Over the limit → `429 rate_limited` with `Retry-After`. If Upstash fails, application limits **fail open** and the WAF still applies.
@@ -384,7 +384,7 @@ Committed non-secret files: `deploy/staging/staging.env`, `deploy/production/pro
 | Unit | `src/test`, fakes | Domain rules, state machines, parsing |
 | Integration | `testApplication` + Testcontainers | Every route against a real PostgreSQL with RLS, idempotency, `If-Match`, concurrency (two writers at once), the authorisation cases |
 | Contract | `ContractCheck` in every `testApp` call | Each response's status, media type and fields are in the contract |
-| Route-test matrix | `RouteLog`, `scripts/route-matrix.py` | Every documented 401, 400, 404 and success of every operation has a test that produced it; `scripts/route-matrix-allowed.txt` lists the only waived gaps (FR-022's image routes) |
+| Route-test matrix | `RouteLog`, `scripts/route-matrix.py` | Every documented 401, 400, 404 and success of every operation has a test that produced it; `scripts/route-matrix-allowed.txt` lists the waived gaps (none since FR-022 was built) |
 | Registry | IT-CORE-10, IT-CORE-11 | Routes = registry = contract; each `PATCH` has a `POST` twin that answers alike |
 | System (staging/production) | `./gradlew systemTest -PstagingUrl=…` | The acceptance scenarios AT-001 to AT-050 through the API on a deployment |
 | Load, ZAP, restore | `loadTest`, `zapScan`, restore drill | Phase 5's NFR tests, scaled to the free plans |
@@ -399,7 +399,7 @@ Vercel builds the image from source for each project (`restaurant-staging`, `res
 |---|---|---|
 | Cold starts of 5–7 s on the free plan | JVM container on serverless; scale to zero after 5 min | R-01, R-12, CR-001 (deferred) |
 | No live push | Cost and free-plan limits | CR-013, R-19 |
-| FR-022 images not built | Image store not chosen | TBD-13, G4 waiver |
+| FR-022 images built, not yet released | Built 2026-11-07 on Vercel Blob; each environment needs its Blob store's `BLOB_READ_WRITE_TOKEN` | TBD-13 (decided) |
 | Jobs designed but not built | §11 above | Q-28 |
 | Contract `servers` is a placeholder | No fixed public URL yet | — |
 | App URLs are placeholders | No client apps yet | release-checklist §4 |

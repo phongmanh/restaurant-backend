@@ -41,7 +41,7 @@ data class MenuItem(
     val price: Long,
     val active: Boolean,
     val soldOut: Boolean,
-    /** The storage key of the item's photo (menu §6); always `null` until FR-022 is built. */
+    /** The item's photo (menu §6): its objects' public URL without the size ending; `null` = none. */
     val imageKey: String?,
     val version: Int,
     val optionGroups: List<OptionGroup>,

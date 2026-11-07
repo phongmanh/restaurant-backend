@@ -47,8 +47,18 @@ const val IDEMPOTENCY_KEY_HEADER = "Idempotency-Key"
 const val IDEMPOTENT_REPLAYED_HEADER = "Idempotent-Replayed"
 const val X_CLIENT_HEADER = "X-Client"
 
-/** Request bodies are JSON of at most 64 KB (§2). The menu image upload will raise it for its route. */
+/** Request bodies are JSON of at most 64 KB (§2), except the menu image upload's. */
 const val MAX_BODY_BYTES = 64L * 1024
+
+/** The menu image upload's limit (menu §6): 4 MB, under Vercel's 4.5 MB function body cap (CR-004). */
+const val MAX_IMAGE_BYTES = 4L * 1024 * 1024
+
+/** The one route whose body isn't JSON of at most 64 KB (core-and-auth §2, menu §12). */
+private val imageUpload = Endpoints.Menu.PUT_MENU_ITEM_IMAGE
+private val imageUploadPath = Regex("^" + imageUpload.path.replace("{itemId}", "[^/]+") + "$")
+
+private fun bodyLimitOf(call: ApplicationCall): Long =
+    if (call.request.httpMethod == imageUpload.method && imageUploadPath.matches(call.request.path())) MAX_IMAGE_BYTES else MAX_BODY_BYTES
 
 /** A new UUID v7, the format of every ID the service makes. */
 fun newUuidV7(): String = UuidV7.next().toString()
@@ -81,7 +91,7 @@ fun Application.installHttp(settings: HttpSettings) {
             .forEach(::exposeHeader)
         allowCredentials = false
     }
-    install(RequestBodyLimit) { bodyLimit { MAX_BODY_BYTES } }
+    install(RequestBodyLimit) { bodyLimit(::bodyLimitOf) }
     // The idempotency helper reads the raw body for its fingerprint, then the route reads it again.
     install(DoubleReceive)
     install(ContentNegotiation) {

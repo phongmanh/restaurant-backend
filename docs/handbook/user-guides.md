@@ -127,7 +127,7 @@ The menu is categories holding items. Everything you write is in Vietnamese, wit
 | Delete | `DELETE /v1/staff/menu/items/{id}`. Past orders keep its name and price |
 | See the whole menu, hidden items included | `GET /v1/staff/menu` |
 
-Limits: 50 categories and 1,000 items per restaurant. Guests see changes on their next menu load. **Price changes never touch orders already placed.** Photos aren't available in release 1.
+Limits: 50 categories and 1,000 items per restaurant. Guests see changes on their next menu load. **Price changes never touch orders already placed.** **Photos** (once the release with them is live): a manager uploads a JPEG, PNG or WebP photo of up to 4 MB from the item editor, or removes it. The service makes a large copy and a thumbnail and strips the file's hidden data, such as where the photo was taken. A new photo shows on the guest's next menu load; an upload never makes an edit you have open out of date.
 
 **Hidden vs sold out:** hide an item you've stopped selling; mark sold out an item you've run out of today. Both stop new orders; sold-out items still show to guests, greyed out.
 
