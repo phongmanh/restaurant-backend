@@ -118,6 +118,12 @@ realtime:
   livePush: "$LIVE_PUSH:"
   ablyApiKey: "$ABLY_API_KEY:"
 
+# Menu photos (menu §6, FR-022; TBD-13 decided 2026-11-07: Vercel Blob). The secret BLOB_READ_WRITE_TOKEN
+# is the read-write token of the environment's public Blob store. Optional: without it, uploads answer
+# 503 image_storage_unavailable and the menus work.
+images:
+  blobToken: "$BLOB_READ_WRITE_TOKEN:"
+
 # Metrics pushed over OTLP (ADR-0009, architecture §13) to Grafana Cloud (TBD-12). Required outside dev
 # and test; without them, meters count in memory only.
 observability:

@@ -23,6 +23,14 @@ FROM eclipse-temurin:25-jre@sha256:ecdc0adb37bde1a281c4d245a3cd535004b1fc8322d56
 # The Ubuntu base ships Canonical's Pebble (`/usr/bin/pebble`, a Go service manager, no dpkg
 # package); the service never runs it, and its Go runtime carries advisories CI's Grype check
 # fails on (deploy/README.md "Vulnerable dependencies").
+#
+# Ubuntu's fixes the pinned digest doesn't carry yet, at exact versions so staging and production
+# still get identical layers: apt and libapt-pkg7.0 for CVE-2026-109518 (High), libpcre2-8-0 for
+# its Medium advisories (2026-11-07; CI's Grype check). Drop a line once the base digest has it.
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends --only-upgrade \
+        apt=3.2.1ubuntu0.1 libapt-pkg7.0=3.2.1ubuntu0.1 libpcre2-8-0=10.46-1ubuntu0.1 \
+    && rm -rf /var/lib/apt/lists/*
 RUN rm -f /usr/bin/pebble \
     && groupadd --system app && useradd --system --gid app --home /app app
 WORKDIR /app

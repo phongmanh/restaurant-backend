@@ -68,6 +68,7 @@ dependencies {
     implementation(libs.bouncycastle)
     implementation(libs.java.jwt)
     implementation(libs.ably.java)
+    implementation(libs.twelvemonkeys.webp)
     implementation(libs.ktor.server.metrics.micrometer)
     implementation(libs.micrometer.registry.otlp)
 

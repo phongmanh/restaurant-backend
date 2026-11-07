@@ -100,16 +100,12 @@ object Tenants {
 }
 
 /**
- * Registry entries whose routes aren't built yet. Phase 4 removes each group, or single entries, in
- * the change that builds them; it must be empty at G4. IT-CORE-10 fails both when a route exists for
- * an entry listed here and when an entry missing from here has no route.
+ * Registry entries whose routes aren't built yet: an entry joins it when the contract gets ahead of
+ * the code, and leaves in the change that builds it. Empty since FR-022's image routes were built
+ * (2026-11-07). IT-CORE-10 fails both when a route exists for an entry listed here and when an entry
+ * missing from here has no route.
  */
-val notYetRouted: Set<Endpoint> =
-    setOf(
-        // FR-022 (Should) waits for TBD-13, the image store (owner, 2026-10-15).
-        Endpoints.Menu.PUT_MENU_ITEM_IMAGE,
-        Endpoints.Menu.DELETE_MENU_ITEM_IMAGE,
-    )
+val notYetRouted: Set<Endpoint> = emptySet()
 
 /** The TOTP secret an authenticator app reads from the enrolment's Base32 text. */
 fun decodeBase32(text: String): ByteArray {

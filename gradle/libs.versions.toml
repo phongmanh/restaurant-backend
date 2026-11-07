@@ -35,6 +35,8 @@ kover = "0.9.11"
 cyclonedx = "3.4.1"
 # Phase 5 step 4 (2026-10-17): metrics pushed over OTLP (ADR-0009); the version Ktor 3.6.0's metrics plugin is built on.
 micrometer = "1.17.1"
+# FR-022 menu images (2026-11-07): reads WebP for ImageIO (menu §6); JPEG and PNG are the JDK's own.
+twelvemonkeys = "3.15.3"
 
 [libraries]
 ktor-bom = { module = "io.ktor:ktor-bom", version.ref = "ktor" }
@@ -69,6 +71,7 @@ koin-bom = { module = "io.insert-koin:koin-bom", version.ref = "koin" }
 koin-ktor = { module = "io.insert-koin:koin-ktor" }
 bouncycastle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 java-jwt = { module = "com.auth0:java-jwt", version.ref = "javaJwt" }
+twelvemonkeys-webp = { module = "com.twelvemonkeys.imageio:imageio-webp", version.ref = "twelvemonkeys" }
 ably-java = { module = "io.ably:ably-java", version.ref = "ably" }
 testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }

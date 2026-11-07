@@ -133,7 +133,7 @@ fun appModule(
         coreModule(pools, config.jobs),
         authModule(config.auth, config.rateLimits),
         restaurantsModule(),
-        menuModule(),
+        menuModule(config.images),
         tablesModule(config.guests, config.auth.issuer),
         ordersModule(),
         realtimeModule(config.realtime),

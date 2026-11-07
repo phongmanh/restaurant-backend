@@ -36,6 +36,7 @@ data class AppConfig(
     val rateLimits: RateLimitSettings,
     val realtime: RealtimeSettings,
     val observability: ObservabilitySettings = ObservabilitySettings.NONE,
+    val images: ImageSettings = ImageSettings.NONE,
 ) {
     companion object {
         const val PRODUCTION = "production"
@@ -102,16 +103,7 @@ data class AppConfig(
             check(missing.isEmpty()) { "missing settings: ${missing.joinToString()}" }
             check(cronSecret.length >= MIN_CRON_SECRET_CHARS) { "CRON_SECRET must be at least $MIN_CRON_SECRET_CHARS characters" }
 
-            val origins =
-                config
-                    .property("http.allowedOrigins")
-                    .getString()
-                    .split(',')
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }
-            check(environment != PRODUCTION || origins.none(::isLocal)) {
-                "a production config can't allow a localhost origin"
-            }
+            val origins = allowedOrigins(config, environment)
             val links = linkUrls(config, environment)
             val minVersions =
                 config
@@ -142,6 +134,7 @@ data class AppConfig(
                     ),
                 realtime = realtime,
                 observability = observability(config, otlpEndpoint, otlpHeaders),
+                images = imageSettings(config),
             )
         }
 
@@ -171,6 +164,28 @@ data class AppConfig(
             if (push == LivePush.ABLY && key == null) missing += "ABLY_API_KEY"
             return if (push == LivePush.ABLY && key != null) RealtimeSettings(key, LivePush.ABLY) else RealtimeSettings(null, LivePush.OFF)
         }
+
+        /** `ALLOWED_ORIGINS`, comma-separated; never a localhost origin in production. */
+        private fun allowedOrigins(
+            config: ApplicationConfig,
+            environment: String,
+        ): List<String> {
+            val origins =
+                config
+                    .property("http.allowedOrigins")
+                    .getString()
+                    .split(',')
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+            check(environment != PRODUCTION || origins.none(::isLocal)) {
+                "a production config can't allow a localhost origin"
+            }
+            return origins
+        }
+
+        /** Menu photos' store, optional everywhere: without it the menus work, and uploads answer 503 (menu §6). */
+        private fun imageSettings(config: ApplicationConfig) =
+            ImageSettings(config.propertyOrNull("images.blobToken")?.getString()?.takeIf { it.isNotBlank() })
 
         /** Upstash, if set; its keys carry the environment, since staging and production share it (CR-015). */
         private fun upstash(

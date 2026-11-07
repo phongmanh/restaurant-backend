@@ -17,6 +17,7 @@ enum class ErrorCode(
     IDEMPOTENCY_KEY_REQUIRED("idempotency_key_required", 400, "Idempotency-Key required"),
     PASSWORD_REJECTED("password_rejected", 400, "Password rejected"),
     QR_TOKEN_INVALID("qr_token_invalid", 400, "QR code invalid"),
+    IMAGE_INVALID("image_invalid", 400, "Image invalid"),
     UNAUTHENTICATED("unauthenticated", 401, "Unauthenticated"),
     INVALID_CREDENTIALS("invalid_credentials", 401, "Invalid credentials"),
     TABLE_SESSION_CLOSED("table_session_closed", 401, "Table session closed"),
@@ -55,6 +56,7 @@ enum class ErrorCode(
     INTERNAL_ERROR("internal_error", 500, "Internal error"),
     SERVICE_UNAVAILABLE("service_unavailable", 503, "Service unavailable"),
     SERVICE_BUSY("service_busy", 503, "Service busy"),
+    IMAGE_STORAGE_UNAVAILABLE("image_storage_unavailable", 503, "Image storage unavailable"),
 }
 
 /** One failed field rule in a `validation_failed` or `password_rejected` problem. */
@@ -210,6 +212,12 @@ sealed class DomainError(
     class PayloadTooLarge : DomainError(ErrorCode.PAYLOAD_TOO_LARGE)
 
     class UnsupportedMediaType : DomainError(ErrorCode.UNSUPPORTED_MEDIA_TYPE)
+
+    /** A menu photo that doesn't decode, or is over 40 megapixels (menu §6). */
+    class ImageInvalid : DomainError(ErrorCode.IMAGE_INVALID)
+
+    /** The image store is unreachable or timed out (menu §6, architecture §10); the menu still works. */
+    class ImageStorageUnavailable : DomainError(ErrorCode.IMAGE_STORAGE_UNAVAILABLE, retryAfterSeconds = DEFAULT_RETRY_AFTER_SECONDS)
 
     /** The same `Idempotency-Key` came with a different request (§4). */
     class IdempotencyKeyReused : DomainError(ErrorCode.IDEMPOTENCY_KEY_REUSED)

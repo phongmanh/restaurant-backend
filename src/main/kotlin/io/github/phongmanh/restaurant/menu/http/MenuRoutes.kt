@@ -11,6 +11,7 @@ import io.github.phongmanh.restaurant.core.http.holdsCurrent
 import io.github.phongmanh.restaurant.core.http.requestMeta
 import io.github.phongmanh.restaurant.core.http.requireIfMatch
 import io.github.phongmanh.restaurant.core.http.staffCaller
+import io.github.phongmanh.restaurant.menu.application.ImageService
 import io.github.phongmanh.restaurant.menu.application.MenuEditService
 import io.github.phongmanh.restaurant.menu.application.MenuEditor
 import io.github.phongmanh.restaurant.menu.application.MenuRead
@@ -78,17 +79,19 @@ class MenuReadRoutes(
 }
 
 /**
- * The menu writes (menu §5). Manager-only routes make the [MenuEditor] first, and the sold-out route
- * its [SoldOutEditor], before reading the body, `If-Match` or the path: 401 → 403 → 400 → 404 → 409/412
- * (core-and-auth §3).
+ * The menu writes (menu §5, §6). Manager-only routes make the [MenuEditor] first, and the sold-out
+ * route its [SoldOutEditor], before reading the body, `If-Match` or the path: 401 → 403 → 400 → 404 →
+ * 409/412 (core-and-auth §3).
  */
 class MenuEditRoutes(
     private val edits: MenuEditService,
     private val soldOut: SoldOutService,
+    private val images: ImageService,
 ) {
     fun install(route: Route) {
         categories(route)
         items(route)
+        images(route)
         route.endpoint(Endpoints.Menu.SET_MENU_ITEM_SOLD_OUT) {
             val editor = SoldOutEditor.of(call.staffCaller())
             val value = call.receive<SoldOutRequest>().toSoldOut()
@@ -148,6 +151,24 @@ class MenuEditRoutes(
         route.endpoint(e.DELETE_MENU_ITEM) {
             val editor = MenuEditor.of(call.staffCaller())
             edits.deleteItem(editor, call.itemIdParam(), call.requireIfMatch(), call.requestMeta())
+            call.respond(HttpStatusCode.NoContent)
+        }
+    }
+
+    /**
+     * The item photo (FR-022): raw image bytes, at most 4 MB (the route's body limit, `413`). The
+     * type is read from the bytes, not from `Content-Type` (menu §6).
+     */
+    private fun images(route: Route) {
+        val e = Endpoints.Menu
+        route.endpoint(e.PUT_MENU_ITEM_IMAGE) {
+            val editor = MenuEditor.of(call.staffCaller())
+            val bytes = call.receive<ByteArray>()
+            respondItem(call, images.upload(editor, call.itemIdParam(), bytes, call.requestMeta()))
+        }
+        route.endpoint(e.DELETE_MENU_ITEM_IMAGE) {
+            val editor = MenuEditor.of(call.staffCaller())
+            images.remove(editor, call.itemIdParam(), call.requestMeta())
             call.respond(HttpStatusCode.NoContent)
         }
     }
