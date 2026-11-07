@@ -58,7 +58,7 @@ Each is the owner's, and each goes into the STATUS Decisions table when made. So
 | D-D | **Repositories** | One per client, as requirements §1 says | `restaurant-web` (monorepo, three apps) and `restaurant-mobile` |
 | D-E | **Live push or polling** | Release 1 polls (CR-013); a client written to the full rules works either way | Build the full rules from the start (§4.6): with `LIVE_PUSH=off` the token call's `503` keeps the app polling |
 | D-F | **Store accounts** | Google Play developer account and Apple Developer Program (paid) | Needed before step 5. Outside the free-plan rule: the owner decides when |
-| D-G | **Menu photos** (FR-022, TBD-13: Vercel Blob) | The staff app's item editor has an upload, and both menus show the photo | Built in the backend (2026-11-07), not yet released. Shrink the photo in the browser to ≤ 2,048 px first, then `PUT …/items/{itemId}/image` with the raw bytes (≤ 4 MB); show `image.thumb_url` in lists and `image.url` in the item view, loaded straight from the store's domain; an item without a photo has no `image` |
+| D-G | **Menu photos** (FR-022, TBD-13: Vercel Blob) | The staff app's item editor has an upload, and both menus show the photo | Live in the backend since release 1.1.0 (2026-11-07). Shrink the photo in the browser to ≤ 2,048 px first, then `PUT …/items/{itemId}/image` with the raw bytes (≤ 4 MB); show `image.thumb_url` in lists and `image.url` in the item view, loaded straight from the store's domain; an item without a photo has no `image` |
 
 ## 3. The backend from scratch
 This repository is the backend. This section is for rebuilding it (on another platform, or as a template for a similar service), and for knowing how it was put together.
@@ -364,7 +364,7 @@ The backend is ready for clients, but its settings and a few details assume none
 | Contract `servers` | `docs/api/openapi.yaml` (descriptions only, additive) | Today a placeholder |
 | Reprint every QR code | Managers, after `CUSTOMER_APP_URL` changes | The code holds the URL; old prints point at the old host |
 | The designed jobs not yet built | Technical reference §11 (Q-28) | Before real customers |
-| FR-022 image upload | Once the backend release with it is live (built 2026-11-07) | The staff app's item editor; photos in both menus |
+| FR-022 image upload | Now: live since backend release 1.1.0 (2026-11-07) | The staff app's item editor; photos in both menus |
 
 Each change of a committed env file runs through `DeployedSettingsTest` in CI, which applies production's start-up checks (https URLs, no `localhost` origin).
 

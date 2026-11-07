@@ -137,7 +137,7 @@ Each feature has the same layers, and dependencies point inwards:
 | auth | sign-in, mfa, refresh, sign-out, links/inspect, invitations/accept, password-resets/complete, password, me | Same `401 invalid_credentials` for every sign-in failure |
 | restaurants, staff, audit | profile read and update, members (invite, update, deactivate, reactivate, re-issue invitation, password reset), audit log | Manager-only writes; last-manager rule |
 | admin, privacy | restaurants (onboard, update, suspend, reactivate), members per restaurant, admins (invite, deactivate, reset, TOTP reset), audit, staff export and erase | Every admin read of the audit log is itself audited |
-| menu | guest menu, staff menu, categories and items CRUD and ordering, sold out, item photo (Vercel Blob; built 2026-11-07, not yet released), admin menu read | Guest menu revalidated by `ETag` = menu version |
+| menu | guest menu, staff menu, categories and items CRUD and ordering, sold out, item photo (Vercel Blob; live since 1.1.0, 2026-11-07), admin menu read | Guest menu revalidated by `ETag` = menu version |
 | tables | guest session open/join and read, waiter calls, floor view, tables CRUD, QR codes and rotation, staff open, move | One open session per table, enforced by a unique index |
 | orders | guest place, list, read, cancel, bill; staff place, list, read, status, reject line, bill, close, adjustments, bills of a day | Server pricing; all lines or none |
 | realtime | guest and staff events (catch-up), guest and staff realtime-token | Tokens answer `503` with `LIVE_PUSH=off` |
@@ -316,7 +316,7 @@ Vercel Cron calls each with a `GET` and the cron secret. Each is idempotent, wor
 | Route | Schedule (Hobby) | Designed for Pro | Work |
 |---|---|---|---|
 | `/internal/jobs/sales-reconcile` | 20:00 | Hourly, each restaurant after its local 03:00 | Rebuild the last 2 days of daily aggregates; record it in `sales_reconciliation` |
-| `/internal/jobs/retention` | 20:15 | Daily | Runs every bound `RetentionTask`. Built: clearing order-line and correction notes 30 days after close; deleting replaced, removed and deleted items' photos from the store 30 days on (`menu_images`, 2026-11-07, not yet released) |
+| `/internal/jobs/retention` | 20:15 | Daily | Runs every bound `RetentionTask`. Built: clearing order-line and correction notes 30 days after close; deleting replaced, removed and deleted items' photos from the store 30 days on (`menu_images`, since 1.1.0) |
 | `/internal/jobs/event-purge` | 20:30 | Hourly | Delete events (and sent outbox rows) older than 7 days |
 | `/internal/jobs/session-auto-close` | 20:45 | Hourly | Close empty sessions idle for 2 h |
 | `/internal/jobs/outbox-sweep` | 21:00 | Every minute | Publish outbox rows a request didn't (no work with `LIVE_PUSH=off`) |
@@ -399,7 +399,7 @@ Vercel builds the image from source for each project (`restaurant-staging`, `res
 |---|---|---|
 | Cold starts of 5–7 s on the free plan | JVM container on serverless; scale to zero after 5 min | R-01, R-12, CR-001 (deferred) |
 | No live push | Cost and free-plan limits | CR-013, R-19 |
-| FR-022 images built, not yet released | Built 2026-11-07 on Vercel Blob; each environment needs its Blob store's `BLOB_READ_WRITE_TOKEN` | TBD-13 (decided) |
+| FR-022 images on Vercel Blob | Live since 1.1.0 (2026-11-07); each environment has its own public Blob store, and without its `BLOB_READ_WRITE_TOKEN` uploads answer `503` | TBD-13 (decided) |
 | Jobs designed but not built | §11 above | Q-28 |
 | Contract `servers` is a placeholder | No fixed public URL yet | — |
 | App URLs are placeholders | No client apps yet | release-checklist §4 |
