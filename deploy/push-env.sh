@@ -27,6 +27,9 @@ for file in "$@"; do
     name=${line%%=*}
     case " $LOCAL_ONLY " in *" $name "*) continue ;; esac
     [ -n "${line#*=}" ] || { echo "$name is empty in $file: fill it first" >&2; exit 1; }
+    # Values go to Vercel exactly as written, so quotes would become part of the value (a quoted
+    # Blob token makes every photo upload answer 503, 2026-11-07). Write values bare.
+    case "${line#*=}" in \"*|\'*) echo "$name is quoted in $file: remove the quotes" >&2; exit 1 ;; esac
   done < "$file"
 done
 

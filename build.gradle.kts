@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "io.github.phongmanh.restaurant"
-version = "1.0.2"
+version = "1.1.0"
 
 application {
     mainClass = "io.github.phongmanh.restaurant.ApplicationKt"
