@@ -50,7 +50,7 @@ The auto-mode safety check stops Claude from production deploys, production's da
 - **Name the project in every `vercel` command** (`--project restaurant-production`, `-p` for `logs`). The repository root is linked to one project at a time; on 2026-10-19 a bare `vercel deploy --prod` sent a staging deploy to production.
 - **An owner's `!` command fits on one line of about 100 characters.** A longer line wraps when pasted and becomes two commands; on 2026-10-19 that left production's public domain up for about a minute. Longer steps are scripts (`deploy/release.sh`, `switch.sh`, `run-task.sh`).
 - **After every production deploy, check each alias without the bypass header: none may answer `200`.**
-- **Never print a secret.** Searches over `deploy/` exclude `.env*` (`grep --exclude='.env*'`). Secrets printed anywhere count as exposed and are rotated the same day.
+- **Never print a secret.** Searches over `deploy/` exclude `.env*` (`grep --exclude='.env*'`). Secrets printed anywhere count as exposed and are rotated the same day. The `.accounts.<env>` files are JSON: read a field in a script, never print the file.
 
 ## 3. Routine checks
 No alert rule is loaded in Grafana yet (R-21), so nothing warns of trouble. Until the alerts are loaded (§9), these checks are the monitoring.
@@ -80,7 +80,7 @@ A release is the same build that passed staging, promoted to production. Migrati
    Don't `source` the file: the shell would mangle the JSON values and the `&` in URLs.
 5. **Deploy** (owner): `sh deploy/release.sh production --env`. It sends the variables, deploys, points the protected domain at the new deployment and checks that the public domain answers `200`. Note the deployment URL it prints.
 6. **Smoke check** (Claude): `/health` answers `200` with the bypass header and is refused without it; `vercel alias ls` shows no alias answering `200` without it; the start-up lines are clean; the log review within the hour is clean.
-7. **System suite** (owner): `sh deploy/run-task.sh production system`. On a fresh database, `sh deploy/run-task.sh production seed` first.
+7. **System suite** (owner): `python3 -I deploy/photo-smoke.py production` first when the release touches menu photos (upload, both JPEGs, removal; the menu is left as it was), then `sh deploy/run-task.sh production system`. On a fresh database, `sh deploy/run-task.sh production seed` first.
 8. **Watch** for a day: §3's daily checks, plus one run of each cron job.
 9. **Record** the release in STATUS.md (Claude).
 
@@ -132,6 +132,8 @@ Every key and secret, where it comes from and how long it lives (deploy/README.m
 | `OTEL_EXPORTER_OTLP_HEADERS` (+ endpoint) | Grafana Cloud, one token per environment | 1 year | Header format `Authorization=Basic base64(<instance ID>:<token>)` |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | Vercel → Deployment Protection | 1 year | Used by test clients only; never sent to the service |
 | `ABLY_API_KEY` | Ably console | 1 year | Only with `LIVE_PUSH=ably` |
+| `BLOB_READ_WRITE_TOKEN` | Vercel → Storage → the environment's own public Blob store, never connected to a project | Until exposed | Rotate in the store's settings, edit, push, deploy; uploads answer `503` in between, photos stay. Write it bare, without quotes |
+| Seeded account passwords (`.accounts.<env>`) | `seed` | Until exposed | Staging: `python3 -I deploy/staging/rotate-seeded.py` (run it yourself) |
 
 **To rotate:** edit the line in `deploy/production/.env.production` (mode `600`, git-ignored), then `sh deploy/release.sh production --env` (a deployment reads its variables when it starts). **Exposure means rotate today:** committed, pasted, printed, screenshotted, or held by someone who lost access.
 
