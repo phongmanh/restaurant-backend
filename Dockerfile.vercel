@@ -8,7 +8,7 @@
 # production get identical layers only from a fixed digest (release-checklist P-2). Dependabot's
 # weekly `docker` PR moves the digests to the patched images.
 
-FROM eclipse-temurin:25-jdk@sha256:2d5d5e9b533342a565907c84f47a2ec298c40cde7b13a3ca85d4950fa456a641 AS build
+FROM eclipse-temurin:25-jdk@sha256:83f4a7fc27df94dcc7b8de04d14cbbba8da14406f921e966969c3b09000aa507 AS build
 WORKDIR /workspace
 
 COPY gradlew settings.gradle.kts build.gradle.kts ./
